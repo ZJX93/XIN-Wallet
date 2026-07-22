@@ -74,7 +74,7 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'"],                                  // 已移除 unsafe-inline
+            scriptSrc: ["'self'", "'unsafe-inline'"],                  // unsafe-inline 暂保留：index.html 中的内联 script（XIN_API_BASE / token check / module bootstrap）尚未完全外部化
             scriptSrcAttr: ["'none'"],                             // 禁止内联事件属性（onclick=）
             styleSrc: ["'self'", "'unsafe-inline'"],              // 临时保留（详见注释）
             fontSrc: ["'self'", "data:"],
