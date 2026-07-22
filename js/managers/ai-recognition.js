@@ -40,7 +40,8 @@ const AIRecognition = {
     },
 
     init() {
-        // 事件绑定
+        const firstEl = document.getElementById('aiImportAllBtn');
+        if (!firstEl) return;  // ai-recognition 页面通过 PageLoader 惰加载
         document.getElementById('aiImportAllBtn').addEventListener('click', () => this.importAll());
 
         // OCR 上传

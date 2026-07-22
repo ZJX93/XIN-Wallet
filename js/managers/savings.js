@@ -9,7 +9,8 @@ const SavingsGoalManager = {
     init() {
         this.goals = [];
         this.pending = null;
-        this.populateAccounts();
+        const form = document.getElementById('goalForm');
+        if (!form) return;  // 储蓄目标在 page-investments 中，通过 PageLoader 惰加载
         document.getElementById('addGoalBtn').addEventListener('click', () => this.openModal());
         document.getElementById('goalModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('goalCancelBtn').addEventListener('click', () => this.closeModal());

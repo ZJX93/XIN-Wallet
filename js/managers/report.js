@@ -14,7 +14,8 @@ const ReportManager = {
     charts: {},
     currentData: null,
     init() {
-        this.populatePeriods();
+        const el = document.getElementById('reportType');
+        if (!el) return;  // 报表页面通过 PageLoader 惰加载
         document.getElementById('generateReportBtn').addEventListener('click', () => this.generate());
         document.getElementById('printReportBtn').addEventListener('click', () => this.print());
         document.getElementById('reportType').addEventListener('change', () => this.populatePeriods());
