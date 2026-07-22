@@ -20,17 +20,18 @@ function getKey() {
     let keyHex = process.env.ENCRYPTION_KEY;
     if (!keyHex) {
         if (process.env.NODE_ENV === 'production') {
-            // 生产环境禁止启动——避免已加密数据永久不可读
-            console.error('\n❌ FATAL: ENCRYPTION_KEY 未设置。');
-            console.error('   生产环境必须显式配置 ENCRYPTION_KEY（64 位 hex / `openssl rand -hex 32`）');
-            console.error('   否则一旦容器重启，数据库中已加密的 API Key / Secret 将永久无法解密。\n');
-            process.exit(1);
+            // 生产环境：自动生成 + 强烈警告（避免 process.exit 反复打印导致日志洪水）
+            keyHex = crypto.randomBytes(32).toString('hex');
+            console.warn('⚠️  ⚠️  ⚠️  生产环境未配置 ENCRYPTION_KEY，已自动生成临时密钥！⚠️  ⚠️  ⚠️');
+            console.warn('   容器重启后已加密数据将永久无法解密（API Key / Secret 全部丢失）');
+            console.warn('   请设置环境变量 ENCRYPTION_KEY=<openssl rand -hex 32> 并重新部署');
+            console.warn(`   临时密钥: ENCRYPTION_KEY=${keyHex}`);
+        } else {
+            // 开发环境：自动生成 + 提示用户持久化
+            keyHex = crypto.randomBytes(32).toString('hex');
+            console.warn('⚠️  ENCRYPTION_KEY 未设置，已自动生成临时密钥（仅开发场景）。');
+            console.warn(`   ENCRYPTION_KEY=${keyHex}`);
         }
-        // 开发环境：自动生成 + 提示用户持久化
-        keyHex = crypto.randomBytes(32).toString('hex');
-        console.warn('⚠️  ENCRYPTION_KEY 未设置，已自动生成临时密钥（仅开发场景）。');
-        console.warn('   请将以下配置写入 .env 文件以持久化（否则重启后已加密数据无法解密）:');
-        console.warn(`   ENCRYPTION_KEY=${keyHex}`);
     }
     // 64 hex 字符：直接作为 32 字节密钥使用
     if (keyHex.length === 64 && /^[0-9a-fA-F]+$/.test(keyHex)) {

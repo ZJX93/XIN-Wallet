@@ -39,6 +39,12 @@ req.end();
 EOF
 
 USER appuser
+
+# 生产环境强烈建议显式注入 ENCRYPTION_KEY（用于 AI 凭证等敏感字段加密）
+# 不注入时，crypto.js 启动时会自动生成临时密钥（每次容器重启会失效）
+# 使用：docker run -e ENCRYPTION_KEY=$(openssl rand -hex 32) ...
+ENV ENCRYPTION_KEY=
+
 EXPOSE 18888
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD node /app/docker-healthcheck.js
