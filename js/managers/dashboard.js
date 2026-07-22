@@ -373,21 +373,33 @@ const DashboardManager = {
         const el = document.getElementById('dashBudgets');
         if (!el) return;
         if (!budgets || budgets.length === 0) { showEmpty(el, '本月暂无预算', '🎯'); return; }
+        const today = new Date();
+        const daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+        const dayOfMonth = today.getDate();
+        const daysLeft = daysInMonth - dayOfMonth + 1;
         el.innerHTML = budgets.map(b => {
-            const pct = Math.min(b.ratio, 100);
-            const cls = b.alertLevel === 'danger' ? 'over' : (b.alertLevel === 'warning' ? 'warn' : 'ok');
-            let foot, hint = '';
-            if (b.over) {
-                foot = `已超支 ${fmt(b.actual - b.amount)} · ${b.ratio}%`;
-            } else if (b.willOver) {
-                foot = `⚠ 预计月末超支 ${fmt(b.overBy)} · 日均 ${fmt(b.dailyAvg)}`;
-                hint = `<div class="budget-hint" style="color:var(--accent-expense);margin-top:4px;font-size:12px;">按当前速度，剩余 ${b.daysLeft} 天将超支约 ${fmt(b.overBy)} 元</div>`;
+            const actual = b.actual || 0, amount = b.amount || 0;
+            const ratio = amount > 0 ? Math.min(Math.round(actual / amount * 100), 999) : 0;
+            const over = actual > amount;
+            const remain = Math.max(0, amount - actual);
+            const dailyAvg = dayOfMonth > 0 ? Math.round(actual / dayOfMonth) : 0;
+            const safeDaily = daysLeft > 0 ? Math.round(remain / daysLeft) : 0;
+            const projected = dailyAvg * daysInMonth;
+            const willOver = projected > amount && !over;
+            const alertLevel = over ? 'danger' : (ratio >= 80 ? 'warning' : 'ok');
+            const cls = alertLevel === 'danger' ? 'over' : (alertLevel === 'warning' ? 'warn' : 'ok');
+            let foot = '', hint = '';
+            if (over) {
+                foot = `已超支 ${fmt(actual - amount)} · ${ratio}%`;
+            } else if (willOver) {
+                foot = `⚠ 预计月末超支 ${fmt(projected - amount)} · 日均 ${fmt(dailyAvg)}`;
+                hint = `<div class="budget-hint" style="color:var(--accent-expense);margin-top:4px;font-size:12px;">按当前速度，剩余 ${daysLeft} 天将超支约 ${fmt(projected - amount)} 元</div>`;
             } else {
-                foot = `剩 ${fmt(b.remain)} · 可日均 ${fmt(b.safeDaily)} · ${b.ratio}%`;
+                foot = `剩 ${fmt(remain)} · 可日均 ${fmt(safeDaily)} · ${ratio}%`;
             }
             return `<div class="budget-row">
                 <div class="budget-top"><span class="budget-name">${escapeHtml(b.name)}</span><span class="budget-val">${fmt(b.actual)} / ${fmt(b.amount)}</span></div>
-                <div class="budget-bar"><div class="budget-bar-fill ${cls}" style="width:${pct}%"></div></div>
+                <div class="budget-bar"><div class="budget-bar-fill ${cls}" style="width:${ratio}%"></div></div>
                 <div class="budget-foot ${cls}">${foot}</div>${hint}
             </div>`;
         }).join('');
@@ -398,10 +410,11 @@ const DashboardManager = {
         if (!el) return;
         if (!goals || goals.length === 0) { showEmpty(el, '还没有储蓄目标', '🎯'); return; }
         el.innerHTML = goals.map(g => {
-            const pct = Math.min(g.ratio, 100);
-            const cls = g.ratio >= 100 ? 'done' : 'ok';
+            const ratio = g.target_amount > 0 ? Math.round(g.current_amount / g.target_amount * 100) : 0;
+            const pct = Math.min(ratio, 100);
+            const cls = ratio >= 100 ? 'done' : 'ok';
             return `<div class="goal-row">
-                <div class="goal-top"><span class="goal-icon">${escapeHtml(g.icon || '🎯')}</span><span class="goal-name">${escapeHtml(g.name)}</span><span class="goal-pct">${g.ratio}%</span></div>
+                <div class="goal-top"><span class="goal-icon">${escapeHtml(g.icon || '🎯')}</span><span class="goal-name">${escapeHtml(g.name)}</span><span class="goal-pct">${ratio}%</span></div>
                 <div class="goal-bar"><div class="goal-bar-fill ${cls}" style="width:${pct}%"></div></div>
                 <div class="goal-foot">${fmt(g.current_amount)} / ${fmt(g.target_amount)}</div>
             </div>`;
