@@ -235,16 +235,28 @@ const DashboardManager = {
             const weekDet = document.getElementById('dashWeekDetail');
             if (weekDet) weekDet.textContent = `收 ${fmt(weekIncome)} 支 ${fmt(weekExpense)}`;
 
-            // 理财盈亏
+            // 理财盈亏（与储蓄率卡片风格一致：label 带 badge，sub 显示总投入 + 收益率）
             const invProfit = data.investments.totalProfit;
+            const invCost = data.investments.totalCost;
+            const invRate = invCost > 0 ? (invProfit / invCost * 100) : 0;
+
             const invProfitEl = document.getElementById('dashInvProfit');
             if (invProfitEl) {
                 invProfitEl.textContent = fmtSigned(invProfit, invProfit >= 0 ? 'income' : 'expense');
                 invProfitEl.className = 'kpi-value ' + (invProfit >= 0 ? 'positive' : 'negative');
             }
-            const invCost = data.investments.totalCost;
+            const invBadge = document.getElementById('dashInvBadge');
+            if (invBadge) {
+                if (invProfit > 0) { invBadge.textContent = '盈利'; invBadge.className = 'kpi-badge good'; }
+                else if (invProfit < 0) { invBadge.textContent = '亏损'; invBadge.className = 'kpi-badge bad'; }
+                else { invBadge.textContent = '持平'; invBadge.className = 'kpi-badge neutral'; }
+            }
             const invRateEl = document.getElementById('dashInvRate');
-            if (invRateEl) invRateEl.textContent = invCost > 0 ? `收益率 ${(invProfit / invCost * 100).toFixed(1)}%` : '--';
+            if (invRateEl) {
+                invRateEl.textContent = invCost > 0
+                    ? `总投入 ${fmt(invCost)} · 收益率 ${invRate >= 0 ? '+' : ''}${invRate.toFixed(1)}%`
+                    : '暂无持仓';
+            }
 
             // 本年结余
             const yearBalEl = document.getElementById('dashYearBalance');

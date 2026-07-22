@@ -35,8 +35,10 @@ function showToast(msg, type = 'info') {
 function fmtSigned(n, type) {
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
+    // 注意：_moneyFmt.format() 已对负数自动加 '-'，所以这里用 Math.abs() 避免双符号
+    // type='expense' 强制显示 '-'（即使浮点 0 也按支出）
     const sign = type === 'expense' ? '-' : type === 'transfer_in' || type === 'transfer_out' ? '' : '+';
-    return sign + '¥' + _moneyFmt.format(v);
+    return sign + '¥' + _moneyFmt.format(Math.abs(v));
 }
 // 无符号 ¥ 前缀的纯数字（用于已含 ¥ 的拼接场景，避免双重符号）
 function fmtNum(n) {
