@@ -298,17 +298,16 @@ const InvestmentManager = {
     // 一键刷新全部
     async refreshAllQuotes() {
         const btn = document.getElementById('refreshAllBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spin">⏳</span> 刷新中...';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class=\"spin\">⏳</span> 刷新中...'; }
         try {
-            const result = await api('/investments/refresh-all', 'POST');
+            const result = await api('/investments/refresh-all', 'POST', null, { silent: true });
             showToast(result?.message || `已更新 ${result?.updated || 0} 个持仓`, 'success');
             await this.refresh();
         } catch (err) {
-            // api() 已显示错误 toast
+            // 行情刷新后端暂未实现，静默跳过
+            console.warn('[invest] 行情刷新暂不可用:', err.message);
         }
-        btn.disabled = false;
-        btn.innerHTML = '🔄 一键刷新';
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔄 一键刷新'; }
     },
     // 进入页面自动刷新行情
     async autoRefreshQuotes() {
