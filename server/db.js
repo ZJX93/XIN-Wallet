@@ -12,10 +12,11 @@ const pool = mariadb.createPool({
   database: process.env.DB_NAME || 'xinwallet',
   connectionLimit: 10,
   charset: 'utf8mb4',
+  collation: 'utf8mb4_unicode_ci',
   supportBigNumbers: true,
   bigNumberStrings: true,
   trace: process.env.NODE_ENV !== 'production',
-  initSql: "SET time_zone = '+08:00'"
+  initSql: ["SET NAMES utf8mb4", "SET time_zone = '+08:00'"]
 });
 
 async function getConn() {
@@ -66,7 +67,8 @@ async function initDatabase() {
       password: process.env.DB_PASSWORD || '',
       connectionLimit: 5,
       charset: 'utf8mb4',
-      initSql: "SET time_zone = '+08:00'"
+      collation: 'utf8mb4_unicode_ci',
+      initSql: ["SET NAMES utf8mb4", "SET time_zone = '+08:00'"]
     });
 
     let rootConn;
