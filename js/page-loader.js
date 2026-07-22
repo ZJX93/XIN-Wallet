@@ -40,9 +40,10 @@ const PageLoader = {
             return this.cache.has(src);
         }
 
-        // 首次加载
+        // 首次加载：fetch 原始 HTML
+        let rawHtml;
         const p = this.fetchPage(src).then(html => {
-            this.cache.set(src, html);
+            rawHtml = html;
             this.loading.delete(src);
         }).catch(err => {
             console.error(`[PageLoader] Failed to load ${src}:`, err);
@@ -51,8 +52,13 @@ const PageLoader = {
         this.loading.set(src, p);
         await p;
 
-        if (this.cache.has(src)) {
-            el.innerHTML = this.cache.get(src);
+        if (rawHtml) {
+            // 剥离外层的 <section> 标签：page fragment 本身是完整的 <section class="page" ...>，
+            // 但 index.html 中已经有一个包装 section（通过 data-lazy 属性指定）。
+            // 这里仅保留 inner 内容，避免嵌套双 section / 双 id
+            const inner = rawHtml.replace(/^\s*<section[^>]*>/i, '').replace(/<\/section>\s*$/i, '');
+            this.cache.set(src, inner);
+            el.innerHTML = inner;
             return true;
         }
         return false;
