@@ -268,6 +268,10 @@ app.get('*', (req, res, next) => {
 // 因此无论是「自带 MariaDB 容器」还是「连接外部已有 MariaDB」都能正确建库建表 / 复用既有数据。
 // 最多重试 30 次（约 60s），兼容 NAS 慢启动与外部库尚未就绪的场景。
 async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
+    // 首次启动：打印连接配置（密码脱敏）
+    if (process.env.NODE_ENV !== 'production' || process.env.DB_DEBUG === '1') {
+        console.log(`📡 数据库连接: ${process.env.DB_USER}@${process.env.DB_HOST}:${process.env.DB_PORT || 3306}/${process.env.DB_NAME}`);
+    }
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             const ok = await db.initDatabase();
@@ -276,7 +280,18 @@ async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
                 return true;
             }
         } catch (err) {
-            // 连接尚未建立，进入重试
+            // 详细打印最后一次连接错误（帮助诊断）
+            if (attempt === 1 || attempt % 5 === 0) {
+                console.error(`❌ 数据库初始化失败 (尝试 ${attempt}/${maxAttempts}): ${err.message}`);
+                if (err.code) console.error(`   错误代码: ${err.code}, SQLState: ${err.sqlState}`);
+                if (err.errno) console.error(`   errno: ${err.errno}`);
+                // 输出排查建议
+                console.error('   排查方向:');
+                console.error('   1) 确认 NAS 上 MariaDB 已启动并监听 0.0.0.0:3306 (非 127.0.0.1)');
+                console.error('   2) 确认用户 XINWallet 有建表/建库权限，且允许从任意 host 连接 (host=\'%\')');
+                console.error('   3) 确认 NAS 防火墙放行 3306 端口');
+                console.error('   4) 在 NAS 终端执行: mariadb -u XINWallet -p -h 192.168.9.3 验证能登录');
+            }
         }
         console.log(`⏳ 等待数据库就绪并初始化 (${attempt}/${maxAttempts})...`);
         await new Promise(resolve => setTimeout(resolve, intervalMs));
