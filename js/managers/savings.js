@@ -7,10 +7,12 @@
 
 const SavingsGoalManager = {
     init() {
+        if (this._initialized) return;
         this.goals = [];
         this.pending = null;
         const form = document.getElementById('goalForm');
-        if (!form) return;  // 储蓄目标在 page-investments 中，通过 PageLoader 惰加载
+        if (!form) return;
+        this._initialized = true;
         document.getElementById('addGoalBtn').addEventListener('click', () => this.openModal());
         document.getElementById('goalModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('goalCancelBtn').addEventListener('click', () => this.closeModal());
@@ -216,6 +218,7 @@ const SavingsGoalManager = {
         }
     },
     async refresh() {
+        this.init();  // init 被 null-guard 跳过时，在 refresh 补上
         const container = document.getElementById('savingsGoalList');
         showSkeleton(container, 3, 'grid');
         const goals = await api('/savings-goals');

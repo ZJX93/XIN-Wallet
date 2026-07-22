@@ -27,10 +27,12 @@
 
 const InvestmentManager = {
     refreshTimer: null,
+    _initialized: false,
     init() {
-        // investModal 等 DOM 在 pages/investments.html 中，可能尚未通过 PageLoader 加载
+        if (this._initialized) return;
         const investForm = document.getElementById('investForm');
-        if (!investForm) return;  // 懒加载时机未到，等待 refresh() 时加载
+        if (!investForm) return;  // DOM 尚未通过 PageLoader 加载
+        this._initialized = true;
         document.getElementById('investModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('investCancelBtn').addEventListener('click', () => this.closeModal());
         document.getElementById('investForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
@@ -318,6 +320,7 @@ const InvestmentManager = {
         await this.refreshAllQuotes();
     },
     async refresh() {
+        this.init();  // 如果 init 之前被 null-guard 跳过，在 refresh 时补上
         const container = document.getElementById('investList');
         showSkeleton(container, 4, 'grid');
         const data = await api('/investments');
