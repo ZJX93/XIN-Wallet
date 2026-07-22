@@ -406,10 +406,8 @@ function initTransMonthFilter() {
         opts.push(`<option value="${val}">${val}</option>`);
     }
     sel.innerHTML = opts.join('');
-    // 仅在 cache.currentMonth 已设置且不为空时设置选中值；否则保留默认（所有月份）
-    if (cache.currentMonth) {
-        sel.value = cache.currentMonth;
-    }
+    // 默认选中"所有月份"（与其他筛选框一致），保持 UI 行为统一
+    sel.value = 'all';
 }
 
 // ==========================================
