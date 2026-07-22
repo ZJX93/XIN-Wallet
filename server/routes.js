@@ -30,11 +30,14 @@ router.use((req, res, next) => {
 router.use('/accounts', require('./routes/accounts'));
 router.use('/ai', require('./routes/ai'));
 router.use('/transfers', require('./routes/transfers'));
-router.use('/', require('./routes/transactions'));   // /transactions, /transactions/months, /transactions/summary, /ledger
+router.use('/transactions', require('./routes/transactions'));   // /transactions, /transactions/months, /transactions/summary, /ledger
 router.use('/budgets', require('./routes/budgets'));
 router.use('/reports', require('./routes/reports'));
-router.use('/investment-types', require('./routes/investments'));   // 路由内部已包含前缀
-router.use('/investments', require('./routes/investments'));
+// 同一份 investments 路由同时挂到三个前缀：/investment-types（类型 CRUD）、/investments（持仓）、/stats/investments（统计）
+const investmentsRoutes = require('./routes/investments');
+router.use('/investment-types', investmentsRoutes);
+router.use('/investments', investmentsRoutes);
+router.use('/stats/investments', investmentsRoutes);
 router.use('/stats', require('./routes/stats'));
 router.use('/categories', require('./routes/categories'));
 router.use('/tags', require('./routes/tags'));

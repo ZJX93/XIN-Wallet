@@ -191,9 +191,10 @@ async function start() {
         const demo = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");
         if (!demo) {
             const demoPw = process.env.DEMO_PASSWORD || 'demo123456';
+            const demoHash = await hashPassword(demoPw);
             await db.query(
                 'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
-                ['demo', hashPassword(demoPw), '演示用户']
+                ['demo', demoHash, '演示用户']
             );
             console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);
         }

@@ -102,9 +102,10 @@ router.post('/demo', async (req, res) => {
         let user = await db.queryOne('SELECT * FROM users WHERE username = ?', ['demo']);
         if (!user) {
             // 自动创建演示账号
+            const demoHash = await hashPassword('demo123456');
             const result = await db.query(
                 'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
-                ['demo', hashPassword('demo123456'), '演示用户']
+                ['demo', demoHash, '演示用户']
             );
             user = { id: result.insertId, username: 'demo', nickname: '演示用户' };
         }
