@@ -19,13 +19,11 @@ function setHint(msg, isError) {
     el.setAttribute('role', isError ? 'alert' : 'status');
 }
 
-// loginApi：在全局声明之前先捕获 utils.js 设置的真实 window.api
-// 否则本文件顶层的 function api() 会覆盖 window.api，导致自调用无限递归
+// 用 const 箭头函数（不提升），避免 function 声明提升后 window.api 已指向自身
 const _rawApi = window.api;
-
-async function api(path, method = 'GET', body = null) {
+const api = (path, method = 'GET', body = null) => {
     return _rawApi(path, method, body, { silent: true });
-}
+};
 
 function applyTheme() {
     const saved = localStorage.getItem('zhicai_theme') || 'light';
