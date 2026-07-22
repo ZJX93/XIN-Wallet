@@ -1,0 +1,130 @@
+            <section class="page" id="page-investments">
+                <div class="glass-card">
+                    <h3 class="card-title">💰 理财资产总览</h3>
+                    <div class="inv-summary-row" id="invSummary">
+                        <div class="inv-summary-item"><span class="inv-label">投入本金</span><span class="inv-value" id="invTotalCost">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">当前市值</span><span class="inv-value" id="invTotalValue">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">浮动盈亏</span><span class="inv-value" id="invTotalProfit">¥0</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">收益率</span><span class="inv-value" id="invTotalRate">0%</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">组合年化</span><span class="inv-value" id="invAnnualized">--</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">持仓集中度</span><span class="inv-value" id="invConcentration">--</span></div>
+                        <div class="inv-summary-item"><span class="inv-label">预期年化</span><span class="inv-value" id="invExpectedRate">--</span></div>
+                    </div>
+                </div>
+                <div class="inv-charts-row">
+                    <div class="glass-card chart-card"><h3 class="card-title">资产配置</h3><canvas id="invAllocationPie" height="220"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title">市值趋势</h3><canvas id="invTrendChart" height="220"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title">类型对比</h3><canvas id="invTypeBarChart" height="220"></canvas></div>
+                </div>
+                <div class="glass-card">
+                    <h3 class="card-title">持仓明细 <button class="btn btn-primary" id="addInvestBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新增持仓</button><button class="btn btn-ghost" id="refreshAllBtn" style="font-size:13px;padding:6px 14px;margin-left:8px">🔄 一键刷新</button></h3>
+                    <div id="investList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
+                </div>
+                <div class="glass-card">
+                    <h3 class="card-title">🎯 储蓄目标 <button class="btn btn-primary" id="addGoalBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 新建目标</button></h3>
+                    <p class="card-desc">为大额支出或心愿设立储蓄罐，从关联账户定投，进度一目了然</p>
+                    <div id="savingsGoalList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
+                </div>
+                <div class="modal-overlay" id="investModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="investModalTitle">新增理财持仓</h3><button class="modal-close" id="investModalClose">✕</button></div>
+                    <form class="trans-form" id="investForm">
+                        <div class="form-row">
+                            <div class="form-group"><label>产品类型</label><select id="investType" required></select></div>
+                            <div class="form-group"><label>产品名称</label><input type="text" id="investName" required placeholder="如：沪深300ETF"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex:1"><label>产品代码</label><div class="input-with-btn"><input type="text" id="investCode" placeholder="510300 / sh600519"><button type="button" class="btn btn-ghost btn-sm" id="investQuoteBtn">🔍 查行情</button></div><div class="quote-result" id="quoteResult"></div></div>
+                            <div class="form-group"><label>关联账户</label><select id="investAccount"></select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>买入单价 (¥)</label><input type="number" id="investBuyPrice" step="0.0001" required></div>
+                            <div class="form-group"><label>当前单价 (¥)</label><input type="number" id="investCurrentPrice" step="0.0001" required></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>持有数量</label><input type="number" id="investQuantity" step="0.0001" required></div>
+                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="investFee" step="0.01" min="0"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>总投入成本 (¥)</label><input type="number" id="investTotalCost" step="0.01" required></div>
+                            <div class="form-group"><label>当前市值 (¥)</label><input type="number" id="investCurrentValue" step="0.01" readonly></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>买入日期</label><input type="date" id="investBuyDate" required></div>
+                            <div class="form-group"><label>预期年化收益率 (%)</label><input type="number" id="investExpectedRate" step="0.01"></div>
+                        </div>
+                        <div class="form-group full-width"><label>备注</label><input type="text" id="investNote" placeholder="备注..."></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存持仓</button></div>
+                    </form>
+                </div></div>
+                <div class="modal-overlay" id="reduceModal"><div class="modal glass-card modal-quick">
+                    <div class="modal-header"><h3 id="reduceModalTitle">💰 加仓/减仓 · 沪深300ETF</h3><button class="modal-close" id="reduceModalClose">✕</button></div>
+                    <form class="trans-form" id="reduceForm"><input type="hidden" id="reduceInvestId">
+                        <div class="reduce-meta" id="reduceMeta"></div>
+                        <div class="form-row" style="margin-bottom:12px">
+                            <div class="form-group" style="flex:1">
+                                <label>操作类型</label>
+                                <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="buy"><input type="radio" name="reduceAction" value="buy" style="accent-color:var(--accent-500)"> <span>📈 加仓</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-action="sell"><input type="radio" name="reduceAction" value="sell" checked style="accent-color:var(--accent-500)"> <span>📉 减仓</span></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label id="reducePriceLabel">成交单价 (¥)</label><input type="number" id="reduceSellPrice" step="0.0001" required></div>
+                            <div class="form-group"><label id="reduceQtyLabel">数量</label><input type="number" id="reduceQuantity" step="0.0001" required></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>手续费 (¥)</label><input type="number" id="reduceFee" step="0.01" min="0" value="0"></div>
+                            <div class="form-group"><label>成交日期</label><input type="date" id="reduceDate" required></div>
+                        </div>
+                        <div class="form-group full-width"><label>备注</label><input type="text" id="reduceNote" placeholder="备注..."></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="reduceSubmitBtn">确认卖出</button></div>
+                    </form>
+                </div></div>
+                <div class="modal-overlay" id="goalModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="goalModalTitle">新建储蓄目标</h3><button class="modal-close" id="goalModalClose">✕</button></div>
+                    <form class="trans-form" id="goalForm"><input type="hidden" id="goalEditId">
+                        <div class="form-row">
+                            <div class="form-group"><label>目标名称</label><input type="text" id="goalName" required placeholder="如：旅行基金"></div>
+                            <div class="form-group"><label>图标</label><input type="text" id="goalIcon" value="🎯" placeholder="emoji"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>目标金额 (¥)</label><input type="number" id="goalTarget" step="0.01" min="0.01" required></div>
+                            <div class="form-group"><label>关联账户</label><select id="goalAccount"></select></div>
+                        </div>
+                        <div class="form-group full-width"><label>备注</label><input type="text" id="goalNote" placeholder="备注..."></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="goalCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存目标</button></div>
+                    </form>
+                </div></div>
+                <div class="modal-overlay" id="goalAmountModal"><div class="modal glass-card modal-quick">
+                    <div class="modal-header"><h3 id="goalAmountTitle">💰 存入金额</h3><button class="modal-close" id="goalAmountClose">✕</button></div>
+                    <form class="trans-form" id="goalAmountForm">
+                        <div class="goal-amount-meta" id="goalAmountMeta"></div>
+                        <div class="form-group full-width">
+                            <label id="goalAmountLabel">存入金额 (¥)</label>
+                            <input type="number" id="goalAmountInput" step="0.01" min="0.01" placeholder="0.00" autocomplete="off">
+                            <div class="form-error" id="goalAmountError"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>关联账户 *</label><select id="goalAmountAccount" required></select></div>
+                        </div>
+                        <div class="quick-amounts" id="goalQuickAmounts"></div>
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-ghost" id="goalAmountCancel">取消</button>
+                            <button type="submit" class="btn btn-primary" id="goalAmountConfirm">确认</button>
+                        </div>
+                    </form>
+                </div></div>
+                <!-- 储蓄流水弹窗 -->
+                <div class="modal-overlay" id="savingsHistoryModal"><div class="modal glass-card" style="max-width:560px;max-height:80vh;overflow-y:auto">
+                    <div class="modal-header"><h3>存取流水 · <span class="sh-goal-name"></span></h3><button class="modal-close" id="savingsHistoryClose">✕</button></div>
+                    <div class="bs-detail-stats" style="margin-bottom:12px">
+                        <div><span class="stat-label">存入</span><span class="sh-deposit income">¥0</span></div>
+                        <div><span class="stat-label">取出</span><span class="sh-withdraw expense">¥0</span></div>
+                        <div><span class="stat-label">净储蓄</span><span class="sh-net">¥0</span></div>
+                    </div>
+                    <div class="sh-body"></div>
+                </div></div>
+            </section>
+
+            <!-- ========== 标签管理 ========== -->

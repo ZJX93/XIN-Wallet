@@ -1,0 +1,245 @@
+/* ==========================================================================
+   仪表盘重构 · 财务总览指挥中心
+   沿用 tokens.css 设计令牌与暗色玻璃拟态风格
+   ========================================================================== */
+
+/* ---------- KPI 概览条 ---------- */
+.dash-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+@media (max-width: 720px) {
+  .dash-kpi-bar { grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
+}
+.kpi-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  transition: transform var(--duration-150), border-color var(--duration-150), box-shadow var(--duration-150);
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--interactive-default);
+  box-shadow: var(--shadow-md);
+}
+.kpi-icon { font-size: 1.6rem; line-height: 1; }
+.kpi-icon-red { filter: hue-rotate(135deg) saturate(2.5) brightness(0.95); }
+.kpi-info { display: flex; flex-direction: column; min-width: 0; }
+.kpi-label { font-size: var(--text-caption); color: var(--text-tertiary); display: flex; align-items: center; gap: 6px; }
+.kpi-value { font-size: clamp(0.85rem, 4vw, 1.4rem); font-weight: var(--fw-bold); color: var(--text-primary); white-space: nowrap; line-height: 1.1; }
+.kpi-value.positive { color: var(--income); }
+.kpi-value.negative { color: var(--expense); }
+.kpi-sub { font-size: var(--text-label); color: var(--text-tertiary); display: flex; align-items: center; gap: 4px; }
+.kpi-sub-divider { opacity: 0.4; }
+
+/* KPI Hero（净资产，左侧色条强调） */
+.kpi-card.kpi-hero {
+  border-left: 4px solid var(--accent-500);
+  background: var(--surface-card);
+}
+.kpi-card.kpi-hero .kpi-value {
+  font-size: clamp(1.1rem, 4.5vw, 1.6rem);
+}
+
+/* 储蓄率健康徽章 */
+.kpi-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: var(--fw-medium);
+}
+.kpi-badge.good { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.kpi-badge.warn { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.kpi-badge.bad { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.kpi-badge.neutral { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+
+/* KPI 变化指示 */
+.kpi-change.income { color: #22c55e; }
+.kpi-change.expense { color: #ef4444; }
+
+/* ===== 风险预警条 ===== */
+.dash-alert-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-left: 4px solid var(--warning-500);
+  border-radius: var(--radius-md);
+}
+.dash-alert-bar .alert-icon { font-size: 18px; flex-shrink: 0; }
+.dash-alert-bar .alert-content { display: flex; flex-wrap: wrap; gap: var(--space-3); flex: 1; }
+.alert-item {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.alert-item.bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+.alert-item.warn { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+
+/* ===== 资产负债概览 ===== */
+.balance-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+}
+.bo-row { width: 100%; }
+.bo-bar-track {
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-hover);
+}
+.bo-bar-liquid { background: linear-gradient(90deg, var(--success-500), var(--success-400)); transition: width 0.6s; }
+.bo-bar-invest { background: linear-gradient(90deg, var(--accent-500), var(--accent-400)); transition: width 0.6s; }
+.bo-bar-legend {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.bo-bar-legend .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.dot-liquid { background: var(--success-500); }
+.dot-invest { background: var(--accent-500); }
+.bo-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-md);
+}
+.bo-stat { text-align: center; padding: var(--space-2); }
+.bo-stat-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.bo-stat-value {
+  font-size: 18px;
+  font-weight: var(--fw-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.bo-stat-value.positive { color: var(--income); }
+.bo-stat-value.negative { color: var(--expense); }
+.bo-stat-sub {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+.bo-debt-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-md);
+}
+.bo-debt-info strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.bo-debt-info .bad { color: var(--income); }
+
+@media (max-width: 720px) {
+  .bo-stats { grid-template-columns: 1fr; }
+  .dash-alert-bar { flex-direction: column; align-items: flex-start; }
+}
+
+/* ---------- 主网格 ---------- */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-5);
+}
+.dash-grid .chart-card { min-height: 260px; }
+
+/* ---------- 资产分布 ---------- */
+.dash-assets-dist { display: flex; flex-direction: column; gap: var(--space-2); }
+.asset-row { display: flex; align-items: center; gap: var(--space-3); }
+.asset-icon { font-size: 1.25rem; }
+.asset-body { flex: 1; min-width: 0; }
+.asset-top { display: flex; justify-content: space-between; font-size: var(--text-body-sm); }
+.asset-name { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-bal { color: var(--text-primary); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }
+.mini-bar { height: 6px; border-radius: var(--radius-full); background: var(--surface-hover); margin-top: 4px; overflow: hidden; }
+.mini-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--interactive-default); }
+
+/* ---------- 预算执行 ---------- */
+.dash-budgets { display: flex; flex-direction: column; gap: var(--space-3); }
+.budget-row { display: flex; flex-direction: column; gap: 4px; }
+.budget-top { display: flex; justify-content: space-between; font-size: var(--text-body-sm); }
+.budget-name { color: var(--text-secondary); }
+.budget-val { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.budget-bar { height: 8px; border-radius: var(--radius-full); background: var(--surface-hover); overflow: hidden; }
+.budget-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--interactive-default); transition: width var(--duration-500) var(--ease-out-quart); }
+.budget-bar-fill.ok { background: var(--expense); }
+.budget-bar-fill.warn { background: var(--warning-500); }
+.budget-bar-fill.over { background: var(--income); }
+.budget-foot { font-size: var(--text-label); color: var(--text-tertiary); }
+.budget-foot.ok { color: var(--expense); }
+.budget-foot.warn { color: var(--warning-500); }
+.budget-foot.over { color: var(--income); }
+
+/* ---------- 储蓄目标 ---------- */
+.dash-goals { display: flex; flex-direction: column; gap: var(--space-3); }
+.goal-row { display: flex; flex-direction: column; gap: 4px; }
+.goal-top { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-body-sm); }
+.goal-icon { font-size: 1.1rem; }
+.goal-name { color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-pct { color: var(--text-tertiary); font-weight: var(--fw-medium); }
+.goal-bar { height: 8px; border-radius: var(--radius-full); background: var(--surface-hover); overflow: hidden; }
+.goal-bar-fill { height: 100%; border-radius: var(--radius-full); background: var(--interactive-default); transition: width var(--duration-500) var(--ease-out-quart); }
+.goal-bar-fill.done { background: var(--expense); }
+.goal-foot { font-size: var(--text-label); color: var(--text-tertiary); text-align: right; }
+
+/* ---------- 理财持仓 ---------- */
+.dash-invest { display: flex; flex-direction: column; gap: var(--space-2); }
+.invest-summary { font-size: var(--text-body-sm); color: var(--text-secondary); margin-bottom: 4px; }
+.invest-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.invest-info { display: flex; flex-direction: column; min-width: 0; }
+.invest-name { color: var(--text-primary); font-size: var(--text-body-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invest-sub { color: var(--text-tertiary); font-size: var(--text-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.invest-right { display: flex; flex-direction: column; align-items: flex-end; }
+.invest-val { color: var(--text-primary); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }
+.invest-rate { font-size: var(--text-label); font-weight: var(--fw-medium); }
+.invest-rate.positive { color: var(--income); }
+.invest-rate.negative { color: var(--expense); }
+.invest-more { font-size: var(--text-label); color: var(--text-tertiary); text-align: center; margin-top: 2px; }
+
+/* ---------- 加载占位 ---------- */
+.skel-text { color: var(--text-tertiary); font-size: var(--text-body-sm); padding: var(--space-4) 0; text-align: center; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1024px) {
+  .dash-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .dash-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+}

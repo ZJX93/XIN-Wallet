@@ -1,0 +1,90 @@
+# ============================================
+# 鑫钱包 · Docker Compose
+# 应用容器 + MariaDB 容器，数据持久化于命名卷
+# 所有敏感变量均来自同目录 .env（已被 .gitignore 忽略，不会入库）
+#
+# 用法：
+#   docker compose up -d            # 拉取 GHCR 预构建镜像并启动
+# ============================================
+
+services:
+  db:
+    image: mariadb:11
+    container_name: xinwallet-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      MARIADB_DATABASE: ${DB_NAME:-xinwallet}
+    volumes:
+      - xinwallet-db-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    # NAS 上若想固定数据存放路径，可改为绑定挂载，例如：
+    #   - /volume1/docker/xinwallet/db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - xinwallet-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/zjx93/xin-wallet/xinwallet:latest
+    container_name: xinwallet-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 18888
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      DB_NAME: ${DB_NAME:-xinwallet}
+      JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALLOW_DEMO: ${ALLOW_DEMO}
+      DEMO_PASSWORD: ${DEMO_PASSWORD}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    ports:
+      - "${APP_PORT:-18888}:18888"
+    networks:
+      - xinwallet-net
+
+volumes:
+  xinwallet-db-data:
+
+networks:
+  xinwallet-net:
+    driver: bridge
+
+# ============================================
+# NAS / 群晖覆盖示例（默认不生效，按需取消注释）
+# 1) 固定数据库数据路径，便于 Hyper Backup / 群晖快照备份
+# 2) 自定义宿主机访问端口（如 8080，容器内端口仍为 18888）
+# 3) 资源上限，避免占用整台 NAS
+# ============================================
+# services:
+#   db:
+#     volumes:
+#       - /volume1/docker/xinwallet/db:/var/lib/mysql
+#     deploy:
+#       resources:
+#         limits:
+#           cpus: '1.0'
+#           memory: 512M
+#   app:
+#     ports:
+#       - "8080:18888"
+#     deploy:
+#       resources:
+#         limits:
+#           cpus: '1.0'
+#           memory: 384M

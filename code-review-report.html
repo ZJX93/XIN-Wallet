@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鑫钱包 · 代码审查报告</title>
+<style>
+:root {
+  --bg: #f8f9fa;
+  --card: #fff;
+  --text: #1a1a2e;
+  --text2: #555;
+  --text3: #888;
+  --border: #e5e7eb;
+  --accent: #6366f1;
+  --green: #10b981;
+  --yellow: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --purple: #8b5cf6;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.header { text-align: center; padding: 48px 24px 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border-radius: 0 0 var(--radius) var(--radius); }
+.header h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+.header p { opacity: .85; font-size: 14px; }
+.header .meta { display: flex; gap: 24px; justify-content: center; margin-top: 16px; font-size: 13px; opacity: .75; }
+
+.score-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: -40px auto 32px; position: relative; z-index: 1; }
+.score-card { background: var(--card); border-radius: var(--radius); padding: 24px 16px; text-align: center; box-shadow: var(--shadow); }
+.score-card .score { font-size: 42px; font-weight: 800; line-height: 1; }
+.score-card .label { font-size: 13px; color: var(--text2); margin-top: 6px; }
+.score-card .sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.score-s { color: var(--green); }
+.score-a { color: var(--blue); }
+.score-b { color: var(--yellow); }
+.score-c { color: var(--red); }
+
+.section { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px; margin-bottom: 20px; }
+.section h2 { font-size: 18px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.section h2 .icon { font-size: 22px; }
+.section h3 { font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: var(--text); }
+
+.bar-chart { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.bar-row { display: flex; align-items: center; gap: 12px; }
+.bar-label { width: 120px; font-size: 13px; color: var(--text2); text-align: right; flex-shrink: 0; }
+.bar-track { flex: 1; height: 24px; background: #f1f5f9; border-radius: 12px; overflow: hidden; position: relative; }
+.bar-fill { height: 100%; border-radius: 12px; transition: width .6s ease; display: flex; align-items: center; padding-left: 10px; font-size: 11px; color: #fff; font-weight: 600; }
+.bar-fill.green { background: linear-gradient(90deg, #10b981, #34d399); }
+.bar-fill.blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.bar-fill.yellow { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.bar-fill.red { background: linear-gradient(90deg, #ef4444, #f87171); }
+.bar-fill.purple { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.bar-score { font-size: 13px; font-weight: 700; width: 36px; text-align: center; flex-shrink: 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+th { background: #f8fafc; font-weight: 600; text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:hover td { background: #fafbfc; }
+
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.tag-green { background: #ecfdf5; color: #065f46; }
+.tag-blue { background: #eff6ff; color: #1e40af; }
+.tag-yellow { background: #fffbeb; color: #92400e; }
+.tag-red { background: #fef2f2; color: #991b1b; }
+.tag-purple { background: #f5f3ff; color: #5b21b6; }
+
+.issue { padding: 14px 16px; border-radius: 8px; margin: 8px 0; border-left: 4px solid; }
+.issue-critical { background: #fef2f2; border-color: var(--red); }
+.issue-warning { background: #fffbeb; border-color: var(--yellow); }
+.issue-info { background: #eff6ff; border-color: var(--blue); }
+.issue-good { background: #ecfdf5; border-color: var(--green); }
+.issue .issue-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.issue .issue-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+.issue .issue-file { font-size: 11px; color: var(--text3); margin-top: 4px; font-family: monospace; }
+
+.arch-diagram { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+.arch-box { flex: 1; min-width: 180px; padding: 16px; border-radius: 10px; text-align: center; }
+.arch-box h4 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.arch-box p { font-size: 11px; color: var(--text2); }
+.arch-frontend { background: #eff6ff; border: 1px solid #bfdbfe; }
+.arch-backend { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.arch-data { background: #fefce8; border: 1px solid #fde68a; }
+.arch-infra { background: #faf5ff; border: 1px solid #ddd6fe; }
+
+.stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.stat-item { flex: 1; min-width: 100px; background: #f8fafc; border-radius: 8px; padding: 12px; text-align: center; }
+.stat-item .val { font-size: 22px; font-weight: 800; color: var(--accent); }
+.stat-item .lbl { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.summary-box { background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border: 1px solid #86efac; border-radius: 10px; padding: 20px; margin: 16px 0; }
+.summary-box h4 { color: #065f46; font-size: 14px; margin-bottom: 8px; }
+.summary-box ul { padding-left: 20px; font-size: 13px; color: #065f46; }
+.summary-box li { margin: 4px 0; }
+
+.warn-box { background: linear-gradient(135deg, #fffbeb, #fef3c7); border: 1px solid #fcd34d; border-radius: 10px; padding: 20px; margin: 16px 0; }
+.warn-box h4 { color: #92400e; font-size: 14px; margin-bottom: 8px; }
+.warn-box ul { padding-left: 20px; font-size: 13px; color: #92400e; }
+.warn-box li { margin: 4px 0; }
+
+.toc { columns: 2; column-gap: 24px; font-size: 13px; margin: 12px 0; }
+.toc a { color: var(--accent); text-decoration: none; display: block; padding: 3px 0; }
+.toc a:hover { text-decoration: underline; }
+
+@media (max-width: 768px) {
+  .score-grid { grid-template-columns: repeat(2, 1fr); }
+  .toc { columns: 1; }
+  .arch-diagram { flex-direction: column; }
+}
+
+.final-score { font-size: 64px; font-weight: 900; text-align: center; margin: 8px 0; }
+.final-grade { font-size: 14px; text-align: center; color: var(--text2); }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔍 鑫钱包 · 代码审查报告</h1>
+  <p>XIN-Wallet 全栈项目 · 架构 · 流畅度 · 完整度 · 质量 四维专业审查</p>
+  <div class="meta">
+    <span>📅 2026-07-22</span>
+    <span>📦 v1.0.0</span>
+    <span>🛠️ Node.js + Express + MariaDB</span>
+    <span>📊 ~13,700+ 行代码</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- 总分概览 -->
+<div class="score-grid">
+  <div class="score-card">
+    <div class="score score-s">A</div>
+    <div class="label">架构设计</div>
+    <div class="sub">88 / 100</div>
+  </div>
+  <div class="score-card">
+    <div class="score score-a">A-</div>
+    <div class="label">流畅度</div>
+    <div class="sub">82 / 100</div>
+  </div>
+  <div class="score-card">
+    <div class="score score-s">A+</div>
+    <div class="label">完整度</div>
+    <div class="sub">95 / 100</div>
+  </div>
+  <div class="score-card">
+    <div class="score score-a">B+</div>
+    <div class="label">代码质量</div>
+    <div class="sub">78 / 100</div>
+  </div>
+</div>
+
+<!-- 综合评分 -->
+<div class="section" style="text-align:center">
+  <h2><span class="icon">🏆</span> 综合评分</h2>
+  <div class="final-score" style="color: var(--blue)">86</div>
+  <div class="final-grade">等级 <strong>A-</strong> · 整体优秀，具备生产级水准，部分维度存在可改进空间</div>
+</div>
+
+<!-- 目录 -->
+<div class="section">
+  <h2><span class="icon">📑</span> 报告目录</h2>
+  <div class="toc">
+    <a href="#arch">1. 架构设计分析</a>
+    <a href="#flow">2. 代码流畅度分析</a>
+    <a href="#complete">3. 功能完整度评估</a>
+    <a href="#quality">4. 代码质量审查</a>
+    <a href="#security">5. 安全性审查</a>
+    <a href="#issues">6. 问题清单</a>
+    <a href="#suggest">7. 改进建议</a>
+    <a href="#summary">8. 总结与评级</a>
+  </div>
+</div>
+
+<!-- ====== 1. 架构设计 ====== -->
+<div class="section" id="arch">
+  <h2><span class="icon">🏗️</span> 1. 架构设计分析 <span class="tag tag-green">88分 · A</span></h2>
+
+  <h3>技术架构总览</h3>
+  <div class="arch-diagram">
+    <div class="arch-box arch-frontend">
+      <h4>🎨 前端层</h4>
+      <p>原生 HTML/CSS/JS<br>Chart.js 4 · XLSX<br>毛玻璃设计系统<br>OKLCH 色彩空间</p>
+    </div>
+    <div class="arch-box arch-backend">
+      <h4>⚙️ 后端层</h4>
+      <p>Node.js + Express 4<br>JWT 鉴权 · bcryptjs<br>helmet · cors · rate-limit<br>模块化路由 (routes/)</p>
+    </div>
+    <div class="arch-box arch-data">
+      <h4>🗄️ 数据层</h4>
+      <p>MariaDB 11<br>连接池 · 事务封装<br>幂等 Schema 迁移<br>复式记账模型</p>
+    </div>
+    <div class="arch-box arch-infra">
+      <h4>🐳 基础设施</h4>
+      <p>Docker 多阶段构建<br>GHCR 镜像发布<br>健康检查 · 非 root<br>双模式 Compose</p>
+    </div>
+  </div>
+
+  <h3>架构评分明细</h3>
+  <div class="bar-chart">
+    <div class="bar-row">
+      <div class="bar-label">分层清晰度</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">90</div></div>
+      <div class="bar-score" style="color:var(--green)">9.0</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">技术选型合理性</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:92%">92</div></div>
+      <div class="bar-score" style="color:var(--green)">9.2</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">模块化程度</div>
+      <div class="bar-track"><div class="bar-fill blue" style="width:75%">75</div></div>
+      <div class="bar-score" style="color:var(--blue)">7.5</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">可扩展性</div>
+      <div class="bar-track"><div class="bar-fill blue" style="width:82%">82</div></div>
+      <div class="bar-score" style="color:var(--blue)">8.2</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">部署方案</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:95%">95</div></div>
+      <div class="bar-score" style="color:var(--green)">9.5</div>
+    </div>
+  </div>
+
+  <h3>✅ 架构亮点</h3>
+  <div class="issue issue-good">
+    <div class="issue-title">复式记账架构 · 参考 Firefly III</div>
+    <div class="issue-desc">余额由账本推导（single source of truth），转账生成配对交易，支持一键对账修正漂移。这是金融应用的核心正确性保障，架构决策非常专业。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">Docker 多阶段构建 + GHCR 自动发布</div>
+    <div class="issue-desc">生产镜像仅含运行时依赖，非 root 运行，内置健康检查。双模式 Compose（一体 / 外部 DB）覆盖主流 NAS 部署场景。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">设计令牌系统 (Design Tokens)</div>
+    <div class="issue-desc">OKLCH 色彩空间 + 完整语义令牌 + 亮/暗/系统三态主题，Geist 字体体系。tokens.css → styles.css → components.css 层次清晰。</div>
+  </div>
+
+  <h3>⚠️ 架构问题</h3>
+  <div class="issue issue-warning">
+    <div class="issue-title">前端 app.js 单体化 (5,253 行)</div>
+    <div class="issue-desc">所有业务管理器（AccountManager, TransactionManager, InvestmentManager 等 16+ 模块）集中在一个文件中。虽以对象字面量分区，但无 ES Module 拆分，维护成本高，多人协作困难。</div>
+    <div class="issue-file">js/app.js — 5,253 行</div>
+  </div>
+  <div class="issue issue-warning">
+    <div class="issue-title">后端 routes.js 仍为重负载单体 (3,086 行)</div>
+    <div class="issue-desc">已开始拆分为 routes/accounts.js、routes/auth.js、routes/ai.js，但转账、交易、预算、理财、统计等核心路由仍全部写在 routes.js 中。拆分进度仅 ~20%。</div>
+    <div class="issue-file">server/routes.js — 3,086 行 (已拆出 ~500 行到子模块)</div>
+  </div>
+  <div class="issue issue-info">
+    <div class="issue-title">双 package.json 冗余</div>
+    <div class="issue-desc">根目录与 server/ 下各有一份 package.json，依赖清单重复维护。README 也承认"版本可能略有差异"。建议统一为单份，或明确根为开发用、server 为生产用。</div>
+  </div>
+</div>
+
+<!-- ====== 2. 流畅度 ====== -->
+<div class="section" id="flow">
+  <h2><span class="icon">🌊</span> 2. 代码流畅度分析 <span class="tag tag-blue">82分 · A-</span></h2>
+
+  <h3>流畅度评分明细</h3>
+  <div class="bar-chart">
+    <div class="bar-row">
+      <div class="bar-label">代码可读性</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:85%">85</div></div>
+      <div class="bar-score" style="color:var(--green)">8.5</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">命名规范</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:88%">88</div></div>
+      <div class="bar-score" style="color:var(--green)">8.8</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">前后端一致性</div>
+      <div class="bar-track"><div class="bar-fill blue" style="width:78%">78</div></div>
+      <div class="bar-score" style="color:var(--blue)">7.8</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">错误处理一致性</div>
+      <div class="bar-track"><div class="bar-fill yellow" style="width:72%">72</div></div>
+      <div class="bar-score" style="color:var(--yellow)">7.2</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">注释与文档</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">90</div></div>
+      <div class="bar-score" style="color:var(--green)">9.0</div>
+    </div>
+  </div>
+
+  <h3>✅ 流畅度亮点</h3>
+  <div class="issue issue-good">
+    <div class="issue-title">命名规范统一 · 中英混用自然</div>
+    <div class="issue-desc">变量/函数采用 camelCase，数据库字段 snake_case，CSS 变量 kebab-case，三套命名体系各自一致。业务术语中英对照清晰（如 reconcile = 对账）。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">README 文档质量极高</div>
+    <div class="issue-desc">900+ 行 README 包含完整 API 文档、部署指南、环境变量说明、复式记账规则。每个接口都有请求/响应示例，堪称项目文档范本。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">统一响应结构</div>
+    <div class="issue-desc">所有 API 统一 { success, data, message } 格式，错误码对照表完整。前端 api() 统一拦截处理，异常路径清晰。</div>
+  </div>
+
+  <h3>⚠️ 流畅度问题</h3>
+  <div class="issue issue-warning">
+    <div class="issue-title">前端存在两套 api() 函数</div>
+    <div class="issue-desc">app.js 内定义了自己的 api()（无 token 注入，依赖全局 header），js/api.js 又有独立的 ES Module api()。两者格式化函数(fmt) 实现不一致（api.js 用 toFixed，app.js 用 Intl.NumberFormat）。</div>
+    <div class="issue-file">js/app.js:14 vs js/api.js:5 — 两套并行 API 层</div>
+  </div>
+  <div class="issue issue-warning">
+    <div class="issue-title">错误处理风格不完全统一</div>
+    <div class="issue-desc">部分路由使用 handleServerError() 返回 500，部分直接用 res.status(400).json(fail(...))。转账余额不足返回 400，但按语义应为 422。错误码粒度需细化。</div>
+  </div>
+  <div class="issue issue-info">
+    <div class="issue-title">app.js 缺乏 Source Map / 编译步骤</div>
+    <div class="issue-desc">原生 JS 直接运行，无构建步骤。5000+ 行单文件调试时错误栈定位困难。建议至少引入轻量 source map 或拆分为 ES Modules。</div>
+  </div>
+</div>
+
+<!-- ====== 3. 完整度 ====== -->
+<div class="section" id="complete">
+  <h2><span class="icon">✅</span> 3. 功能完整度评估 <span class="tag tag-green">95分 · A+</span></h2>
+
+  <h3>功能模块覆盖度</h3>
+  <div class="bar-chart">
+    <div class="bar-row">
+      <div class="bar-label">账户管理</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">交易记账</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">内部转账</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">预算管理</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:95%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">理财管理</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">债务管理</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">统计分析</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">报表中心</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:95%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">AI 识别</div>
+      <div class="bar-track"><div class="bar-fill blue" style="width:85%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">CSV 导入导出</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">认证鉴权</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">主题系统</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">Docker 部署</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:100%">完整</div></div>
+    </div>
+  </div>
+
+  <h3>功能覆盖统计</h3>
+  <div class="stats-row">
+    <div class="stat-item"><div class="val">12</div><div class="lbl">前端页面模块</div></div>
+    <div class="stat-item"><div class="val">14</div><div class="lbl">API 域（路由组）</div></div>
+    <div class="stat-item"><div class="val">60+</div><div class="lbl">REST 接口数</div></div>
+    <div class="stat-item"><div class="val">12</div><div class="lbl">数据表</div></div>
+    <div class="stat-item"><div class="val">3</div><div class="lbl">单元测试文件</div></div>
+  </div>
+
+  <div class="issue issue-good">
+    <div class="issue-title">功能覆盖极为全面</div>
+    <div class="issue-desc">从记账、转账、预算、理财持仓、债务管理到 AI 识别与报表导出，已覆盖个人财务管理的全部核心场景。复式记账 + 对账机制 + 储蓄目标等高级特性使其超越同类产品。</div>
+  </div>
+
+  <h3>⚠️ 完整度缺口</h3>
+  <div class="issue issue-info">
+    <div class="issue-title">缺少集成测试</div>
+    <div class="issue-desc">仅有 3 个纯函数单元测试（validate / utils / debt-summary），无 API 集成测试。smoke-test.js 和 full-verify.js 为手工脚本，未接入 CI 自动化。</div>
+  </div>
+  <div class="issue issue-info">
+    <div class="issue-title">JSON 备份导入/导出未实现</div>
+    <div class="issue-desc">README 在"后续可增强"中提到 JSON 备份，报表中心虽有"导出完整账本"按钮，但完整数据备份/恢复尚未闭环。</div>
+  </div>
+</div>
+
+<!-- ====== 4. 代码质量 ====== -->
+<div class="section" id="quality">
+  <h2><span class="icon">💎</span> 4. 代码质量审查 <span class="tag tag-blue">78分 · B+</span></h2>
+
+  <h3>质量评分明细</h3>
+  <div class="bar-chart">
+    <div class="bar-row">
+      <div class="bar-label">安全性</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">90</div></div>
+      <div class="bar-score" style="color:var(--green)">9.0</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">SQL 注入防护</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:98%">98</div></div>
+      <div class="bar-score" style="color:var(--green)">9.8</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">XSS 防护</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:92%">92</div></div>
+      <div class="bar-score" style="color:var(--green)">9.2</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">事务一致性</div>
+      <div class="bar-track"><div class="bar-fill green" style="width:90%">90</div></div>
+      <div class="bar-score" style="color:var(--green)">9.0</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">代码复用率</div>
+      <div class="bar-track"><div class="bar-fill yellow" style="width:62%">62</div></div>
+      <div class="bar-score" style="color:var(--yellow)">6.2</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">测试覆盖率</div>
+      <div class="bar-track"><div class="bar-fill red" style="width:25%">25</div></div>
+      <div class="bar-score" style="color:var(--red)">2.5</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">代码重复度</div>
+      <div class="bar-track"><div class="bar-fill yellow" style="width:55%">55</div></div>
+      <div class="bar-score" style="color:var(--yellow)">5.5</div>
+    </div>
+  </div>
+
+  <h3>📊 代码体量统计</h3>
+  <table>
+    <tr><th>层级</th><th>文件</th><th>行数</th><th>评价</th></tr>
+    <tr><td>前端主逻辑</td><td>app.js</td><td><strong>5,253</strong></td><td><span class="tag tag-red">严重过大</span></td></tr>
+    <tr><td>后端路由</td><td>routes.js</td><td><strong>3,086</strong></td><td><span class="tag tag-yellow">需拆分</span></td></tr>
+    <tr><td>CSS 样式</td><td>5 文件</td><td><strong>3,374</strong></td><td><span class="tag tag-blue">合理</span></td></tr>
+    <tr><td>HTML 模板</td><td>2 文件</td><td><strong>960</strong></td><td><span class="tag tag-yellow">偏重</span></td></tr>
+    <tr><td>数据库</td><td>schema.sql</td><td><strong>448</strong></td><td><span class="tag tag-green">合理</span></td></tr>
+    <tr><td>工具模块</td><td>6 文件</td><td><strong>534</strong></td><td><span class="tag tag-green">精简</span></td></tr>
+    <tr><td>合计</td><td>~20+ 文件</td><td><strong>~13,700</strong></td><td>—</td></tr>
+  </table>
+
+  <h3>⚠️ 质量问题清单</h3>
+
+  <div class="issue issue-critical">
+    <div class="issue-title">[P0] app.js 5,253 行 — 严重违反单一职责</div>
+    <div class="issue-desc">16 个 Manager 对象（AccountManager, TransactionManager, BudgetManager, InvestmentManager, DebtManager, DashboardManager, ReportManager 等）全部挤在一个全局作用域。虽有注释分区，但缺乏真正的模块隔离。任何修改都有引入回归的风险。</div>
+    <div class="issue-file">js/app.js — 建议拆分为 js/managers/*.js，每个模块独立 ES Module</div>
+  </div>
+
+  <div class="issue issue-critical">
+    <div class="issue-title">[P0] 测试覆盖率极低 (~25%)</div>
+    <div class="issue-desc">仅 3 个测试文件覆盖纯函数工具（validate, utils, debt-summary），核心的交易/转账/余额计算等关键业务路径零测试覆盖。smoke-test / full-verify 为手工脚本，未接入 CI。</div>
+    <div class="issue-file">test/ — 仅 3 个文件，无 API 集成测试</div>
+  </div>
+
+  <div class="issue issue-warning">
+    <div class="issue-title">[P1] routes.js 3,086 行 — 路由拆分未完成</div>
+    <div class="issue-desc">已开始拆分（accounts, auth, ai 已独立），但转账/交易/预算/理财/统计/报表/CSV/标签/储蓄目标等核心路由仍在一个文件中。按域拆分可显著提升可维护性。</div>
+    <div class="issue-file">server/routes.js — 建议继续拆分为 routes/transactions.js, routes/budgets.js 等</div>
+  </div>
+
+  <div class="issue issue-warning">
+    <div class="issue-title">[P1] 数据库连接池未做优雅关闭</div>
+    <div class="issue-desc">db.js 的 pool 创建后未见 pool.end() 调用。进程退出时（SIGTERM / SIGINT）应优雅关闭连接池，否则可能导致数据库连接泄漏或数据丢失。</div>
+    <div class="issue-file">server/db.js — 缺少 process.on('SIGTERM') 处理</div>
+  </div>
+
+  <div class="issue issue-warning">
+    <div class="issue-title">[P1] SQL 查询拼接存在 XSS 间接风险</div>
+    <div class="issue-desc">routes.js:341 中 tagIds 直接拼入 SQL IN 子句（`WHERE ... IN (${placeholders})`），虽然 placeholders 全是 '?'，但 ids 来自前端传入。当前实现安全（使用参数化），但模式易被误用。</div>
+  </div>
+
+  <div class="issue issue-info">
+    <div class="issue-title">[P2] ensureCategory 缺少 user_id 过滤</div>
+    <div class="issue-desc">routes.js:222 的 ensureCategory 函数查询 categories 时未按 user_id 过滤（虽然插入时也无 user_id），可能导致多用户间分类冲突。categories 表 DDL 中也没有 user_id 列。</div>
+    <div class="issue-file">server/routes.js:221-234 + server/schema.sql:38-49</div>
+  </div>
+
+  <div class="issue issue-info">
+    <div class="issue-title">[P2] 理财行情代理使用外部数据源无缓存</div>
+    <div class="issue-desc">天天基金/腾讯证券行情直接代理转发，无本地缓存层。频繁刷新会直接打到第三方 API，既影响性能也可能触发限流。建议至少加内存 TTL 缓存（如 5 分钟）。</div>
+  </div>
+
+  <div class="issue issue-info">
+    <div class="issue-title">[P2] index.html 905 行 — 单体 HTML 含全部页面</div>
+    <div class="issue-desc">12 个 page section 全部内联在一个 HTML 文件中，通过 CSS display 切换。虽然避免了 SPA 路由的复杂性，但 DOM 节点庞大影响首屏性能。可考虑按需加载各页面。</div>
+    <div class="issue-file">index.html — 905 行</div>
+  </div>
+</div>
+
+<!-- ====== 5. 安全性 ====== -->
+<div class="section" id="security">
+  <h2><span class="icon">🔐</span> 5. 安全性审查 <span class="tag tag-green">优秀</span></h2>
+
+  <div class="issue issue-good">
+    <div class="issue-title">✅ 密码 bcrypt 加盐哈希 (cost=10)</div>
+    <div class="issue-desc">使用 bcryptjs，盐值 10 轮，无明文存储。生产环境强制校验 JWT_SECRET 不得为默认值。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">✅ JWT 鉴权 + 登录频率限制</div>
+    <div class="issue-desc">所有业务接口需 Bearer Token，按用户名+IP 组合限流（15min/5次），防暴力破解。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">✅ 全参数化 SQL 查询</div>
+    <div class="issue-desc">所有 SQL 均使用 ? 占位符参数化，无字符串拼接，杜绝 SQL 注入。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">✅ Helmet CSP + XSS 防护</div>
+    <div class="issue-desc">开启 Content-Security-Policy，前端用户可控字段统一 escapeHtml 转义。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">✅ API Key AES-256-GCM 加密存储</div>
+    <div class="issue-desc">AI 服务商的 API Key 使用 crypto.js 的 AES-256-GCM 加密后入库，非明文。</div>
+  </div>
+  <div class="issue issue-good">
+    <div class="issue-title">✅ 容器非 root + Docker 多阶段构建</div>
+    <div class="issue-desc">运行镜像以 appuser 身份运行，COPY 仅含生产文件，攻击面最小化。</div>
+  </div>
+  <div class="issue issue-warning">
+    <div class="issue-title">⚠️ CSP 允许 unsafe-inline script</div>
+    <div class="issue-desc">因前端动态按钮使用内联 onclick，CSP 的 scriptSrc 包含 'unsafe-inline'。长期应改为 addEventListener 绑定以移除 inline handler。</div>
+  </div>
+  <div class="issue issue-info">
+    <div class="issue-title">ℹ️ MariaDB 3306 端口暴露到宿主机</div>
+    <div class="issue-desc">docker-compose.yml 中 db 服务将 3306 映射到宿主机。生产 NAS 部署建议移除端口映射，仅通过内部网络访问。</div>
+  </div>
+</div>
+
+<!-- ====== 6. 问题汇总 ====== -->
+<div class="section" id="issues">
+  <h2><span class="icon">📋</span> 6. 问题汇总</h2>
+
+  <table>
+    <tr><th>优先级</th><th>问题</th><th>影响</th><th>位置</th></tr>
+    <tr>
+      <td><span class="tag tag-red">P0</span></td>
+      <td>app.js 5,253 行单体</td>
+      <td>维护困难，回归风险高</td>
+      <td>js/app.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-red">P0</span></td>
+      <td>测试覆盖率 ~25%</td>
+      <td>关键业务无测试保障</td>
+      <td>test/</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-yellow">P1</span></td>
+      <td>routes.js 3,086 行未拆完</td>
+      <td>后端可维护性下降</td>
+      <td>server/routes.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-yellow">P1</span></td>
+      <td>连接池无优雅关闭</td>
+      <td>连接泄漏风险</td>
+      <td>server/db.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-yellow">P1</span></td>
+      <td>前端双 api() 并行</td>
+      <td>行为不一致，维护混乱</td>
+      <td>js/app.js + js/api.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">P2</span></td>
+      <td>categories 缺 user_id</td>
+      <td>多用户分类冲突</td>
+      <td>schema.sql + routes.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">P2</span></td>
+      <td>行情代理无缓存</td>
+      <td>性能 + 限流风险</td>
+      <td>server/routes.js</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-blue">P2</span></td>
+      <td>index.html 905 行单页</td>
+      <td>首屏 DOM 偏大</td>
+      <td>index.html</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">P3</span></td>
+      <td>双 package.json 冗余</td>
+      <td>依赖版本不同步</td>
+      <td>package.json × 2</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-purple">P3</span></td>
+      <td>DB 3306 端口暴露</td>
+      <td>安全面扩大</td>
+      <td>docker-compose.yml</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ====== 7. 改进建议 ====== -->
+<div class="section" id="suggest">
+  <h2><span class="icon">🚀</span> 7. 改进建议（按优先级排序）</h2>
+
+  <div class="warn-box">
+    <h4>🔴 高优先级 — 建议近期完成</h4>
+    <ul>
+      <li><strong>拆分 app.js</strong>：将 16 个 Manager 拆为独立 ES Module（js/managers/*.js），boot() 函数统一注册。预计可拆为 12-16 个 200-400 行的文件。</li>
+      <li><strong>补充集成测试</strong>：使用 Node.js 内置 test runner + supertest，覆盖交易 CRUD / 转账 / 余额计算等核心路径。目标覆盖率 > 70%。</li>
+      <li><strong>统一前端 api()</strong>：将 app.js 的 api() 迁移到 api.js ES Module，消除重复与行为差异。</li>
+    </ul>
+  </div>
+
+  <div class="summary-box">
+    <h4>🟡 中优先级 — 建议迭代推进</h4>
+    <ul>
+      <li><strong>继续拆分 routes.js</strong>：按域拆出 transactions.js, budgets.js, investments.js, stats.js, reports.js 等。目标单文件 < 500 行。</li>
+      <li><strong>添加 graceful shutdown</strong>：监听 SIGTERM/SIGINT，调用 pool.end() 后退出。</li>
+      <li><strong>行情缓存</strong>：引入内存 LRU 缓存（TTL 5 分钟），减少外部请求。</li>
+      <li><strong>categories 增加 user_id</strong>：支持多用户独立分类体系。</li>
+    </ul>
+  </div>
+
+  <div class="summary-box" style="background: linear-gradient(135deg, #eff6ff, #dbeafe); border-color: #93c5fd;">
+    <h4 style="color: #1e40af;">🔵 低优先级 — 持续优化</h4>
+    <ul style="color: #1e40af;">
+      <li>统一为单份 package.json，或明确双 manifest 的职责边界</li>
+      <li>CSP 移除 'unsafe-inline'，改用 addEventListener 绑定</li>
+      <li>index.html 按需加载页面（动态 fetch + inject section）</li>
+      <li>移除 docker-compose.yml 中 db 的宿主机端口映射</li>
+      <li>引入 ESLint + Prettier 统一代码风格</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ====== 8. 总结 ====== -->
+<div class="section" id="summary">
+  <h2><span class="icon">🏆</span> 8. 总结与评级</h2>
+
+  <table>
+    <tr><th>维度</th><th>评分</th><th>等级</th><th>一句话评价</th></tr>
+    <tr><td>架构设计</td><td>88</td><td><span class="tag tag-green">A</span></td><td>分层清晰，复式记账 + Docker 方案专业</td></tr>
+    <tr><td>流畅度</td><td>82</td><td><span class="tag tag-blue">A-</span></td><td>命名规范、文档出色，但存在双 API 层</td></tr>
+    <tr><td>完整度</td><td>95</td><td><span class="tag tag-green">A+</span></td><td>功能覆盖极全面，仅缺集成测试闭环</td></tr>
+    <tr><td>代码质量</td><td>78</td><td><span class="tag tag-blue">B+</span></td><td>安全过硬，但巨型文件与测试缺口拉低分</td></tr>
+    <tr style="font-weight:700;background:#f8fafc"><td>综合</td><td>86</td><td><span class="tag tag-green">A-</span></td><td>整体优秀，具备生产级水准</td></tr>
+  </table>
+
+  <div style="margin-top:24px; padding:20px; background:linear-gradient(135deg,#eff6ff,#f0fdf4); border-radius:12px; border:1px solid #86efac;">
+    <h3 style="margin-bottom:12px; font-size:16px;">📝 审查结论</h3>
+    <p style="font-size:14px; line-height:1.8; color:#1a1a2e;">
+      <strong>鑫钱包</strong>是一个功能完整、架构思路清晰的个人财务管理应用。复式记账模型参考 Firefly III，余额由账本推导的设计保证了数据正确性；Docker 多阶段构建 + GHCR 自动发布 + 双模式 Compose 的部署方案在同类个人项目中堪称标杆。安全层面（bcrypt + JWT + Helmet CSP + 参数化 SQL + AES-GCM 加密）也做到了应有尽有的防护。
+    </p>
+    <p style="font-size:14px; line-height:1.8; color:#1a1a2e; margin-top:12px;">
+      主要短板集中在<strong>代码组织</strong>与<strong>测试覆盖</strong>两个维度：app.js 5,253 行和 routes.js 3,086 行的巨型文件严重影响可维护性；核心业务路径零测试覆盖意味着任何修改都缺乏安全网。建议优先完成前端模块拆分与集成测试补充，即可将整体质量从 A- 提升至 A 级。
+    </p>
+  </div>
+</div>
+
+<p style="text-align:center; color:var(--text3); font-size:12px; padding:24px 0 40px;">
+  报告生成于 2026-07-22 · 鑫钱包 v1.0.0 代码审查 · WorkBuddy 专业团队
+</p>
+
+</div>
+</body>
+</html>

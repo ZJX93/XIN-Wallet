@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="referrer" content="no-referrer-when-downgrade">
+    <title>鑫钱包 · 个人财务助手</title>
+    <link rel="icon" type="image/png" href="images/logo.png">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/dashboard.css?v=2">
+    <link rel="stylesheet" href="css/auth.css">
+    <script src="js/vendor/chart.umd.min.js"></script>
+    <script src="js/vendor/xlsx.full.min.js"></script>
+    <!-- 自动推导 API 基址：兼容「反向代理 / 子路径」部署，避免 /api 请求打到错误 origin -->
+    <script>
+        window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
+    </script>
+</head>
+<body>
+    <script>if (!localStorage.getItem('zhicai_token')) location.href = '/login';</script>
+
+    <!-- ============================================================
+         HEADER
+         ============================================================ -->
+    <header class="app-header">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="菜单">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <a class="logo" href="/" aria-label="鑫钱包首页">
+            <span class="logo-icon"></span>
+            <span class="logo-text">鑫钱包</span>
+            <span class="logo-sub">Personal Finance</span>
+        </a>
+        <div class="app-header-actions">
+            <div class="theme-switcher">
+                <button class="theme-btn" data-theme="light" title="亮色">☀️</button>
+                <button class="theme-btn active" data-theme="dark" title="暗色">🌙</button>
+                <button class="theme-btn" data-theme="system" title="跟随系统">💻</button>
+            </div>
+            <div class="user-menu" id="userMenu">
+                <span class="user-avatar">👤</span>
+                <span class="user-name" id="userName">demo</span>
+                <button class="btn btn-ghost btn-sm" id="logoutBtn">退出</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         BODY: Sidebar + Main
+         ============================================================ -->
+    <div class="app-body">
+        <nav class="sidebar" id="sidebar">
+            <ul class="nav-menu">
+                <li class="nav-group-label">总览</li>
+                <li class="nav-item active" data-page="dashboard">
+                    <span class="nav-icon">📊</span><span class="nav-text">仪表盘</span>
+                </li>
+
+                <li class="nav-group-label">账本</li>
+                <li class="nav-item" data-page="transactions">
+                    <span class="nav-icon">💰</span><span class="nav-text">交易管理</span>
+                </li>
+                <li class="nav-item" data-page="transfers">
+                    <span class="nav-icon">🔄</span><span class="nav-text">内部转账</span>
+                </li>
+                <li class="nav-item" data-page="budget">
+                    <span class="nav-icon">🎯</span><span class="nav-text">预算管理</span>
+                </li>
+                <li class="nav-item" data-page="investments">
+                    <span class="nav-icon">📈</span><span class="nav-text">理财管理</span>
+                </li>
+                <li class="nav-item" data-page="debts">
+                    <span class="nav-icon">🏷️</span><span class="nav-text">债务管理</span>
+                </li>
+
+                <li class="nav-group-label">分析</li>
+                <li class="nav-item" data-page="ai-recognition">
+                    <span class="nav-icon">🧠</span><span class="nav-text">AI 识别</span>
+                </li>
+                <li class="nav-item" data-page="analysis">
+                    <span class="nav-icon">🔍</span><span class="nav-text">消费分析</span>
+                </li>
+                <li class="nav-item" data-page="reports">
+                    <span class="nav-icon">📋</span><span class="nav-text">报表中心</span>
+                </li>
+
+                <li class="nav-group-label">设置</li>
+                <li class="nav-item" data-page="data-center">
+                    <span class="nav-icon">⚙️</span><span class="nav-text">基础数据</span>
+                </li>
+                <li class="nav-item" data-page="ai-config">
+                    <span class="nav-icon">🤖</span><span class="nav-text">AI配置</span>
+                </li>
+                <li class="nav-item" data-page="accounts">
+                    <span class="nav-icon">🏦</span><span class="nav-text">账户管理</span>
+                </li>
+            </ul>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <h1 class="page-title" id="pageTitle">仪表盘</h1>
+                    <p class="page-subtitle" id="pageSubtitle">财务总览与快速洞察</p>
+                </div>
+                <div class="top-bar-right">
+                    <div class="quick-add-btn" id="quickAddBtn"><span>＋</span> 快速记账</div>
+                </div>
+            </header>
+
+            <!-- ========== 仪表盘 ========== -->
+            <section class="page active" id="page-dashboard" data-lazy="pages/dashboard.html"></section>
+
+            <!-- ========== 账户管理 ========== -->
+            <section class="page" id="page-accounts">
+                <div class="glass-card">
+                    <h3 class="card-title">我的账户 <span style="font-size:12px;color:var(--text-tertiary)">总资产 <strong id="accTotalAssets" style="color:var(--interactive-default)">¥0</strong></span></h3>
+                    <button class="btn btn-primary" id="addAccountBtn" style="margin-bottom:16px">＋ 新增账户</button>
+                    <button class="btn btn-ghost" id="reconcileBtn" style="margin-bottom:16px;margin-left:8px" title="以账本为准，重算并修正账户余额（复式记账防漂移）">🔄 重新对账</button>
+                    <div class="account-list" id="accountList"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div><div class="skeleton-line shimmer" style="width:65%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div><div class="skeleton-line shimmer" style="width:60%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div><div class="skeleton-line shimmer" style="width:55%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:55%"></div><div class="skeleton-line shimmer" style="width:50%"></div></div><div class="skeleton-amt shimmer"></div></div></div></div>
+                </div>
+            </section>
+
+            <!-- ========== 内部转账 ========== -->
+            <section class="page" id="page-transfers">
+                <div class="glass-card">
+                    <h3 class="card-title">🔄 内部账户转账</h3>
+                    <p class="card-desc">在不同账户之间转移资金，余额自动更新</p>
+                    <form class="trans-form" id="transferForm">
+                        <input type="hidden" id="transferEditId" value="">
+                        <div class="form-row">
+                            <div class="form-group"><label>转出账户</label><select id="transferFrom" required></select></div>
+                            <div class="form-group"><label>转入账户</label><select id="transferTo" required></select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>转账金额 (¥)</label><input type="number" id="transferAmount" step="0.01" min="0.01" required placeholder="0.00" autocomplete="off"></div>
+                            <div class="form-group"><label>转账时间</label><input type="datetime-local" id="transferDate" step="1" required></div>
+                        </div>
+                        <div class="form-group full-width"><label>备注</label><input type="text" id="transferNote" placeholder="转账备注..."></div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary" id="transferSubmitBtn">确认转账</button>
+                            <button type="button" class="btn btn-ghost" id="transferCancelEditBtn" style="display:none">取消编辑</button>
+                        </div>
+                    </form>
+                </div>
+                <div class="glass-card"><h3 class="card-title">转账记录</h3><div id="transferHistory"><div class="empty-hint">暂无转账记录</div></div></div>
+            </section>
+
+            <!-- ========== 交易管理 ========== -->
+            <section class="page" id="page-transactions">
+                <div class="filter-bar">
+                    <div class="filter-bar-top">
+                        <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="transSearch" placeholder="搜索交易..."></div>
+                        <button class="btn btn-primary" id="addTransBtn">＋ 新增交易</button>
+                    </div>
+                </div>
+                <div class="trans-list" id="transList">
+                    <div class="trans-table">
+                        <div class="trans-thead">
+                            <div class="trans-th trans-col-time"><select id="transMonthFilter" class="filter-select"><option value="all">所有月份</option></select></div>
+                            <div class="trans-th trans-col-type"><select id="transTypeFilter" class="filter-select"><option value="all">全部类型</option><option value="income">收入</option><option value="expense">支出</option><option value="transfer">转账</option></select></div>
+                            <div class="trans-th trans-col-cat"><select id="transCatFilter" class="filter-select"><option value="all">所有类别</option></select></div>
+                            <div class="trans-th trans-col-amount"><div class="filter-amount-box"><button type="button" id="transAmountBtn" class="filter-select filter-amount-btn-drop" title="金额筛选"><span id="transAmountLabel">金额</span><span class="filter-amount-arrow">▾</span></button><div id="transAmountPanel" class="filter-amount-panel" style="display:none"><div class="filter-amount-panel-ops"><button type="button" class="amt-op-btn active" data-op="all">全部</button><button type="button" class="amt-op-btn" data-op="gt">大于</button><button type="button" class="amt-op-btn" data-op="lt">小于</button><button type="button" class="amt-op-btn" data-op="eq">等于</button><button type="button" class="amt-op-btn" data-op="ne">不等于</button><button type="button" class="amt-op-btn" data-op="bt">介于</button><button type="button" class="amt-op-btn" data-op="nb">不介于</button></div><div class="filter-amount-panel-inputs" id="transAmountInputs" style="display:none"><input type="number" id="transAmountVal" placeholder="金额" step="0.01" min="0"><span id="transAmountSep" class="filter-amount-sep" style="display:none">~</span><input type="number" id="transAmountVal2" placeholder="上限" step="0.01" min="0" style="display:none"></div><div class="filter-amount-panel-actions" id="transAmountActions" style="display:none"><button type="button" id="transAmountApply" class="amt-apply-btn">应用</button><button type="button" id="transAmountClear" class="amt-clear-btn">清除</button></div></div></div></div>
+                            <div class="trans-th trans-col-account"><select id="transAccFilter" class="filter-select"><option value="all">所有账户</option></select></div>
+                            <div class="trans-th trans-col-tags"><select id="transTagFilter" class="filter-select"><option value="all">所有标签</option></select></div>
+                            <div class="trans-th trans-col-desc"><div class="filter-note-box"><input type="text" id="transNoteFilter" placeholder="备注筛选..." class="filter-select"></div></div>
+                            <div class="trans-th trans-col-actions">操作</div>
+                        </div>
+                        <div class="trans-tbody" id="transTbody"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div><div class="skeleton-line shimmer" style="width:65%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div><div class="skeleton-line shimmer" style="width:60%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div><div class="skeleton-line shimmer" style="width:55%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:55%"></div><div class="skeleton-line shimmer" style="width:50%"></div></div><div class="skeleton-amt shimmer"></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:45%"></div></div><div class="skeleton-amt shimmer"></div></div></div></div>
+                    </div>
+                </div>
+                <div class="modal-overlay" id="transModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="transModalTitle">新增交易</h3><button class="modal-close" id="transModalClose">✕</button></div>
+                    <form class="trans-form" id="transForm">
+                        <input type="hidden" id="transEditId">
+                        <div class="form-row">
+                            <div class="form-group"><label>类型</label><div class="type-switch" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button></div></div>
+                            <div class="form-group"><label>金额 (¥)</label><input type="number" id="transAmount" step="0.01" min="0" required autocomplete="off"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>账户</label><select id="transAccount" required></select></div>
+                            <div class="form-group"><label>类别</label><select id="transCategory" required></select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
+                            <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="transBudget"><option value="">不关联</option></select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>备注</label><input type="text" id="transNote" placeholder="备注..."></div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label>标签</label>
+                            <div class="tag-picker" id="transTagPicker"></div>
+                        </div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="transCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                    </form>
+                </div></div>
+            </section>
+
+            <!-- ========== 预算管理 ========== -->
+            <section class="page" id="page-budget">
+                <div class="glass-card">
+                    <h3 class="card-title">预算总览</h3>
+                    <div class="budget-summary-row">
+                        <div class="budget-summary-item"><span class="budget-summary-label">总预算</span><span class="budget-summary-value" id="budgetTotal">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label">已使用</span><span class="budget-summary-value" id="budgetUsed">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label">剩余</span><span class="budget-summary-value" id="budgetRemain">¥0</span></div>
+                        <div class="budget-summary-item"><span class="budget-summary-label">使用率</span><span class="budget-summary-value" id="budgetRate">0%</span></div>
+                    </div>
+                    <div class="budget-total-bar"><div class="budget-total-bar-fill" id="budgetTotalBar"></div></div>
+                </div>
+                <div class="glass-card">
+                    <div class="card-title-row">
+                        <h3 class="card-title" style="margin:0">🎯 预算管理</h3>
+                        <div class="card-title-actions">
+                            <select id="budgetPeriodType" class="filter-select" style="font-size:12px;padding:4px 8px">
+                                <option value="">全部</option>
+                                <option value="month">月度</option>
+                                <option value="quarter">季度</option>
+                                <option value="half">半年</option>
+                                <option value="year">年度</option>
+                            </select>
+                            <input type="month" id="budgetBaseMonth" class="filter-select" value="" style="font-size:12px;padding:4px 8px;width:140px">
+                            <button class="btn btn-primary" id="addBudgetBtn" style="font-size:13px;padding:6px 14px">＋ 添加预算</button>
+                        </div>
+                    </div>
+                    <div class="budget-list" id="budgetList"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
+                </div>
+                <div class="modal-overlay" id="budgetModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="budgetModalTitle">添加预算</h3><button class="modal-close" id="budgetModalClose">✕</button></div>
+                    <form class="budget-form" id="budgetForm"><input type="hidden" id="budgetEditId">
+                        <div class="form-row">
+                            <div class="form-group"><label>预算名称</label><input type="text" id="budgetName" placeholder="例如：旅游预算、装修预算" required></div>
+                            <div class="form-group"><label>周期类型</label><select id="budgetPeriodTypeSelect" required>
+                                <option value="month">月度</option>
+                                <option value="quarter">季度</option>
+                                <option value="half">半年</option>
+                                <option value="year">年度</option>
+                            </select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>基准月份</label><input type="month" id="budgetBaseMonthSelect" required></div>
+                            <div class="form-group"><label>预算金额 (¥)</label><input type="number" id="budgetAmount" step="0.01" min="0" required autocomplete="off"></div>
+                        </div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="budgetCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                    </form>
+                </div></div>
+            </section>
+
+            <!-- ========== 债务管理 ========== -->
+            <section class="page" id="page-debts">
+                <div class="glass-card debt-summary">
+                    <h3 class="card-title">债务总览</h3>
+                    <div class="debt-summary-row">
+                        <div class="debt-summary-item"><span class="debt-summary-label">总负债</span><span class="debt-summary-value" id="debtTotalRemaining">¥0</span></div>
+                        <div class="debt-summary-item"><span class="debt-summary-label">月供压力</span><span class="debt-summary-value" id="debtTotalMonthly">¥0</span></div>
+                        <div class="debt-summary-item"><span class="debt-summary-label">本月需还款</span><span class="debt-summary-value" id="debtDueThisMonth">0</span></div>
+                        <div class="debt-summary-item"><span class="debt-summary-label">逾期</span><span class="debt-summary-value" id="debtOverdue">0</span></div>
+                    </div>
+                </div>
+                <div class="glass-card">
+                    <h3 class="card-title">💳 债务管理 <button class="btn btn-primary" id="addDebtBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 添加债务</button> <span class="see-all" id="debtCount"></span></h3>
+                    <p class="card-desc">管理贷款、信用卡、个人借贷，追踪还款进度与逾期风险</p>
+                    <div class="debt-list" id="debtList"></div>
+                </div>
+                <div class="modal-overlay" id="debtModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="debtModalTitle">添加债务</h3><button class="modal-close" id="debtModalClose">✕</button></div>
+                    <form class="debt-form" id="debtForm"><input type="hidden" id="debtEditId">
+                        <div class="form-row">
+                            <div class="form-group"><label>债务名称</label><input type="text" id="debtName" placeholder="如：房贷 / 招行信用卡 / 借给张三" required></div>
+                            <div class="form-group"><label>类型</label><select id="debtType" required>
+                                <option value="loan">贷款（房贷/车贷/网贷）</option>
+                                <option value="credit_card">信用卡/循环信用</option>
+                                <option value="personal">个人借贷</option>
+                                <option value="other">其他应付</option>
+                            </select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>债权人/机构</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三"></div>
+                            <div class="form-group"><label>本金/总额 (¥)</label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>年利率 (%)</label><input type="number" id="debtRate" step="0.001" min="0" autocomplete="off"></div>
+                            <div class="form-group"><label>期限 (月)</label><input type="number" id="debtTerm" step="1" min="0" autocomplete="off"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>还款方式</label><select id="debtMethod" required>
+                                <option value="equal_installment">等额本息</option>
+                                <option value="equal_principal">等额本金</option>
+                                <option value="interest_only">先息后本</option>
+                                <option value="minimum">最低还款（信用卡）</option>
+                                <option value="lump_sum">一次性还本</option>
+                                <option value="manual">手动/不自动算</option>
+                            </select></div>
+                            <div class="form-group"><label>月供/每期 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>起始日</label><input type="date" id="debtStart"></div>
+                            <div class="form-group"><label>到期日/还款日</label><input type="date" id="debtDue"></div>
+                        </div>
+                        <div class="form-row debt-cc-fields" style="display:none">
+                            <div class="form-group"><label>账单日 (1-28)</label><input type="number" id="debtBillingDay" min="1" max="28"></div>
+                            <div class="form-group"><label>还款日 (1-28)</label><input type="number" id="debtPaymentDay" min="1" max="28"></div>
+                            <div class="form-group"><label>最低还款额 (¥)</label><input type="number" id="debtMinPayment" step="0.01" min="0"></div>
+                        </div>
+                        <div class="form-group"><label>备注</label><input type="text" id="debtNote" placeholder="可选"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="debtCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                    </form>
+                </div></div>
+                <div class="modal-overlay" id="repayModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3>记录还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
+                    <form class="repay-form" id="repayForm"><input type="hidden" id="repayDebtId">
+                        <div class="form-group"><label>还款金额 (¥)</label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
+                        <div class="form-row">
+                            <div class="form-group"><label>还款日期</label><input type="date" id="repayDate" required></div>
+                            <div class="form-group"><label>还款账户 *</label><select id="repayAccount" required></select></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>本金部分 (¥)</label><input type="number" id="repayPrincipal" step="0.01" min="0" placeholder="留空=全额计本金"></div>
+                            <div class="form-group"><label>利息部分 (¥)</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填"></div>
+                        </div>
+                        <div class="form-group"><label>备注</label><input type="text" id="repayNote" placeholder="可选"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-primary">记录</button></div>
+                    </form>
+                </div></div>
+                <div class="modal-overlay" id="repayHistoryModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3>还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
+                    <div class="repay-history" id="repayHistoryBody"></div>
+                </div></div>
+            </section>
+
+            <!-- ========== 理财管理 ========== -->
+            <section class="page" id="page-investments" data-lazy="pages/investments.html"></section>
+
+            <!-- ========== 标签管理 ========== -->
+            <section class="page" id="page-data-center">
+                <div class="glass-card">
+                    <h3 class="card-title">⚙️ 基础数据维护</h3>
+                    <p class="card-desc">管理系统中的分类、理财类型和标签等基础数据</p>
+                    <div class="dc-tabs">
+                        <button class="dc-tab active" data-dctab="categories">📂 分类管理</button>
+                        <button class="dc-tab" data-dctab="invtypes">💹 理财类型</button>
+                        <button class="dc-tab" data-dctab="tags">🏷️ 标签管理</button>
+                    </div>
+
+                    <!-- 分类管理 -->
+                    <div class="dc-panel active" id="dcPanel-categories">
+                        <div class="dc-toolbar">
+                            <select id="catFilterType"><option value="">全部类型</option><option value="expense">支出</option><option value="income">收入</option></select>
+                            <button class="btn btn-primary" id="addCatBtn">＋ 新增分类</button>
+                        </div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>类型</th><th>颜色</th><th>排序</th><th>操作</th></tr></thead><tbody id="catTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
+                    </div>
+
+                    <!-- 理财类型 -->
+                    <div class="dc-panel" id="dcPanel-invtypes">
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addInvTypeBtn">＋ 新增理财类型</button></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>风险等级</th><th>描述</th><th>排序</th><th>操作</th></tr></thead><tbody id="invTypeTableBody"><tr><td colspan="6"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:40%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:45%"></div></div></div><div class="skeleton-row"><div class="skeleton-avatar shimmer"></div><div class="skeleton-lines"><div class="skeleton-line shimmer" style="width:50%"></div></div></div></div></td></tr></tbody></table></div>
+                    </div>
+
+                    <!-- 标签管理 -->
+                    <div class="dc-panel" id="dcPanel-tags">
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addTagBtn">＋ 新建标签</button></div>
+                        <div class="tag-grid" id="tagGrid"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
+                    </div>
+                </div>
+
+                <!-- 分类/理财类型编辑弹窗 -->
+                <div class="modal-overlay" id="dcEditModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="dcEditTitle">编辑</h3><button class="modal-close" id="dcEditClose">✕</button></div>
+                    <form class="trans-form" id="dcEditForm"><input type="hidden" id="dcEditId"><input type="hidden" id="dcEditKind"><input type="hidden" id="dcEditParentId">
+                        <div class="form-row">
+                            <div class="form-group"><label>名称</label><input type="text" id="dcEditName" required></div>
+                            <div class="form-group"><label>图标</label><input type="text" id="dcEditIcon" placeholder="emoji"></div>
+                        </div>
+                        <div class="form-row" id="dcRowCatExtra">
+                            <div class="form-group"><label>类型</label><select id="dcEditCatType"><option value="expense">支出</option><option value="income">收入</option></select></div>
+                            <div class="form-group"><label>排序</label><input type="number" id="dcEditSort" value="0"></div>
+                        </div>
+                        <div class="form-row" id="dcRowInvExtra" style="display:none">
+                            <div class="form-group"><label>风险等级</label><select id="dcEditRisk"><option value="low">低风险</option><option value="medium">中风险</option><option value="high">高风险</option><option value="very_high">极高风险</option></select></div>
+                            <div class="form-group"><label>排序</label><input type="number" id="dcEditInvSort" value="0"></div>
+                        </div>
+                        <div class="form-group full-width" id="dcRowDesc" style="display:none"><label>描述</label><input type="text" id="dcEditDesc" placeholder="可选描述"></div>
+                        <div class="form-group full-width" id="dcRowColor"><label>颜色</label><div class="color-swatches" id="dcColorSwatches"></div><input type="hidden" id="dcEditColor" value="#6366f1"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="dcEditCancel">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+                    </form>
+                </div></div>
+
+                <!-- 标签编辑弹窗（复用原有逻辑） -->
+                <div class="modal-overlay" id="tagModal"><div class="modal glass-card">
+                    <div class="modal-header"><h3 id="tagModalTitle">新建标签</h3><button class="modal-close" id="tagModalClose">✕</button></div>
+                    <form class="trans-form" id="tagForm"><input type="hidden" id="tagEditId">
+                        <div class="form-row">
+                            <div class="form-group"><label>标签名称</label><input type="text" id="tagName" required placeholder="如：餐饮"></div>
+                            <div class="form-group"><label>图标</label><input type="text" id="tagIcon" value="🏷️" placeholder="emoji"></div>
+                        </div>
+                        <div class="form-group full-width"><label>颜色</label><div class="color-swatches" id="tagColorSwatches"></div><input type="hidden" id="tagColor" value="#3b82f6"></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="tagCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存标签</button></div>
+                    </form>
+                </div></div>
+            </section>
+
+            <!-- ========== AI 配置 ========== -->
+            <section class="page" id="page-ai-config">
+                <div class="glass-card">
+                    <div class="ai-config-header">
+                        <div>
+                            <h3 class="card-title">🤖 AI 服务商配置</h3>
+                            <p class="card-desc">配置一个或多个第三方大模型服务商，指定当前启用后即可使用 AI 财务建议与消费洞察。API Key 仅保存在服务端。</p>
+                        </div>
+                        <button class="btn btn-primary" id="aiAddProviderBtn">＋ 添加服务商</button>
+                    </div>
+                    <div class="provider-list" id="aiProviderList"></div>
+                    <div id="aiProviderEmpty" class="empty-hint" style="display:none;margin-top:24px">
+                        <div class="empty-icon">🤖</div>
+                        <p>暂无服务商，点击右上角添加一个</p>
+                    </div>
+                </div>
+
+                <!-- 添加 / 编辑服务商弹窗 -->
+                <div class="modal-overlay" id="aiProviderModal">
+                    <div class="modal glass-card">
+                        <div class="modal-header">
+                            <h3 id="aiProviderModalTitle">添加服务商</h3>
+                            <button class="modal-close" id="aiProviderModalClose">✕</button>
+                        </div>
+                        <form class="trans-form" id="aiProviderForm">
+                            <input type="hidden" id="aiProviderId">
+                            <div class="form-group full-width" style="margin-bottom:0">
+                                <label>快捷选择</label>
+                                <div class="provider-presets" id="aiProviderPresets">
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="openai">OpenAI</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="anthropic">Anthropic</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="deepseek">DeepSeek</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="kimi">Kimi</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="ollama">Ollama 本地</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="zhipu">智谱 AI</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="moonshot">Moonshot</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="minimax">MiniMax</button>
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>服务商名称</label>
+                                <input type="text" id="aiProviderName" placeholder="如 DeepSeek 官方" required>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>接口类型</label>
+                                    <select id="aiProviderType" class="filter-select">
+                                        <option value="openai">OpenAI 兼容</option>
+                                        <option value="anthropic">Anthropic Messages</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>模型名</label>
+                                    <input type="text" id="aiProviderModel" required>
+                                </div>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>接口地址</label>
+                                <input type="text" id="aiProviderBaseUrl" placeholder="https://api.openai.com/v1" required>
+                            </div>
+                            <div class="form-group full-width">
+                                <label>API Key</label>
+                                <input type="password" id="aiProviderKey" placeholder="sk-..." autocomplete="off">
+                                <small class="form-hint">编辑时留空表示保留已保存的 Key</small>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary" id="aiProviderSaveBtn">保存</button>
+                                <button type="button" class="btn btn-ghost" id="aiProviderTestBtn">测试连接</button>
+                                <button type="button" class="btn btn-ghost" id="aiProviderCancelBtn">取消</button>
+                            </div>
+                            <div id="aiProviderMsg" class="form-msg" style="margin-top:12px"></div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- OCR 配置 -->
+                <div class="glass-card" style="margin-top:16px">
+                    <h3 class="card-title">📷 OCR 配置</h3>
+                    <p class="card-desc">配置腾讯云 OCR 密钥，用于账单截图文字识别。SecretKey 仅保存在服务端。</p>
+                    <form class="trans-form" id="ocrConfigForm" style="margin-top:12px">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>SecretId</label>
+                                <input type="text" id="ocrSecretId" placeholder="AKID..." autocomplete="off" required>
+                            </div>
+                            <div class="form-group">
+                                <label>SecretKey</label>
+                                <input type="password" id="ocrSecretKey" placeholder="SecretKey" autocomplete="off">
+                                <small class="form-hint">留空表示保留已保存的 Key</small>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="max-width:200px">
+                                <label>地域</label>
+                                <input type="text" id="ocrRegion" value="ap-guangzhou" placeholder="ap-guangzhou">
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">保存 OCR 配置</button>
+                            <button type="button" class="btn btn-ghost" id="ocrTestBtn">测试 OCR</button>
+                        </div>
+                        <div id="ocrConfigMsg" class="form-msg" style="margin-top:12px"></div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- ========== AI 识别 ========== -->
+            <section class="page" id="page-ai-recognition" data-lazy="pages/ai-recognition.html"></section>
+
+            <!-- ========== 消费分析 ========== -->
+            <section class="page" id="page-analysis">
+                <!-- 月度概览 -->
+                <div class="analysis-overview" id="analysisOverview">
+                    <div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div><div class="skeleton-line shimmer" style="width:84%"></div></div>
+                </div>
+                <!-- 消费结构 + 趋势图（双栏） -->
+                <div class="analysis-grid-2col">
+                    <div class="glass-card"><h3 class="card-title">📊 消费结构分析</h3><div id="analysisStructure"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div><div class="skeleton-line shimmer" style="width:84%"></div><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div></div></div></div>
+                    <div class="glass-card chart-card-lg"><h3 class="card-title">📈 消费趋势变化</h3><canvas id="analysisTrendChart" height="280"></canvas></div>
+                </div>
+                <!-- 异常检测 -->
+                <div class="glass-card"><h3 class="card-title">⚠️ 异常消费检测</h3><div id="anomalyList"><div class="skeleton-wrap" data-skeleton="text"><div class="skeleton-line shimmer" style="width:60%"></div><div class="skeleton-line shimmer" style="width:72%"></div></div></div></div>
+                <!-- AI 智能分析（洞察 + 建议双栏） -->
+                <div class="analysis-ai-grid">
+                    <div class="glass-card"><h3 class="card-title">🧠 AI 消费洞察</h3><div id="insightList"><div class="empty-hint">点击下方按钮生成 AI 洞察</div></div><button class="btn btn-primary btn-ai" id="genInsightBtn" style="margin-top:12px">生成洞察</button></div>
+                    <div class="glass-card"><h3 class="card-title">💡 AI 财务建议</h3><div id="aiAdviceList"><div class="empty-hint">点击下方按钮获取个性化建议</div></div><button class="btn btn-primary btn-ai" id="aiGenAdviceBtn" style="margin-top:12px">生成建议</button></div>
+                </div>
+            </section>
+
+            <!-- ========== 报表中心 ========== -->
+            <section class="page" id="page-reports" data-lazy="pages/reports.html"></section>
+        </main>
+    </div>
+
+    <!-- ============================================================
+         MODALS
+         ============================================================ -->
+
+    <!-- 快速记账弹窗 -->
+    <div class="modal-overlay" id="quickAddModal"><div class="modal glass-card modal-quick">
+        <div class="modal-header"><h3>快速记账</h3><button class="modal-close" id="quickAddClose">✕</button></div>
+        <form class="trans-form" id="quickAddForm">
+            <div class="form-group"><label>类型</label><div class="type-switch" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false">转账</button></div></div>
+
+            <!-- 收支模式：金额 + 单账户 + 类别 -->
+            <div id="quickNormalFields">
+                <div class="form-group"><label>金额 (¥)</label><input type="number" id="quickAmount" step="0.01" min="0" required autocomplete="off"></div>
+                <div class="form-group"><label>账户</label><select id="quickAccount" required></select></div>
+                <div class="form-group"><label>类别</label><select id="quickCategory" required></select></div>
+            </div>
+
+            <!-- 转账模式：转出/转入账户 + 金额 -->
+            <div id="quickTransferFields" style="display:none">
+                <div class="form-row">
+                    <div class="form-group"><label>转出账户</label><select id="quickFromAcc" required></select></div>
+                    <div class="form-group"><label>转入账户</label><select id="quickToAcc" required></select></div>
+                </div>
+                <div class="form-group"><label>转账金额 (¥)</label><input type="number" id="quickTransferAmount" step="0.01" min="0.01" required autocomplete="off"></div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group"><label>日期时间</label><input type="datetime-local" id="quickDate" step="1" required></div>
+                <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="quickBudget"><option value="">不关联</option></select></div>
+            </div>
+            <div class="form-group"><label>备注</label><input type="text" id="quickNote" placeholder="备注..."></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="quickCancelBtn">取消</button><button type="submit" class="btn btn-primary">记一笔</button></div>
+        </form>
+    </div></div>
+
+    <!-- 账户编辑弹窗 -->
+    <div class="modal-overlay" id="accountModal"><div class="modal glass-card">
+        <div class="modal-header"><h3 id="accModalTitle">新增账户</h3><button class="modal-close" id="accModalClose">✕</button></div>
+        <form class="trans-form" id="accForm"><input type="hidden" id="accEditId">
+            <div class="form-row"><div class="form-group"><label>账户名称</label><input type="text" id="accName" required placeholder="如：工资卡"></div><div class="form-group"><label>账户类型</label><select id="accType" required><option value="cash">现金 💵</option><option value="bank_card">银行卡 🏦</option><option value="credit_card">信用卡 💳</option><option value="electronic_payment">电子支付 📱</option><option value="financial_account">金融账户 🏛️</option><option value="digital">数字货币 🪙</option><option value="other">其他 💰</option></select></div></div>
+            <div class="form-row"><div class="form-group"><label>图标</label><input type="text" id="accIcon" value="💰" placeholder="emoji图标"></div><div class="form-group"><label>初始余额 (¥)</label><input type="number" id="accBalance" step="0.01" value="0" autocomplete="off"></div></div>
+            <div class="form-actions"><button type="button" class="btn btn-ghost" id="accCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存</button></div>
+        </form>
+    </div></div>
+    <div class="modal-overlay" id="accountDetailModal"><div class="modal glass-card">
+        <div class="modal-header"><h3>账户资金明细</h3><button class="modal-close" id="accountDetailModalClose">✕</button></div>
+        <div class="repay-history" id="accountDetailBody"></div>
+    </div></div>
+
+    <div class="toast-container" id="toastContainer" role="region" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/page-loader.js"></script>
+    <script type="module" src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+    <!-- 管理器模块：拆分为独立 ES Module，统一通过 boot() 入口初始化 -->
+    <script type="module">
+        // 按依赖顺序加载所有 Manager（每个模块自挂到 window）
+        import './js/managers/theme.js';
+        import './js/managers/chart.js';
+        import './js/managers/dashboard.js';
+        import './js/managers/transfer.js';
+        import './js/managers/account.js';
+        import './js/managers/transaction.js';
+        import './js/managers/budget.js';
+        import './js/managers/investment.js';
+        import './js/managers/ai-recognition.js';
+        import './js/managers/report.js';
+        import './js/managers/analysis.js';
+        import './js/managers/quick-add.js';
+        import './js/managers/data.js';
+        import './js/managers/tag.js';
+        import './js/managers/savings.js';
+        import './js/managers/csv.js';
+        import './js/managers/ai-provider.js';
+        import './js/managers/debt.js';
+    </script>
+    <script type="module">
+        import { renderUserMenu, bindLogout } from './js/auth.js';
+        renderUserMenu();
+        bindLogout();
+    </script>
+</body>
+</html>

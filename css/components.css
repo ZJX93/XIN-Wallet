@@ -1,0 +1,1342 @@
+/* ==========================================================================
+   智财 — Components & Features
+   标签 / 储蓄目标 / 交易列表 / 理财 / AI / 预算 / CSV
+   合并原 features.css，使用新 Token 系统
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. TRANSACTION LIST ITEMS
+   -------------------------------------------------------------------------- */
+.trans-list {
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.trans-item {
+  display: flex; align-items: center; gap: var(--space-4);
+  /* 横向内边距归零，使交易项左边缘与上方筛选下拉框左边缘对齐 */
+  padding: 12px 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.trans-item:hover {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.trans-item-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+
+.trans-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+/* 类别 + 备注 单行显示 */
+.trans-item-line {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  min-width: 0;
+}
+
+.trans-item-category {
+  font-size: var(--text-body-sm); font-weight: var(--fw-semibold);
+  color: var(--text-primary); flex-shrink: 0; white-space: nowrap;
+}
+
+.trans-item-note {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.trans-item-right {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 2px; flex-shrink: 0; min-width: 90px;
+}
+
+.trans-item-amount {
+  font-size: var(--text-body); font-weight: var(--fw-bold);
+  text-align: right; white-space: nowrap;
+}
+
+.trans-item-amount.income { color: var(--income); }
+.trans-item-amount.expense { color: var(--expense); }
+
+.trans-item-date {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  text-align: right; white-space: nowrap;
+}
+
+.trans-item-actions { display: flex; gap: var(--space-1); flex-shrink: 0; }
+
+/* --------------------------------------------------------------------------
+   1.5 TRANSACTION TABLE (交易管理页表格布局)
+   -------------------------------------------------------------------------- */
+.trans-table {
+  width: 100%;
+  display: flex; flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  min-width: fit-content;
+}
+
+.trans-thead {
+  display: grid;
+  grid-template-columns: 120px 100px 150px 150px 170px 140px 220px 80px;
+  align-items: center; gap: var(--space-5);
+  padding: 10px 20px;
+  background: var(--surface-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-caption); font-weight: var(--fw-semibold);
+  color: var(--text-tertiary);
+}
+
+.trans-tbody { display: flex; flex-direction: column; }
+
+.trans-date-group { border-bottom: 1px solid var(--border-subtle); }
+.trans-date-group:last-child { border-bottom: none; }
+
+.trans-date-header {
+  padding: 8px 16px;
+  font-size: var(--text-caption); font-weight: var(--fw-medium);
+  color: var(--text-secondary); background: var(--surface-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+
+.trans-row {
+  display: grid;
+  grid-template-columns: 120px 100px 150px 150px 170px 140px 220px 80px;
+  align-items: center; gap: var(--space-5);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-body-sm); color: var(--text-primary);
+  transition: background var(--duration-150);
+}
+.trans-row:last-child { border-bottom: none; }
+.trans-row:hover { background: var(--surface-hover); }
+
+.trans-category { display: flex; align-items: center; gap: 6px; }
+.trans-type { color: var(--text-secondary); white-space: nowrap; font-weight: var(--fw-medium); }
+.trans-cat-icon {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md); background: var(--surface-hover);
+  font-size: 14px; flex-shrink: 0;
+}
+
+.trans-amount { font-weight: var(--fw-semibold); text-align: right; white-space: nowrap; }
+.trans-amount.income { color: var(--income); }
+.trans-amount.expense { color: var(--expense); }
+.trans-amount.transfer { color: var(--text-muted); }
+
+.trans-account { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trans-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.trans-desc { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.trans-actions { display: flex; gap: 4px; justify-content: flex-end; }  background: transparent; border: none; cursor: pointer;
+  padding: 4px; border-radius: var(--radius-sm); font-size: 14px;
+  opacity: 0.6; transition: all var(--duration-150) var(--ease-out-quart);
+}
+.trans-actions button:hover { opacity: 1; background: var(--surface-hover); }
+
+/* Header cells contain filter controls */
+.trans-th { overflow: hidden; }
+
+.trans-thead .filter-select {
+  width: 100%; height: 34px;
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 12px; font-weight: var(--fw-normal);
+  color: var(--text-secondary); background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  outline: none;
+  white-space: nowrap; text-overflow: ellipsis;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.trans-thead .filter-select:focus {
+  border-color: var(--interactive-default);
+  box-shadow: 0 0 0 2px var(--interactive-focus-ring);
+}
+
+.trans-thead .filter-note-box {
+  position: relative; width: 100%;
+}
+
+.trans-thead .filter-note-box .search-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--text-tertiary); pointer-events: none;
+}
+
+.trans-thead .filter-note-box input {
+  width: 100%; height: 34px; padding-left: 28px !important;
+  font-size: var(--text-caption); font-family: inherit;
+  color: var(--text-primary); background: var(--surface-card);
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.trans-thead .filter-note-box input:focus {
+  border-color: var(--interactive-default);
+  box-shadow: 0 0 0 2px var(--interactive-focus-ring);
+}
+
+/* ============================================
+   金额筛选下拉面板（dropdown panel）
+   ============================================ */
+.filter-amount-box {
+  position: relative;
+}
+
+/* 触发按钮 — 外观与其他 filter-select 一致 */
+.filter-amount-btn-drop {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; height: 34px;
+  padding: 0 8px;
+  font-size: 12px; font-weight: var(--fw-normal); font-family: inherit;
+  color: var(--text-secondary); background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+.filter-amount-btn-drop:hover { border-color: var(--interactive-default); }
+.filter-amount-btn-drop:focus, .filter-amount-btn-drop.active {
+  border-color: var(--interactive-default);
+  box-shadow: 0 0 0 2px var(--interactive-focus-ring);
+}
+.filter-amount-arrow { font-size: 10px; margin-left: 4px; color: var(--text-tertiary); transition: transform var(--duration-150); }
+.filter-amount-btn-drop.active .filter-amount-arrow { transform: rotate(180deg); }
+
+/* 下拉面板 — fixed 定位，JS 动态计算位置 */
+.filter-amount-panel {
+  position: fixed;
+  margin-top: 0;
+  padding: 10px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+}
+
+/* 操作符按钮组 */
+.filter-amount-panel-ops {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.amt-op-btn {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  font-size: 12px; font-family: inherit;
+  color: var(--text-secondary); background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+.amt-op-btn:hover { border-color: var(--interactive-default); color: var(--interactive-default); }
+.amt-op-btn.active {
+  color: #fff; background: var(--interactive-default);
+  border-color: var(--interactive-default);
+}
+
+/* 输入区域 */
+.filter-amount-panel-inputs {
+  display: flex; align-items: center; gap: 4px; margin-top: 8px;
+}
+.filter-amount-panel-inputs input {
+  flex: 1 1 0; min-width: 0; height: 32px;
+  padding: 0 8px;
+  font-size: 12px; font-family: inherit;
+  color: var(--text-primary); background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  outline: none;
+  -moz-appearance: textfield;
+}
+.filter-amount-panel-inputs input::-webkit-inner-spin-button,
+.filter-amount-panel-inputs input::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.filter-amount-panel-inputs input:focus {
+  border-color: var(--interactive-default);
+}
+.filter-amount-panel-inputs .filter-amount-sep {
+  font-size: 11px; color: var(--text-tertiary); flex: 0 0 auto;
+}
+
+/* 操作按钮 */
+.filter-amount-panel-actions {
+  display: flex; gap: 6px; margin-top: 8px;
+}
+.amt-apply-btn {
+  flex: 1; height: 30px;
+  font-size: 12px; font-family: inherit;
+  color: #fff; background: var(--interactive-default);
+  border: 1px solid var(--interactive-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer; transition: all var(--duration-150);
+}
+.amt-apply-btn:hover { opacity: 0.85; }
+.amt-clear-btn {
+  flex: 0 0 auto; height: 30px; padding: 0 12px;
+  font-size: 12px; font-family: inherit;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer; transition: all var(--duration-150);
+}
+.amt-clear-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
+
+/* Amount values are right-aligned; header follows default left alignment to match reference layout */
+
+@media (max-width: 900px) {
+  .trans-thead, .trans-row {
+    grid-template-columns: 80px 70px 100px 90px 110px 90px 1fr 50px;
+    gap: var(--space-3);
+    padding: 10px 14px; font-size: 12px;
+  }
+}
+
+/* Recent transactions */
+.recent-trans-list {
+  display: flex; flex-direction: column; gap: var(--space-1);
+}
+
+.recent-trans-card { margin-bottom: var(--space-4); }
+
+/* --------------------------------------------------------------------------
+   2. ACCOUNT LIST
+   -------------------------------------------------------------------------- */
+.account-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.account-card {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-5); border-radius: var(--radius-xl);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.account-card:hover {
+  transform: translateY(-2px); box-shadow: var(--shadow-md);
+}
+
+.account-icon {
+  width: 48px; height: 48px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; flex-shrink: 0;
+  background: var(--surface-hover);
+}
+
+.account-info { flex: 1; min-width: 0; }
+.account-name { font-weight: var(--fw-semibold); font-size: var(--text-body); color: var(--text-primary); }
+.account-type { font-size: var(--text-caption); color: var(--text-tertiary); }
+.account-balance {
+  font-size: var(--text-heading-sm); font-weight: var(--fw-bold);
+  color: var(--text-primary); text-align: right;
+}
+
+.account-actions { display: flex; gap: var(--space-1); }
+
+/* --------------------------------------------------------------------------
+   3. TAG GRID & CHIPS (原 features.css)
+   -------------------------------------------------------------------------- */
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.tag-card {
+  position: relative;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--tag-color, var(--interactive-default));
+  transition: transform var(--duration-150) var(--ease-out-quart),
+    box-shadow var(--duration-150) var(--ease-out-quart);
+}
+
+.tag-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.tag-card-icon {
+  font-size: 20px; width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--tag-color, var(--interactive-default)) 14%, transparent);
+}
+
+.tag-card-body { flex: 1; min-width: 0; }
+.tag-card-name { font-size: var(--text-body); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.tag-card-meta { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 2px; }
+
+.tag-card-del {
+  border: none; background: transparent; color: var(--text-tertiary);
+  cursor: pointer; font-size: 15px; padding: 4px 6px; border-radius: var(--radius-sm);
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.tag-card-del:hover { color: var(--expense); background: var(--expense-soft); }
+
+/* Tag picker */
+.tag-picker {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  padding: var(--space-2) 0; min-height: 36px;
+}
+
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: var(--space-1) var(--space-3); height: 30px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-caption); font-weight: var(--fw-medium);
+  cursor: pointer; user-select: none;
+  color: var(--text-secondary); background: var(--surface-hover);
+  border: 1px solid var(--border-default);
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.tag-chip:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+.tag-chip.selected {
+  color: white; background: var(--tag-color, var(--interactive-default));
+  border-color: var(--tag-color, var(--interactive-default));
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--tag-color, var(--interactive-default)) 40%, transparent);
+}
+
+/* Tag badge (in transaction items) */
+.tag-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: var(--radius-full);
+  font-size: 11px; font-weight: var(--fw-semibold); line-height: 1.6;
+  color: var(--tag-color, var(--interactive-default));
+  background: color-mix(in srgb, var(--tag-color, var(--interactive-default)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tag-color, var(--interactive-default)) 28%, transparent);
+}
+
+.trans-item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+
+/* --------------------------------------------------------------------------
+   4. COLOR SWATCHES (tag modal)
+   -------------------------------------------------------------------------- */
+.color-swatches {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.color-swatch {
+  width: 30px; height: 30px; border-radius: 50%;
+  cursor: pointer; border: 2px solid transparent;
+  transition: transform var(--duration-150) var(--ease-out-quart),
+    border-color var(--duration-150) var(--ease-out-quart);
+}
+
+.color-swatch:hover { transform: scale(1.12); }
+
+.color-swatch.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   5. SAVINGS GOALS (原 features.css)
+   -------------------------------------------------------------------------- */
+#savingsGoalList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.goal-card {
+  position: relative; padding: var(--space-5);
+  border-radius: var(--radius-xl);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  transition: transform var(--duration-150) var(--ease-out-quart),
+    box-shadow var(--duration-150) var(--ease-out-quart);
+}
+
+.goal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.goal-card.completed {
+  border-color: color-mix(in srgb, var(--income) 45%, transparent);
+}
+.goal-card.overdue {
+  border-color: color-mix(in srgb, var(--expense) 55%, transparent);
+  background: color-mix(in srgb, var(--expense) 4%, var(--surface-base));
+}
+.goal-progress-fill.danger { background: var(--expense); }
+.goal-status.done { color: var(--income); background: color-mix(in srgb, var(--income) 12%, transparent); }
+.goal-status.overdue { color: var(--expense); background: color-mix(in srgb, var(--expense) 12%, transparent); }
+.goal-status.warn { color: var(--warning-500); background: color-mix(in srgb, var(--warning-500) 12%, transparent); }
+.goal-status.type { color: var(--text-tertiary); background: var(--surface-hover); }
+.goal-sub { color: var(--text-tertiary); font-weight: normal; font-size: 0.85em; }
+
+.goal-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.goal-icon {
+  font-size: 18px; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--interactive-default) 14%, transparent);
+}
+
+.goal-title {
+  flex: 1; min-width: 0;
+  font-size: var(--text-body); font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.goal-status {
+  font-size: 11px; font-weight: var(--fw-semibold);
+  padding: 2px 8px; border-radius: var(--radius-full);
+  color: var(--income); background: var(--income-soft);
+}
+
+.goal-amounts {
+  display: flex; justify-content: space-between;
+  font-size: var(--text-caption); color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.goal-amounts strong { color: var(--text-primary); }
+.goal-pct { font-weight: var(--fw-semibold); color: var(--interactive-default); }
+.goal-pct.profit-positive { color: var(--income); }
+.goal-pct.profit-negative { color: var(--expense); }
+
+.goal-progress {
+  height: 8px; border-radius: var(--radius-full);
+  background: var(--surface-hover); overflow: hidden;
+  margin-bottom: var(--space-2);
+}
+
+.goal-progress-fill {
+  height: 100%; border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--interactive-default), color-mix(in srgb, var(--interactive-default) 55%, var(--income)));
+  transition: width 0.6s var(--ease-out-quart);
+}
+
+.goal-note {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  margin: var(--space-2) 0 var(--space-3); line-height: 1.5;
+}
+
+.goal-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.goal-actions .btn { font-size: var(--text-caption); height: 32px; padding: 0 var(--space-3); flex: 1; justify-content: center; }
+
+/* Goal amount / Reduce modal meta */
+.goal-amount-meta,
+.reduce-meta {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  line-height: 1.7;
+}
+.goal-amount-meta strong,
+.reduce-meta b { color: var(--text-primary); }
+
+.quick-amounts {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.quick-amount {
+  flex: 1; min-width: 70px; padding: var(--space-2);
+  font-size: var(--text-caption); font-weight: var(--fw-semibold);
+  color: var(--text-secondary); background: var(--surface-hover);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  cursor: pointer; text-align: center;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.quick-amount:hover {
+  color: white; background: var(--interactive-default);
+  border-color: var(--interactive-default);
+  transform: translateY(-1px);
+}
+
+/* --------------------------------------------------------------------------
+   6. INVESTMENT LIST
+   -------------------------------------------------------------------------- */
+#investList,
+#debtList,
+#savingsGoalList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.invest-item {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+
+.invest-item:hover {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.invest-icon {
+  width: 44px; height: 44px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+  background: var(--surface-card); border: 1px solid var(--border-subtle);
+}
+
+.invest-info { flex: 1; min-width: 0; }
+.invest-name { font-weight: var(--fw-semibold); font-size: var(--text-body); color: var(--text-primary); }
+.invest-meta { font-size: var(--text-caption); color: var(--text-tertiary); }
+
+.invest-value {
+  font-size: var(--text-body); font-weight: var(--fw-bold);
+  color: var(--text-primary); text-align: right;
+}
+
+.invest-profit { font-size: var(--text-caption); font-weight: var(--fw-semibold); }
+.invest-profit.up { color: var(--income); }
+.invest-profit.down { color: var(--expense); }
+
+.invest-actions { display: flex; gap: var(--space-1); flex-shrink: 0; }
+
+/* --------------------------------------------------------------------------
+   7. AI RECOGNITION
+   -------------------------------------------------------------------------- */
+.ai-scan-card { margin-bottom: var(--space-4); }
+
+.ai-input-area { margin: var(--space-4) 0; }
+.ai-input-area textarea { width: 100%; }
+
+.ai-actions {
+  display: flex; gap: var(--space-3); margin-top: var(--space-3);
+}
+
+.ai-results { margin-top: var(--space-4); }
+.ai-results-title {
+  font-size: var(--text-body); font-weight: var(--fw-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.ai-results-actions { margin-top: var(--space-3); }
+
+/* 识别结果列表 */
+#aiResultsList {
+  display: flex; flex-direction: column; gap: var(--space-2);
+}
+
+/* 识别结果可编辑行 */
+.ai-edit-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  font-size: var(--text-body-sm);
+}
+.ai-edit-row:hover { background: var(--surface-card); }
+
+.ai-edit-col { flex-shrink: 0; }
+.ai-edit-acc { width: 105px; }
+.ai-edit-type { width: 58px; }
+.ai-edit-cat { width: 125px; }
+.ai-edit-amt { width: 95px; }
+.ai-edit-date { width: 180px; }
+.ai-edit-note { flex: 1; min-width: 80px; }
+.ai-edit-del { width: 26px; text-align: center; }
+
+.ai-edit-type-sel,
+.ai-edit-acc-sel,
+.ai-edit-cat-sel,
+.ai-edit-amt-inp,
+.ai-edit-date-inp,
+.ai-edit-note-inp {
+  width: 100%; padding: 4px 6px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); background: var(--surface-default);
+  color: var(--text-primary); font-size: var(--text-body-sm);
+  outline: none; transition: border-color var(--transition-fast);
+}
+.ai-edit-type-sel:focus,
+.ai-edit-cat-sel:focus,
+.ai-edit-amt-inp:focus,
+.ai-edit-date-inp:focus,
+.ai-edit-note-inp:focus {
+  border-color: var(--accent-500);
+}
+
+.ai-edit-amt-inp {
+  text-align: right; font-weight: var(--fw-semibold);
+}
+
+.ai-edit-del-btn {
+  background: none; border: none; color: var(--text-tertiary);
+  cursor: pointer; font-size: 14px; padding: 2px 4px;
+  border-radius: var(--radius-sm); line-height: 1;
+}
+.ai-edit-del-btn:hover { color: var(--expense); background: var(--expense-soft); }
+
+@media (max-width: 720px) {
+  .ai-edit-row { flex-wrap: wrap; }
+  .ai-edit-cat { width: 100px; }
+  .ai-edit-date { width: 170px; }
+}
+
+/* OCR+账单导入 双栏布局 */
+.ai-scan-top {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.ai-scan-top .ocr-upload-area { margin-bottom: 0; }
+
+@media (max-width: 720px) {
+  .ai-scan-top { grid-template-columns: 1fr; }
+  #aiResultsList { grid-template-columns: 1fr; }
+}
+
+/* 账单导入 */
+.bill-upload-area {
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  margin-bottom: var(--space-3);
+}
+.bill-upload-area:hover, .bill-upload-area.drag-over {
+  border-color: var(--accent-500);
+}
+.bill-file-info { text-align: left; }
+.bill-file-name { font-weight: var(--fw-semibold); color: var(--text-primary); }
+.bill-file-meta { font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 2px; }
+.bill-format-tip {
+  font-size: var(--text-caption); color: var(--text-tertiary);
+  padding: var(--space-2) 0; line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   8. BUDGET LIST
+   -------------------------------------------------------------------------- */
+.budget-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+
+.debt-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+
+.budget-item {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  transition: background var(--duration-150) var(--ease-out-quart);
+}
+
+.budget-item:hover { background: var(--surface-card); }
+
+.budget-cat {
+  font-size: var(--text-body-sm); font-weight: var(--fw-semibold);
+  color: var(--text-primary); width: 120px; flex-shrink: 0;
+}
+
+.budget-period-badge {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  font-weight: var(--fw-normal);
+  margin-left: var(--space-2);
+  padding: 2px 8px;
+  background: var(--surface-card);
+  border-radius: var(--radius-sm);
+}
+
+.budget-bar-wrap {
+  flex: 1; height: 8px; background: var(--surface-card);
+  border-radius: var(--radius-full); overflow: hidden;
+}
+
+.budget-bar-fill {
+  height: 100%; border-radius: var(--radius-full);
+  transition: width var(--duration-500) var(--ease-out-quart);
+}
+
+.budget-bar-fill.safe { background: var(--income); }
+.budget-bar-fill.warn { background: var(--warning-500); }
+.budget-bar-fill.over { background: var(--expense); }
+
+.budget-amounts {
+  font-size: var(--text-caption); color: var(--text-secondary);
+  white-space: nowrap; min-width: 100px; text-align: right;
+}
+
+.budget-actions { display: flex; gap: var(--space-1); }
+
+/* --------------------------------------------------------------------------
+   9. TRANSFER HISTORY
+   -------------------------------------------------------------------------- */
+#transferHistory { min-height: 100px; }
+
+.transfer-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  border: 1px solid transparent;
+  margin-bottom: var(--space-2);
+  transition: all var(--duration-150) var(--ease-out-quart);
+}
+.transfer-item:hover {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.transfer-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+  background: var(--surface-card);
+}
+
+.transfer-body { flex: 1; min-width: 0; }
+
+.transfer-accounts {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-body-sm); font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+.transfer-acc-name { white-space: nowrap; }
+
+.transfer-arrow {
+  color: var(--text-muted); font-size: 14px;
+}
+
+.transfer-meta {
+  font-size: var(--text-caption); color: var(--text-tertiary); margin-top: 2px;
+}
+
+.transfer-right {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.transfer-amount {
+  font-weight: var(--fw-bold); color: var(--text-muted);
+  font-size: var(--text-body); white-space: nowrap;
+}
+
+.transfer-del,
+.transfer-edit {
+  background: transparent; border: none; cursor: pointer;
+  font-size: 16px; opacity: 0.5; padding: 4px; border-radius: var(--radius-sm);
+  transition: opacity var(--duration-100), background var(--duration-100);
+}
+.transfer-del:hover,
+.transfer-edit:hover { opacity: 1; background: var(--surface-hover); }
+
+/* --------------------------------------------------------------------------
+   10. TABLE (Reports)
+   -------------------------------------------------------------------------- */
+.data-table {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--text-body-sm);
+}
+
+.data-table th {
+  text-align: left; padding: var(--space-2) var(--space-3);
+  font-weight: var(--fw-semibold); font-size: var(--text-label);
+  color: var(--text-tertiary); text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-table td {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-table tr:hover td { background: var(--surface-hover); }
+
+/* --------------------------------------------------------------------------
+   11. ANALYSIS
+   -------------------------------------------------------------------------- */
+#analysisStructure { margin: var(--space-3) 0; }
+#anomalyList, #insightList { margin: var(--space-3) 0; }
+
+/* 异常检测：两列网格 */
+#anomalyList {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);
+}
+
+.anomaly-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--expense-soft);
+  margin-bottom: var(--space-2);
+}
+
+.anomaly-icon { font-size: 18px; }
+.anomaly-info { flex: 1; font-size: var(--text-body-sm); }
+
+.insight-item {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-body-sm); line-height: 1.6;
+}
+.analysis-ai-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.analysis-overview {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.analysis-overview-card {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  text-align: center;
+  transition: transform var(--transition-fast);
+}
+
+.analysis-overview-card:hover { transform: translateY(-2px); }
+
+.analysis-overview-card .overview-icon {
+  font-size: 28px; margin-bottom: var(--space-1);
+}
+
+.analysis-overview-card .overview-value {
+  font-size: 26px; font-weight: var(--fw-bold);
+  margin-bottom: 2px;
+}
+
+.analysis-overview-card .overview-label {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+}
+
+.analysis-overview-card.income .overview-value { color: var(--income); }
+.analysis-overview-card.expense .overview-value { color: var(--expense); }
+.analysis-overview-card.balance .overview-value { color: var(--accent-500); }
+
+.analysis-grid-2col {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* 预算总览条 */
+.analysis-budget-bar {
+  grid-column: 1 / -1;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface-hover);
+  display: flex; align-items: center; gap: var(--space-3);
+  font-size: var(--text-body-sm);
+}
+
+.analysis-budget-bar .budget-label {
+  white-space: nowrap; color: var(--text-secondary);
+}
+
+.analysis-budget-bar .budget-progress-wrap {
+  flex: 1; height: 8px; border-radius: 4px;
+  background: var(--surface-default); overflow: hidden;
+}
+
+.analysis-budget-bar .budget-progress-fill {
+  height: 100%; border-radius: 4px; transition: width 0.4s ease;
+}
+
+.analysis-budget-bar .budget-text {
+  white-space: nowrap; font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+
+/* 消费结构条 */
+.analysis-structure-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.analysis-structure-cat {
+  min-width: 80px; font-size: var(--text-body-sm);
+  color: var(--text-secondary); white-space: nowrap;
+}
+
+.analysis-structure-bar {
+  flex: 1; height: 8px; border-radius: 4px;
+  background: var(--surface-default); overflow: hidden;
+}
+
+.analysis-structure-fill {
+  height: 100%; border-radius: 4px; transition: width 0.5s ease;
+}
+
+.analysis-structure-percent {
+  min-width: 40px; text-align: right;
+  font-size: var(--text-caption); font-weight: var(--fw-semibold);
+}
+
+/* 异常检测条目 */
+.anomaly-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--expense-soft);
+  margin-bottom: var(--space-1);
+  font-size: var(--text-body-sm);
+}
+
+.anomaly-item .anomaly-icon { font-size: 16px; flex-shrink: 0; }
+.anomaly-item .anomaly-info { flex: 1; min-width: 0; }
+.anomaly-item .anomaly-title { font-weight: var(--fw-medium); color: var(--text-primary); }
+.anomaly-item .anomaly-desc { color: var(--text-tertiary); font-size: var(--text-caption); }
+
+/* 洞察/建议条目：2列网格，紧凑卡片 */
+.insight-item, .ai-advice-item {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-hover);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-body-sm); line-height: 1.5;
+}
+
+.insight-item:last-child, .ai-advice-item:last-child { margin-bottom: 0; }
+
+.insight-item .insight-title, .ai-advice-item .advice-type {
+  font-weight: var(--fw-semibold); color: var(--text-primary);
+  margin-bottom: 2px; font-size: var(--text-body-sm);
+}
+
+.insight-item .insight-desc, .ai-advice-item .advice-content {
+  color: var(--text-secondary); font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.insight-item .insight-action, .ai-advice-item .advice-impact {
+  margin-top: 2px; color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+/* AI 洞察/建议：标题行 + 重要程度/优先级标签 */
+.insight-head, .advice-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); margin-bottom: 2px;
+}
+.insight-item .insight-title, .ai-advice-item .advice-type {
+  font-weight: var(--fw-semibold); color: var(--text-primary);
+  font-size: var(--text-body-sm); flex: 1; min-width: 0;
+}
+.lv-badge, .pr-badge {
+  flex-shrink: 0; font-size: var(--text-xs); line-height: 1;
+  padding: 3px 7px; border-radius: 999px; font-weight: var(--fw-medium);
+  border: 1px solid transparent; white-space: nowrap;
+}
+/* 重要程度 */
+.lv-warning, .pr-high { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+.lv-info, .pr-medium { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.lv-tip, .pr-low { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+/* 高优先级卡片左侧强调色 */
+.ai-advice-item.pr-high { border-left: 3px solid var(--expense); }
+.insight-item.lv-warning { border-left: 3px solid #f87171; }
+
+/* 洞察/建议列表内容区：限制高度滚动 */
+#insightList, #aiAdviceList {
+  max-height: 360px; overflow-y: auto;
+  margin: var(--space-3) 0;
+  padding-right: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   12. RESPONSIVE
+   -------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .analysis-overview { grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+  .analysis-overview-card { padding: var(--space-3); }
+  .analysis-overview-card .overview-value { font-size: 20px; }
+  .analysis-grid-2col { grid-template-columns: 1fr; }
+  .analysis-ai-grid { grid-template-columns: 1fr; }
+  #anomalyList { grid-template-columns: 1fr; }
+  .account-list { grid-template-columns: 1fr; }
+  .inv-summary-row { grid-template-columns: repeat(2, 1fr); }
+  #savingsGoalList,
+  #investList,
+  #debtList { grid-template-columns: 1fr; }
+  .tag-grid { grid-template-columns: repeat(2, 1fr); }
+  .budget-cat { width: 80px; }
+
+  /* -------- 交易表格 → 卡片列表 -------- */
+  /* 隐藏桌面端表头（筛选控件太宽不适合移动端） */
+  .trans-thead { display: none; }
+
+  /* 取消 grid，改为纵向 flex 卡片 */
+  .trans-table { display: block; min-width: auto; }
+  .trans-tbody { display: flex; flex-direction: column; gap: 6px; }
+
+  /* 按天分组：保留日期头，调小间距 */
+  .trans-date-group { border-bottom: none; }
+  .trans-date-header {
+    padding: 6px 4px;
+    font-size: var(--text-body-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--text-secondary);
+    background: transparent;
+    border-bottom: none;
+    position: sticky; top: 0; z-index: 5;
+    backdrop-filter: blur(8px);
+  }
+
+  /* 每行转卡片 */
+  .trans-row {
+    display: flex !important;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+  }
+  .trans-row:active { box-shadow: var(--shadow-md); }
+
+  /* 头部：时间 / 类型 / 金额 */
+  .trans-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .trans-time {
+    font-size: var(--text-caption);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .trans-type {
+    font-size: var(--text-caption);
+    color: var(--text-tertiary);
+    font-weight: var(--fw-medium);
+  }
+  .trans-amount {
+    margin-left: auto;
+    font-size: 17px;
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+  }
+  .trans-amount.income { color: var(--income); }
+  .trans-amount.expense { color: var(--expense); }
+  .trans-amount.transfer { color: var(--accent-500); }
+
+  /* 中部：分类 + 账户 */
+  .trans-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-body-sm);
+  }
+  .trans-category {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: var(--fw-medium);
+  }
+  .trans-account {
+    color: var(--text-secondary);
+    font-size: var(--text-caption);
+  }
+
+  /* 标签 + 备注 */
+  .trans-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .trans-desc {
+    font-size: var(--text-caption);
+    color: var(--text-tertiary);
+  }
+
+  /* 操作按钮行 */
+  .trans-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 2px;
+  }
+  .trans-actions button {
+    background: var(--surface-hover);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .trans-actions button:active { background: var(--accent-500); color: #fff; }
+}
+
+/* --------------------------------------------------------------------------
+   13. DEBT MANAGEMENT
+   -------------------------------------------------------------------------- */
+.debt-overview {
+  display: grid; grid-template-columns: 1fr 180px;
+  gap: var(--space-3); margin-bottom: var(--space-4);
+}
+.debt-summary-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+.debt-summary-item { text-align: center; }
+.debt-summary-label {
+  display: block; font-size: var(--text-caption);
+  color: var(--text-tertiary); margin-bottom: 2px;
+}
+.debt-summary-value {
+  font-size: var(--text-display-xs); font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.debt-actions {
+  display: flex; align-items: center; justify-content: center;
+}
+.debt-item { padding: var(--space-3); }
+.debt-item-header {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.debt-item-name {
+  font-weight: var(--fw-semibold); font-size: var(--text-body);
+  color: var(--text-primary); flex: 1;
+}
+.debt-item-type {
+  font-size: var(--text-xs); padding: 2px 8px;
+  border-radius: 999px; background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.debt-status {
+  font-size: var(--text-xs); padding: 2px 8px;
+  border-radius: 999px; font-weight: var(--fw-medium);
+}
+.debt-active { color: #047857; background: #ecfdf5; }
+.debt-paid { color: #6b7280; background: #f9fafb; opacity: 0.7; }
+.debt-overdue { color: #b91c1c; background: #fef2f2; }
+.debt-item-info {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2); margin-bottom: var(--space-1);
+}
+.debt-info-label {
+  display: block; font-size: var(--text-xs); color: var(--text-tertiary);
+}
+.debt-info-value {
+  font-size: var(--text-body-sm); font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+.debt-meta {
+  font-size: var(--text-xs); color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+}
+.debt-item-actions { display: flex; gap: var(--space-1); }
+.debt-form, .repay-form {
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+@media (max-width: 720px) {
+  .debt-overview { grid-template-columns: 1fr; }
+  .debt-summary-row { grid-template-columns: repeat(2, 1fr); }
+  .debt-item-info { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* 仪表盘债务卡片 */
+.debt-dash-summary {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+.debt-dash-item {
+  display: flex; flex-direction: column;
+  padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--surface-hover);
+}
+.debt-dash-label {
+  font-size: var(--text-xs); color: var(--text-tertiary);
+}
+.debt-dash-value {
+  font-size: var(--text-body); font-weight: var(--fw-semibold);
+  color: var(--text-primary); margin-top: 2px;
+}
+.debt-dash-sub {
+  margin-top: var(--space-2); font-size: var(--text-xs);
+  color: var(--text-tertiary); text-align: center;
+}
+.debt-overdue-text .debt-dash-value { color: #b91c1c; }
+
+/* 仪表盘 AI 洞察/建议预览 */
+.dash-ai-item {
+  padding: var(--space-2) 0;
+}
+.dash-ai-head {
+  font-weight: var(--fw-semibold); font-size: var(--text-body-sm);
+  color: var(--text-primary); margin-bottom: 4px;
+}
+.dash-ai-desc {
+  font-size: var(--text-xs); color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.goal-ops {
+  margin-left: auto; font-size: var(--text-xs);
+  color: var(--text-tertiary); white-space: nowrap;
+}
+.goal-ops span {
+  cursor: pointer; transition: color 0.15s;
+}
+.goal-ops span:hover { color: var(--interactive-default); }
+.goal-ops span[data-action="repay-debt"] { color: var(--interactive-default); font-weight: var(--fw-medium); }
+.goal-pct.overdue { color: #b91c1c; font-weight: var(--fw-bold); }
+/* 债务页面的 goal-foot 需要 flex 放操作链接 */
+.debt-goal-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--text-xs); color: var(--text-tertiary);
+  gap: var(--space-1); flex-wrap: wrap;
+}
+/* 两行布局更紧凑：去掉进度条 gap */
+.debt-goal-row { gap: 2px !important; }

@@ -1,0 +1,14 @@
+node_modules/
+.env
+*.log
+.DS_Store
+Thumbs.db
+__pycache__/
+.venv/
+dist/
+.cache/
+# 排除临时图片，但保留 logo 和 images 目录下的图片
+*.png
+!images/*.png
+.workbuddy/
+server/routes.js.original

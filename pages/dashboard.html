@@ -1,0 +1,92 @@
+            <section class="page active" id="page-dashboard">
+                <!-- KPI 8 卡：本周结余 / 本月结余 / 本年结余 / 总资产 -->
+                <!--          月储蓄率 / 理财盈亏 / 总负债 / 净资产 -->
+                <div class="dash-kpi-bar" id="dashKpiBar">
+                    <div class="kpi-card" data-detail="week">
+                        <div class="kpi-icon">📅</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">本周结余</span>
+                            <span class="kpi-value" id="dashWeekBalance">¥0</span>
+                            <span class="kpi-sub" id="dashWeekDetail">--</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="month">
+                        <div class="kpi-icon">💰</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">本月结余</span>
+                            <span class="kpi-value" id="dashMonthBalance">¥0</span>
+                            <span class="kpi-sub" id="dashMonthChange">收 0 支 0</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="year">
+                        <div class="kpi-icon">📈</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">本年结余</span>
+                            <span class="kpi-value" id="dashYearBalance">¥0</span>
+                            <span class="kpi-sub" id="dashYearDetail">收 0 支 0</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="assets">
+                        <div class="kpi-icon">🏦</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">总资产</span>
+                            <span class="kpi-value" id="dashTotalAssets">¥0</span>
+                            <span class="kpi-sub">含投资</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="investments">
+                        <div class="kpi-icon">📊</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">月储蓄率 <span id="dashSavingsRateBadge" class="kpi-badge">--</span></span>
+                            <span class="kpi-value" id="dashSavingsRate">--</span>
+                            <span class="kpi-sub" id="dashMonthSummary">净储蓄 ¥0</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="investments">
+                        <div class="kpi-icon">💹</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">理财盈亏</span>
+                            <span class="kpi-value" id="dashInvProfit">¥0</span>
+                            <span class="kpi-sub" id="dashInvRate">--</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="debts">
+                        <div class="kpi-icon">💳</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">总负债</span>
+                            <span class="kpi-value" id="dashTotalDebt">¥0</span>
+                            <span class="kpi-sub" id="dashDebtSub">月供 0</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card" data-detail="none">
+                        <div class="kpi-icon">💎</div>
+                        <div class="kpi-info">
+                            <span class="kpi-label">净资产</span>
+                            <span class="kpi-value" id="dashNetWorth">¥0</span>
+                            <span class="kpi-sub" id="dashAssetDebt">资产 0 / 负债 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 风险预警条（如有逾期/超支/低余额则显示） -->
+                <!-- 风险预警条（暂时关闭） -->
+
+                <!-- 主网格：核心 3 卡 -->
+                <div class="dash-grid">
+                    <div class="glass-card chart-card"><h3 class="card-title">收支趋势 <span class="card-sub" id="dashTrendMoM"></span></h3><canvas id="dashTrendChart" height="240"></canvas></div>
+                    <div class="glass-card chart-card"><h3 class="card-title">支出构成</h3><canvas id="dashPieChart" height="240"></canvas></div>
+                    <div class="glass-card balance-overview-card">
+                        <h3 class="card-title">🏛️ 资产负债概览 <span class="see-all" data-page="reports">报表 →</span></h3>
+                        <div class="balance-overview" id="dashBalanceOverview"><div class="skel-text">加载中…</div></div>
+                    </div>
+                </div>
+
+                <!-- 卡片明细弹窗 -->
+                <div class="modal-overlay" id="dashDetailModal">
+                    <div class="modal modal-detail">
+                        <div class="modal-header"><h3 id="dashDetailTitle">明细</h3><button class="modal-close" id="dashDetailClose">✕</button></div>
+                        <div class="dash-detail-summary" id="dashDetailSummary"></div>
+                        <div class="dash-detail-list" id="dashDetailList"></div>
+                    </div>
+                </div>
+            </section>

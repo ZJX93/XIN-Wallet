@@ -1,0 +1,115 @@
+/* ============================================
+   鑫钱包 · Database Connection Pool
+   ============================================ */
+
+const mariadb = require('mariadb');
+
+const pool = mariadb.createPool({
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: parseInt(process.env.DB_PORT || '3306'),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'xinwallet',
+  connectionLimit: 10,
+  charset: 'utf8mb4',
+  supportBigNumbers: true,
+  bigNumberStrings: true,
+  trace: process.env.NODE_ENV !== 'production',
+  initSql: "SET time_zone = '+08:00'"
+});
+
+async function getConn() {
+  return pool.getConnection();
+}
+
+async function query(sql, params = []) {
+  let conn;
+  try {
+    conn = await getConn();
+    const result = await conn.query(sql, params);
+    return result;
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+async function queryOne(sql, params = []) {
+  const rows = await query(sql, params);
+  return rows[0] || null;
+}
+
+async function transaction(fn) {
+  let conn;
+  try {
+    conn = await getConn();
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    if (conn) await conn.rollback();
+    throw err;
+  } finally {
+    if (conn) conn.release();
+  }
+}
+
+// 初始化数据库（执行 schema.sql）
+async function initDatabase() {
+  console.log('🔧 正在初始化数据库...');
+  try {
+    // 先尝试创建数据库
+    const rootPool = mariadb.createPool({
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: parseInt(process.env.DB_PORT || '3306'),
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      connectionLimit: 5,
+      charset: 'utf8mb4',
+      initSql: "SET time_zone = '+08:00'"
+    });
+
+    let rootConn;
+    try {
+      rootConn = await rootPool.getConnection();
+      const dbName = process.env.DB_NAME || 'xinwallet';
+      await rootConn.query(`CREATE DATABASE IF NOT EXISTS ${dbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      console.log(`✅ 数据库 ${dbName} 已创建`);
+    } finally {
+      if (rootConn) rootConn.release();
+      await rootPool.end();
+    }
+
+    // 读取并执行 schema.sql
+    const fs = require('fs');
+    const path = require('path');
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+
+    // 分割并逐条执行。排除 USE 语句与纯注释行（多行语句第一行可能是注释，
+    // 因此仅当整段以 "--" 开头且不含 SQL 关键字时才跳过）。
+    const statements = schemaSql
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s && !s.startsWith('USE'))
+      .filter(s => !/^\s*--\s/.test(s) || /\b(CREATE|INSERT|ALTER|DROP|SELECT|UPDATE|DELETE|SET)\b/i.test(s));
+
+    for (const stmt of statements) {
+      try {
+        await query(stmt);
+      } catch (err) {
+        if (!err.message.includes('already exists') && !err.message.includes('Duplicate')) {
+          console.warn('⚠️ Schema 执行警告:', err.message);
+        }
+      }
+    }
+
+    console.log('✅ 数据库表结构已初始化');
+    return true;
+  } catch (err) {
+    console.error('❌ 数据库初始化失败:', err.message);
+    return false;
+  }
+}
+
+module.exports = { pool, query, queryOne, transaction, initDatabase };

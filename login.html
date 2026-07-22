@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="referrer" content="no-referrer-when-downgrade">
+    <title>登录 · 鑫钱包</title>
+    <link rel="icon" type="image/png" href="images/logo.png">
+    <link rel="stylesheet" href="css/login.css">
+    <!-- 自动推导 API 基址：兼容「反向代理 / 子路径」部署 -->
+    <script>
+        window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
+    </script>
+</head>
+<body>
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-brand">
+                <span class="logo-icon"></span>
+                <span class="logo-text">鑫钱包</span>
+            </div>
+            <p class="login-sub">Smart Finance · 个人财务管理</p>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login">登录</button>
+                <button class="auth-tab" data-tab="register">注册</button>
+            </div>
+
+            <form class="auth-form" id="authForm">
+                <div class="form-group" id="authNickGroup" style="display:none">
+                    <label>昵称</label>
+                    <input type="text" id="authNick" placeholder="昵称（可选）" autocomplete="nickname">
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="authUser" required placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" id="authPass" required placeholder="请输入密码" autocomplete="current-password">
+                </div>
+                <div class="auth-hint" id="authHint" role="status" aria-live="polite"></div>
+                <button type="submit" class="btn btn-primary btn-block" id="authSubmit">登 录</button>
+            </form>
+
+            <div class="demo-hint">
+                <p>首次使用？可直接登录演示账号</p>
+                <button type="button" class="btn btn-ghost btn-block" id="demoLoginBtn">👤 使用演示账号登录</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/login.js"></script>
+</body>
+</html>
