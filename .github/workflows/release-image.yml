@@ -22,7 +22,10 @@ on:
 # 环境变量
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/xinwallet
+  # 镜像名小写（OCI 规范要求），但仓库名可大写
+  IMAGE_OWNER: ${{ github.repository_owner }}
+  IMAGE_REPO: xin-wallet
+  IMAGE_NAME: ${IMAGE_OWNER}/${IMAGE_REPO}/xinwallet
 
 jobs:
   build-and-push:
@@ -66,7 +69,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: ${{ steps.meta.outputs.TAG_NAME }}
+          tags: ${{ env.TAG_NAME }}
+          bake: false
           labels: |
             org.opencontainers.image.title=XIN Wallet
             org.opencontainers.image.description=鑫钱包 - 个人财务助手
