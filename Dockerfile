@@ -1,7 +1,8 @@
 # ============================================
-# 智财 · 多阶段 Docker 构建
+# 鑫钱包 · 多阶段 Docker 构建
 # 运行阶段仅含生产依赖，并以非 root 用户运行
 # 依赖以 server/package.json + server/package-lock.json（项目真实清单）为准，构建可复现
+# 由 .github/workflows/release-image.yml 自动触发（推送 v*.*.* tag）
 # ============================================
 
 # ---- 阶段 1：安装生产依赖 ----
@@ -41,4 +42,13 @@ USER appuser
 EXPOSE 18888
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
   CMD node /app/docker-healthcheck.js
+
+# OCI 镜像元数据（docker/build-push-action 会用 metadata-action 再次写入更完整的 labels）
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="XIN Wallet" \
+      org.opencontainers.image.description="鑫钱包 - 个人财务助手 (Node.js + Express + MariaDB)" \
+      org.opencontainers.image.source="https://github.com/ZJX93/XIN-Wallet" \
+      org.opencontainers.image.vendor="ZJX93" \
+      org.opencontainers.image.licenses="MIT"
+
 CMD ["node", "server/index.js"]

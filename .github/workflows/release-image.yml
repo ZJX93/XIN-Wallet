@@ -1,0 +1,110 @@
+# ============================================
+# 鑫钱包 · 自动构建 Docker 镜像
+# 触发条件：推送形如 vX.Y.Z 的 tag（如 v0.0.1）
+# 行为：构建多架构镜像（amd64 + arm64），推送到 GitHub Container Registry
+# 版本号：从 v0.0.1 开始
+# ============================================
+name: Build & Publish Docker Image
+
+# 触发器：v*.*.* 形式的 tag 推送
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  # 允许手动触发（用于测试）
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '手动构建的版本号（留空生成 dev-<sha>）'
+        required: false
+        default: ''
+
+# 环境变量
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/xinwallet
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # 推送镜像到 GHCR 所需
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 计算镜像 tag
+        id: meta
+        run: |
+          # 优先使用推送的 tag，否则用手动参数，否则用 main-<sha>
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG_NAME=${{ github.event.inputs.tag }}
+          else
+            TAG_NAME=dev-${GITHUB_SHA::7}
+          fi
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "FULL_TAG=${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "Date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "Commit: ${GITHUB_SHA::7}"
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 抽取 Docker 元数据
+        id: meta-docker
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ steps.meta.outputs.TAG_NAME }}
+          labels: |
+            org.opencontainers.image.title=XIN Wallet
+            org.opencontainers.image.description=鑫钱包 - 个人财务助手
+            org.opencontainers.image.vendor=ZJX93
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
+          # 不生成额外标签，tag 由我们自己控制
+          bake: false
+
+      - name: 构建并推送多架构镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.FULL_TAG }}
+          labels: ${{ steps.meta-docker.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # 默认 latest 指向最新稳定版
+          no-cache: false
+
+      - name: 如果是 SemVer tag，额外打上 latest 镜像
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "为 ${TAG_NAME} 添加 latest 标签"
+          docker buildx imagetools create \
+            --tag ${REGISTRY}/${IMAGE_NAME}:latest \
+            --tag ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME} \
+            ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}
+
+      - name: 构建摘要
+        run: |
+          echo "✅ 镜像构建完成:"
+          echo "  ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}"
+          echo ""
+          echo "📋 pull 命令:"
+          echo "  docker pull ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}"
