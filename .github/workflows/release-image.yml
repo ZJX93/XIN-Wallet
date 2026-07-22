@@ -25,7 +25,7 @@ env:
   # 镜像名小写（OCI 规范要求），但仓库名可大写
   IMAGE_OWNER: ${{ github.repository_owner }}
   IMAGE_REPO: xin-wallet
-  IMAGE_NAME: ${IMAGE_OWNER}/${IMAGE_REPO}/xinwallet
+  IMAGE_NAME: ${{ github.repository_owner }}/xin-wallet/xinwallet
 
 jobs:
   build-and-push:
@@ -50,9 +50,7 @@ jobs:
             TAG_NAME=dev-${GITHUB_SHA::7}
           fi
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "FULL_TAG=${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "Date: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          echo "Commit: ${GITHUB_SHA::7}"
+          echo "FULL_TAG=${REGISTRY}/${IMAGE_OWNER}/xin-wallet/xinwallet:${TAG_NAME}" >> $GITHUB_OUTPUT
 
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,23 +62,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 抽取 Docker 元数据
-        id: meta-docker
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: ${{ env.TAG_NAME }}
-          bake: false
-          labels: |
-            org.opencontainers.image.title=XIN Wallet
-            org.opencontainers.image.description=鑫钱包 - 个人财务助手
-            org.opencontainers.image.vendor=ZJX93
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
-          # 不生成额外标签，tag 由我们自己控制
-          bake: false
-
       - name: 构建并推送多架构镜像
         uses: docker/build-push-action@v5
         with:
@@ -88,27 +69,25 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.FULL_TAG }}
-          labels: ${{ steps.meta-docker.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.title=XIN Wallet
+            org.opencontainers.image.description=鑫钱包 - 个人财务助手
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # 默认 latest 指向最新稳定版
-          no-cache: false
-
-      - name: 如果是 SemVer tag，额外打上 latest 镜像
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "为 ${TAG_NAME} 添加 latest 标签"
-          docker buildx imagetools create \
-            --tag ${REGISTRY}/${IMAGE_NAME}:latest \
-            --tag ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME} \
-            ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}
 
       - name: 构建摘要
+        if: success()
         run: |
           echo "✅ 镜像构建完成:"
-          echo "  ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}"
+          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}"
+          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           echo ""
           echo "📋 pull 命令:"
-          echo "  docker pull ${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}"
