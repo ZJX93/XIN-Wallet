@@ -3,22 +3,7 @@ const router = express.Router();
 
 const db = require('../db');
 const { success, fail, handleServerError } = require('./_helpers');
-
-// 辅助：确保分类存在（不存在则自动创建）
-async function ensureCategory(conn, userId, name, type, icon) {
-    let cat = await conn.query(
-        "SELECT id FROM categories WHERE name = ? AND type = ? AND user_id = ?",
-        [name, type, userId]
-    );
-    if (cat.length === 0) {
-        const result = await conn.query(
-            "INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, '#6366f1', TRUE)",
-            [name, type, icon]
-        );
-        return result.insertId;
-    }
-    return cat[0].id;
-}
+const { ensureCategory } = require('./utils');
 
 // 获取储蓄目标列表
 router.get('/', async (req, res) => {

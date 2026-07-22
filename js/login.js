@@ -20,12 +20,8 @@ function setHint(msg, isError) {
 }
 
 async function api(path, method = 'GET', body = null) {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch((window.XIN_API_BASE || '/api') + path, opts);
-    const data = await res.json();
-    if (!data.success) throw new Error(data.message || '请求失败');
-    return data.data;
+    // 复用 utils.js 统一实现：自动注入 Authorization + 401 派发 auth:unauthorized + silent 模式
+    return window.api(path, method, body, { silent: true });
 }
 
 function applyTheme() {

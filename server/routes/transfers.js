@@ -8,12 +8,15 @@ const {
 } = require('./_helpers');
 
 // 业务错误 → HTTP code 智能映射（用于 catch 块）
+// 仅白名单的已知业务错误使用 err.message；未识别错误统一返回通用提示，避免泄露数据库堆栈/内部细节
 function classifyError(err) {
     const msg = err.message || '';
     if (msg.includes('余额不足')) return failConflict(msg);             // 409
     if (msg.includes('账户不存在')) return failNotFound(msg);            // 404
     if (msg.includes('金额')) return failValidation(msg);                // 422
-    return failBadRequest(msg);                                          // 400 (默认)
+    // 未识别的错误：记录到控制台，但对外不暴露原始消息
+    console.error('[transfer] 未分类错误:', err);
+    return failBadRequest('操作失败，请稍后重试');
 }
 
 // ==========================================

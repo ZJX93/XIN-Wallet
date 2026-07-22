@@ -12,3 +12,6 @@ dist/
 !images/*.png
 .workbuddy/
 server/routes.js.original
+# 一次性审计报告（应在 docs/ 或被 .gitignore）
+code-review-report.html
+

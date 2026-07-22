@@ -5,16 +5,18 @@
 
 // ==========================================
 // 辅助：确保分类存在（不存在则自动创建）
+// 优先匹配「系统预设（user_id IS NULL）」或「当前用户私有（user_id = ?）」
+// 统一唯一权威实现，categories.js / savings.js / utils.js 共用本函数
 // ==========================================
 async function ensureCategory(conn, userId, name, type, icon) {
     let cat = await conn.query(
-        "SELECT id FROM categories WHERE name = ? AND type = ? AND user_id = ?",
+        "SELECT id FROM categories WHERE name = ? AND type = ? AND (user_id IS NULL OR user_id = ?) LIMIT 1",
         [name, type, userId]
     );
     if (cat.length === 0) {
         const result = await conn.query(
-            "INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, '#6366f1', TRUE)",
-            [name, type, icon]
+            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, '#6366f1', TRUE)",
+            [userId, name, type, icon]
         );
         return result.insertId;
     }
