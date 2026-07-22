@@ -30,14 +30,7 @@ function showToast(msg, type = 'info') {
     setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 300); }, 3000);
 }
 
-// 金额格式化：千分位 + 固定两位小数，如 ¥1,234,567.00
-const _moneyFmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function fmt(n) {
-    const v = Number(n);
-    if (!isFinite(v)) return '¥0.00';
-    return '¥' + _moneyFmt.format(v);
-}
-// 带符号金额（收入 + / 支出 -），用于列表右侧
+// 带符号金额（收入 + / 支出 -），用于列表右侧。依赖 utils.js 中的 _moneyFmt 和 fmt
 function fmtSigned(n, type) {
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
@@ -436,23 +429,23 @@ function initColorSwatches(containerId, inputId) {
 // ==========================================
 async function boot() {
     console.log('🚀 鑫钱包启动...');
-    await initCache();
-    ThemeManager.init();
-    AccountManager.init();
-    TransferManager.init();
-    TransactionManager.init();
-    BudgetManager.init();
-    InvestmentManager.init();
-    DebtManager.init();
-    TagManager.init();
-    DataManager.init();
-    SavingsGoalManager.init();
-    CsvManager.init();
-    AIRecognition.init();
-    AIProviderManager.init();
-    ReportManager.init();
-    QuickAdd.init();
-    await DashboardManager.init();  // async：需先 await PageLoader.ensureLoaded('page-dashboard')
+    try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message, e.stack); throw e; }
+    try { ThemeManager.init(); console.log('  ✅ ThemeManager'); } catch(e) { console.error('  ❌ ThemeManager:', e.message, e.stack); throw e; }
+    try { AccountManager.init(); console.log('  ✅ AccountManager'); } catch(e) { console.error('  ❌ AccountManager:', e.message, e.stack); throw e; }
+    try { TransferManager.init(); console.log('  ✅ TransferManager'); } catch(e) { console.error('  ❌ TransferManager:', e.message, e.stack); throw e; }
+    try { TransactionManager.init(); console.log('  ✅ TransactionManager'); } catch(e) { console.error('  ❌ TransactionManager:', e.message, e.stack); throw e; }
+    try { BudgetManager.init(); console.log('  ✅ BudgetManager'); } catch(e) { console.error('  ❌ BudgetManager:', e.message, e.stack); throw e; }
+    try { InvestmentManager.init(); console.log('  ✅ InvestmentManager'); } catch(e) { console.error('  ❌ InvestmentManager:', e.message, e.stack); throw e; }
+    try { DebtManager.init(); console.log('  ✅ DebtManager'); } catch(e) { console.error('  ❌ DebtManager:', e.message, e.stack); throw e; }
+    try { TagManager.init(); console.log('  ✅ TagManager'); } catch(e) { console.error('  ❌ TagManager:', e.message, e.stack); throw e; }
+    try { DataManager.init(); console.log('  ✅ DataManager'); } catch(e) { console.error('  ❌ DataManager:', e.message, e.stack); throw e; }
+    try { SavingsGoalManager.init(); console.log('  ✅ SavingsGoal'); } catch(e) { console.error('  ❌ SavingsGoal:', e.message, e.stack); throw e; }
+    try { CsvManager.init(); console.log('  ✅ CsvManager'); } catch(e) { console.error('  ❌ CsvManager:', e.message, e.stack); throw e; }
+    try { AIRecognition.init(); console.log('  ✅ AIRecognition'); } catch(e) { console.error('  ❌ AIRecognition:', e.message, e.stack); throw e; }
+    try { AIProviderManager.init(); console.log('  ✅ AIProvider'); } catch(e) { console.error('  ❌ AIProvider:', e.message, e.stack); throw e; }
+    try { ReportManager.init(); console.log('  ✅ ReportManager'); } catch(e) { console.error('  ❌ ReportManager:', e.message, e.stack); throw e; }
+    try { QuickAdd.init(); console.log('  ✅ QuickAdd'); } catch(e) { console.error('  ❌ QuickAdd:', e.message, e.stack); throw e; }
+    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.error('  ❌ Dashboard:', e.message, e.stack); throw e; }
 
     // 从 URL path 恢复页面状态（干净路由：/transactions）
     const page = currentRoute();
