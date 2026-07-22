@@ -22,10 +22,11 @@ on:
 # 环境变量
 env:
   REGISTRY: ghcr.io
-  # 镜像名小写（OCI 规范要求），但仓库名可大写
+  # OCI 规范要求镜像名全小写（包括 owner 名）。
+  # 仓库名可大写（ZJX93/XIN-Wallet），但镜像地址必须小写：zjx93/xin-wallet/xinwallet
   IMAGE_OWNER: ${{ github.repository_owner }}
   IMAGE_REPO: xin-wallet
-  IMAGE_NAME: ${{ github.repository_owner }}/xin-wallet/xinwallet
+  IMAGE_NAME: ${{ lower(github.repository_owner) }}/xin-wallet/xinwallet
 
 jobs:
   build-and-push:
