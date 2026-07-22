@@ -24,6 +24,7 @@ COPY server ./server
 COPY js ./js
 COPY css ./css
 COPY images ./images
+COPY pages ./pages
 COPY index.html ./
 COPY login.html ./
 

@@ -11,18 +11,14 @@
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/dashboard.css?v=2">
     <link rel="stylesheet" href="css/auth.css">
-    <!-- 自动推导 API 基址：兼容「反向代理 / 子路径」部署，避免 /api 请求打到错误 origin -->
-    <script>
-        window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
-    </script>
+    <!-- 全局配置（API 基址推导 + 登录检查） -->
+    <script src="js/config.js"></script>
     <!-- Chart.js 同步加载（Dashboard / 报表 / 理财 / 储蓄 等页面首屏用到图表） -->
     <script src="js/vendor/chart.umd.min.js"></script>
     <!-- xlsx (CSV/账单导入) 移到主入口之后，按需动态加载；不在 <head> 阻塞首屏 -->
     <link rel="preload" href="js/vendor/xlsx.full.min.js" as="script">
 </head>
 <body>
-    <script>if (!localStorage.getItem('zhicai_token')) location.href = '/login';</script>
-
     <!-- ============================================================
          HEADER
          ============================================================ -->

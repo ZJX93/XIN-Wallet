@@ -58,7 +58,7 @@ const TagManager = {
     filterByTag(id) {
         const sel = document.getElementById('transTagFilter');
         if (sel) sel.value = String(id);
-        switchPage('transactions');
+        window.switchPage && window.switchPage('transactions');
     },
     populateTagFilter() {
         const sel = document.getElementById('transTagFilter');

@@ -10,6 +10,7 @@ const API = window.XIN_API_BASE || '/api';
 
 // 全局缓存
 let cache = { accounts: [], categories: [], investmentTypes: [], investments: [], tags: [], currentMonth: '' };
+window.cache = cache; // ES Module 无法访问 let 声明的顶级变量，显式挂载到 window
 
 // ==========================================
 // api() / fmt() / escapeHtml() 已通过 utils.js 注入到 window，无需重复定义
@@ -87,10 +88,7 @@ function fmtTransTime(s) {
     const { time } = parseDateParts(s);
     return time || '00:00';
 }
-function escapeHtml(s) {
-    if (s == null) return '';
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+// escapeHtml 已在 utils.js 中定义并挂载到 window，此处不再重复
 
 // 合并转账配对：将 transfer_in/transfer_out 合并为一条转账记录
 function mergeTransferPairs(transactions) {
@@ -326,18 +324,25 @@ window.addEventListener('popstate', () => {
 });
 
 async function refreshPage(page) {
-    if (page === 'dashboard') await DashboardManager.refresh();
-    if (page === 'accounts') await AccountManager.refresh();
-    if (page === 'transfers') await TransferManager.refresh();
-    if (page === 'transactions') await TransactionManager.refresh();
-    if (page === 'budget') await BudgetManager.refresh();
-    if (page === 'investments') { await InvestmentManager.refresh(); await SavingsGoalManager.refresh(); await InvestmentManager.autoRefreshQuotes(); }
-    if (page === 'debts') await DebtManager.refresh();
-    if (page === 'data-center') await DataManager.refresh();
-    if (page === 'tags') await TagManager.refresh();
-    if (page === 'ai-config') { await AIProviderManager.refresh(); await AIProviderManager.refreshOcrConfig(); }
-    if (page === 'reports') await ReportManager.refresh();
-    if (page === 'analysis') await AnalysisManager.refresh();
+    // 各 Manager 通过 ES Module 异步注入到 window（见 managers/index.js），
+    // 统一使用 window.xxx 避免裸标识符在模块加载前的 ReferenceError
+    const M = window;
+    if (page === 'dashboard' && M.DashboardManager) await M.DashboardManager.refresh();
+    if (page === 'accounts' && M.AccountManager) await M.AccountManager.refresh();
+    if (page === 'transfers' && M.TransferManager) await M.TransferManager.refresh();
+    if (page === 'transactions' && M.TransactionManager) await M.TransactionManager.refresh();
+    if (page === 'budget' && M.BudgetManager) await M.BudgetManager.refresh();
+    if (page === 'investments') {
+        if (M.InvestmentManager) { await M.InvestmentManager.refresh(); await M.InvestmentManager.autoRefreshQuotes(); }
+        if (M.SavingsGoalManager) await M.SavingsGoalManager.refresh();
+    }
+    if (page === 'debts' && M.DebtManager) await M.DebtManager.refresh();
+    if (page === 'data-center' && M.DataManager) await M.DataManager.refresh();
+    if (page === 'tags' && M.TagManager) await M.TagManager.refresh();
+    if (page === 'ai-recognition' && M.AIRecognition) await M.AIRecognition.refresh();
+    if (page === 'ai-config') { if (M.AIProviderManager) { await M.AIProviderManager.refresh(); await M.AIProviderManager.refreshOcrConfig(); } }
+    if (page === 'reports' && M.ReportManager) await M.ReportManager.refresh();
+    if (page === 'analysis' && M.AnalysisManager) await M.AnalysisManager.refresh();
 }
 
 function quickAddFromAI(catId, note) {

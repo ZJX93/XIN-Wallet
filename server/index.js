@@ -17,6 +17,7 @@ const multer = require('multer');
 const db = require('./db');
 const routes = require('./routes');
 const { hashPassword } = require('./auth');
+const { ensureUserSeed } = require('./seed-data');
 
 const app = express();
 const PORT = process.env.PORT || 18888;
@@ -102,6 +103,30 @@ app.use(express.urlencoded({ extended: true }));
 // OCR 上传路由需在 body parser 之后、API 路由之前，使用 multer 局部中间件
 app.use('/api', upload.single('image'), routes);
 
+// 全局错误处理中间件：统一所有 API 错误的响应格式
+app.use((err, req, res, next) => {
+    // 记录错误日志（生产环境可接入日志系统）
+    console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err.stack || err);
+    
+    // Multer 文件大小限制错误
+    if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, message: '文件大小超过限制（最大 5MB）' });
+    }
+    
+    // JSON 解析错误
+    if (err.type === 'entity.parse.failed') {
+        return res.status(400).json({ success: false, message: '请求数据格式错误' });
+    }
+    
+    // 默认 500 错误，不泄露堆栈信息
+    res.status(err.status || 500).json({
+        success: false,
+        message: process.env.NODE_ENV === 'production' 
+            ? '服务器内部错误，请稍后重试' 
+            : err.message || '未知错误'
+    });
+});
+
 // 静态文件（前端）：仅暴露前端必要文件，屏蔽源码与配置文件泄露
 const BLOCKED_PATHS = /^\/(server|node_modules|\.env|docker-compose[^/]*\.yml|Dockerfile|\.dockerignore|README\.md|package\.json|package-lock\.json|server\/)/i;
 app.use((req, res, next) => {
@@ -118,8 +143,8 @@ app.use(express.static(path.join(__dirname, '..'), {
             // 第三方库：长期缓存（先于 .js 匹配）
             res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
         } else if (/\.(html|css|js)$/.test(filePath)) {
-            // 应用代码：始终验证新鲜度，ETag 304 避免重复传输
-            res.setHeader('Cache-Control', 'no-cache');
+            // 应用代码：no-store 强制每次重新下载（开发/演示环境避免浏览器缓存旧代码）
+            res.setHeader('Cache-Control', 'no-store');
         } else if (/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/.test(filePath)) {
             // 静态资源：短期缓存
             res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -202,16 +227,22 @@ async function start() {
         console.warn('⚠️ 创建演示账号时出错:', err.message);
     }
 
-    // 插入演示数据（如果交易表为空）
+    // 演示账号：自动注入种子数据（覆盖所有功能模块）
     try {
-        const count = await db.queryOne('SELECT COUNT(*) as cnt FROM transactions WHERE user_id = 1');
-        if (parseInt(count.cnt) === 0) {
-            console.log('📝 插入演示数据...');
-            await insertDemoData();
-            console.log('✅ 演示数据已插入');
+        const demoUser = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");
+        if (demoUser) {
+            const demoUserId = demoUser.id;
+            const hasData = await db.queryOne('SELECT COUNT(*) AS cnt FROM transactions WHERE user_id = ?', [demoUserId]);
+            if (parseInt(hasData.cnt) === 0) {
+                console.log('📝 为演示账号注入完整的演示数据...');
+                const inserted = await ensureUserSeed(demoUserId);
+                if (inserted) {
+                    console.log('✅ 演示账号数据已就绪（账户/交易/转账/预算/理财/储蓄/债务/标签）');
+                }
+            }
         }
     } catch (err) {
-        console.warn('⚠️ 检查演示数据时出错:', err.message);
+        console.warn('⚠️ 演示数据初始化失败:', err.message);
     }
 
     const server = app.listen(PORT, () => {
@@ -235,145 +266,7 @@ async function start() {
     process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-async function insertDemoData() {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-
-    const currentMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
-    const prevMonth = m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, '0')}`;
-
-    const accountId = 2; // 工商银行
-
-    // 当前月交易
-    const demoTransactions = [
-        { category_id: 15, type: 'income', amount: 15000, note: '月工资', dayOffset: 1 },
-        { category_id: 16, type: 'income', amount: 3000, note: '季度奖金', dayOffset: 5 },
-        { category_id: 17, type: 'income', amount: 800, note: '基金分红', dayOffset: 10 },
-        { category_id: 1, type: 'expense', amount: 45, note: '午餐', dayOffset: 1 },
-        { category_id: 1, type: 'expense', amount: 120, note: '周末聚餐', dayOffset: 3 },
-        { category_id: 1, type: 'expense', amount: 35, note: '早餐+咖啡', dayOffset: 5 },
-        { category_id: 1, type: 'expense', amount: 200, note: '超市采购', dayOffset: 8 },
-        { category_id: 2, type: 'expense', amount: 30, note: '滴滴打车', dayOffset: 2 },
-        { category_id: 2, type: 'expense', amount: 150, note: '加油', dayOffset: 7 },
-        { category_id: 3, type: 'expense', amount: 299, note: '京东购物', dayOffset: 4 },
-        { category_id: 3, type: 'expense', amount: 89, note: '日用品', dayOffset: 9 },
-        { category_id: 5, type: 'expense', amount: 50, note: '电影票', dayOffset: 6 },
-        { category_id: 5, type: 'expense', amount: 128, note: '游戏充值', dayOffset: 11 },
-        { category_id: 4, type: 'expense', amount: 3500, note: '房租', dayOffset: 1 },
-        { category_id: 8, type: 'expense', amount: 100, note: '手机话费', dayOffset: 3 },
-        { category_id: 6, type: 'expense', amount: 200, note: '体检', dayOffset: 12 },
-        { category_id: 7, type: 'expense', amount: 500, note: '网课', dayOffset: 6 },
-        { category_id: 9, type: 'expense', amount: 350, note: '买衣服', dayOffset: 10 },
-    ];
-
-    await db.transaction(async (conn) => {
-        for (const t of demoTransactions) {
-            const d = new Date(y, m, Math.max(1, now.getDate() - t.dayOffset));
-            await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-         VALUES (1, ?, ?, ?, ?, ?, ?)`,
-                [accountId, t.category_id, t.type, t.amount, t.note, d.toISOString().split('T')[0]]
-            );
-        }
-
-        // 上月交易
-        for (const t of demoTransactions) {
-            const d = new Date(prevMonth + '-15');
-            const factor = 0.8 + Math.random() * 0.4;
-            await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-         VALUES (1, ?, ?, ?, ?, ?, ?)`,
-                [accountId, t.category_id, t.type, Math.round(t.amount * factor), t.note + '(上月)', prevMonth + '-' + String(Math.max(1, 15 - t.dayOffset % 10)).padStart(2, '0')]
-            );
-        }
-
-        // 转账演示数据（生成 transfers 记录 + transfer_out / transfer_in 配对交易）
-        const demoTransfers = [
-            { from_account_id: 2, to_account_id: 1, amount: 3000, note: '工资取现', dayOffset: 2 },
-            { from_account_id: 4, to_account_id: 5, amount: 500, note: '零钱归集', dayOffset: 5 }
-        ];
-        for (const tx of demoTransfers) {
-            const d = new Date(y, m, Math.max(1, now.getDate() - tx.dayOffset));
-            const dateStr = d.toISOString().split('T')[0];
-            const insertResult = await conn.query(
-                `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (1, ?, ?, ?, ?, ?, 'completed')`,
-                [tx.from_account_id, tx.to_account_id, tx.amount, tx.note, dateStr]
-            );
-            const transferId = Number(insertResult.insertId);
-            await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (1, ?, 22, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                [tx.from_account_id, tx.amount, `转账至${tx.note}`, dateStr, transferId, tx.from_account_id]
-            );
-            await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (1, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                [tx.to_account_id, tx.amount, `来自${tx.note}`, dateStr, transferId, tx.to_account_id]
-            );
-        }
-
-        // 预算（表结构：name + period_type + start_date + end_date + amount）
-        const budgetData = [
-            { name: '餐饮', amount: 2000 },
-            { name: '交通', amount: 500 },
-            { name: '购物', amount: 800 },
-            { name: '娱乐', amount: 300 },
-            { name: '住房', amount: 4000 },
-            { name: '通讯', amount: 150 },
-            { name: '医疗', amount: 300 },
-            { name: '教育', amount: 600 },
-            { name: '人情', amount: 500 },
-        ];
-        // 当前月第一天 / 最后一天（与 budgets 表的 start_date/end_date 周期对齐）
-        const [bYear, bMonth] = currentMonth.split('-');
-        const budgetStart = `${currentMonth}-01`;
-        const budgetEnd = `${currentMonth}-${String(new Date(parseInt(bYear), parseInt(bMonth), 0).getDate()).padStart(2, '0')}`;
-        for (const b of budgetData) {
-            await conn.query(
-                `INSERT INTO budgets (user_id, name, period_type, start_date, end_date, amount) VALUES (1, ?, 'month', ?, ?, ?)`,
-                [b.name, budgetStart, budgetEnd, b.amount]
-            );
-        }
-
-        // 理财持仓演示数据
-        const investData = [
-            { type_id: 2, name: '余额宝', code: '000198', buy_price: 1, current_price: 1.0003, quantity: 20000, buy_date: '2025-01-01', expected_rate: 2.5 },
-            { type_id: 4, name: '沪深300ETF', code: '510300', buy_price: 4.12, current_price: 4.56, quantity: 5000, buy_date: '2025-03-15', expected_rate: 8 },
-            { type_id: 3, name: '纯债基金A', code: '003547', buy_price: 1.05, current_price: 1.08, quantity: 10000, buy_date: '2025-02-01', expected_rate: 4.5 },
-            { type_id: 1, name: '银行定期', code: '', buy_price: 1, current_price: 1, quantity: 50000, buy_date: '2025-06-01', expected_rate: 2.75 },
-            { type_id: 10, name: '黄金ETF', code: '518880', buy_price: 5.32, current_price: 5.85, quantity: 2000, buy_date: '2025-04-10', expected_rate: 6 },
-        ];
-        for (const i of investData) {
-            const totalCost = parseFloat(i.buy_price) * parseFloat(i.quantity);
-            const currentValue = parseFloat(i.current_price) * parseFloat(i.quantity);
-            await conn.query(
-                `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, buy_date, expected_rate, status)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')`,
-                [accountId, i.type_id, i.name, i.code, i.buy_price, i.current_price, i.quantity, totalCost, currentValue, i.buy_date, i.expected_rate]
-            );
-        }
-
-        // 储蓄目标演示数据
-        const goalData = [
-            { name: '新车基金', target: 200000, current: 65000, icon: '🚗' },
-            { name: '旅行基金', target: 50000, current: 12000, icon: '✈️' },
-            { name: '应急储备', target: 100000, current: 100000, icon: '🛡️' },
-        ];
-        for (const g of goalData) {
-            await conn.query(
-                `INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, status) VALUES (1, ?, ?, ?, ?, 'active')`,
-                [g.name, g.target, g.current, g.icon]
-            );
-        }
-    });
-
-    // 复式记账：演示数据写入后，按账本重算所有演示账户余额（当前余额 = 期初 + 账本净额）
-    const demoAccounts = await db.query('SELECT id FROM accounts WHERE user_id = 1');
-    for (const acc of demoAccounts) {
-        const bal = await routes.computeAccountBalance(db, 1, acc.id);
-        await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ?', [bal, acc.id, 1]);
-    }
-}
+// insertDemoData 已迁移至 server/seed-data.js
+// 通过 ensureUserSeed(userId) 函数统一为新用户/演示用户注入全量种子数据
 
 start();

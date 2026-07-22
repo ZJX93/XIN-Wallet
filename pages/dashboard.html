@@ -1,8 +1,8 @@
             <section class="page active" id="page-dashboard">
                 <!-- KPI 8 卡：本周结余 / 本月结余 / 本年结余 / 总资产 -->
-                <!--          月储蓄率 / 理财盈亏 / 总负债 / 净资产 -->
+                <!--          储蓄率 / 理财盈亏 / 总负债 / 净资产 -->
                 <div class="dash-kpi-bar" id="dashKpiBar">
-                    <div class="kpi-card" data-detail="week">
+                    <div class="kpi-card" data-detail="week" data-action="detail">
                         <div class="kpi-icon">📅</div>
                         <div class="kpi-info">
                             <span class="kpi-label">本周结余</span>
@@ -10,7 +10,7 @@
                             <span class="kpi-sub" id="dashWeekDetail">--</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="month">
+                    <div class="kpi-card" data-detail="month" data-action="detail">
                         <div class="kpi-icon">💰</div>
                         <div class="kpi-info">
                             <span class="kpi-label">本月结余</span>
@@ -18,7 +18,7 @@
                             <span class="kpi-sub" id="dashMonthChange">收 0 支 0</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="year">
+                    <div class="kpi-card" data-detail="year" data-action="detail">
                         <div class="kpi-icon">📈</div>
                         <div class="kpi-info">
                             <span class="kpi-label">本年结余</span>
@@ -26,7 +26,7 @@
                             <span class="kpi-sub" id="dashYearDetail">收 0 支 0</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="assets">
+                    <div class="kpi-card" data-detail="assets" data-action="detail">
                         <div class="kpi-icon">🏦</div>
                         <div class="kpi-info">
                             <span class="kpi-label">总资产</span>
@@ -34,15 +34,15 @@
                             <span class="kpi-sub">含投资</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="investments">
+                    <div class="kpi-card" data-page="investments" data-action="navigate">
                         <div class="kpi-icon">📊</div>
                         <div class="kpi-info">
-                            <span class="kpi-label">月储蓄率 <span id="dashSavingsRateBadge" class="kpi-badge">--</span></span>
+                            <span class="kpi-label">储蓄率 <span id="dashSavingsRateBadge" class="kpi-badge">--</span></span>
                             <span class="kpi-value" id="dashSavingsRate">--</span>
-                            <span class="kpi-sub" id="dashMonthSummary">净储蓄 ¥0</span>
+                            <span class="kpi-sub" id="dashSavingsSummary">累计净结余</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="investments">
+                    <div class="kpi-card" data-page="investments" data-action="navigate">
                         <div class="kpi-icon">💹</div>
                         <div class="kpi-info">
                             <span class="kpi-label">理财盈亏</span>
@@ -50,7 +50,7 @@
                             <span class="kpi-sub" id="dashInvRate">--</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="debts">
+                    <div class="kpi-card" data-page="debts" data-action="navigate">
                         <div class="kpi-icon">💳</div>
                         <div class="kpi-info">
                             <span class="kpi-label">总负债</span>
@@ -58,7 +58,7 @@
                             <span class="kpi-sub" id="dashDebtSub">月供 0</span>
                         </div>
                     </div>
-                    <div class="kpi-card" data-detail="none">
+                    <div class="kpi-card" data-detail="assets" data-action="detail">
                         <div class="kpi-icon">💎</div>
                         <div class="kpi-info">
                             <span class="kpi-label">净资产</span>

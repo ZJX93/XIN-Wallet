@@ -35,13 +35,26 @@ const AIRecognition = {
         if (container) {
             container.innerHTML = `<div class="empty-hint"><div class="empty-icon">⚠️</div><p>未配置 AI 服务商</p><button class="btn btn-primary btn-ai" style="margin-top:12px" data-goto-ai-config>前往 AI 配置</button></div>`;
             // 用事件委托绑定跳转，避免 inline onclick 在某些环境下不生效
-            container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => switchPage('ai-config'));
+            container.querySelector('[data-goto-ai-config]')?.addEventListener('click', () => window.switchPage && window.switchPage('ai-config'));
         }
     },
 
     init() {
         const firstEl = document.getElementById('aiImportAllBtn');
         if (!firstEl) return;  // ai-recognition 页面通过 PageLoader 惰加载
+        this._bindEvents();
+    },
+
+    // 懒加载时 init 可能错过，refresh 时补上事件绑定
+    refresh() {
+        const firstEl = document.getElementById('aiImportAllBtn');
+        if (firstEl && !this._eventsBound) {
+            this._bindEvents();
+        }
+    },
+
+    _bindEvents() {
+        this._eventsBound = true;
         document.getElementById('aiImportAllBtn').addEventListener('click', () => this.importAll());
 
         // OCR 上传
@@ -750,7 +763,7 @@ const AIRecognition = {
         const cat = this.guessCat(input);
         document.getElementById('aiCatResult').style.display = 'block';
         document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${cat.icon} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-primary" id="aiQuickAddBtn">直接记一笔</button></div>`;
-        document.getElementById('aiQuickAddBtn').addEventListener('click', () => quickAddFromAI(cat.id, input));
+        document.getElementById('aiQuickAddBtn').addEventListener('click', () => window.quickAddFromAI && window.quickAddFromAI(cat.id, input));
     }
 };
 

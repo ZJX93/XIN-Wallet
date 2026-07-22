@@ -5,7 +5,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, ensureWeeklySnapshots } = require('./_helpers');
 
 const router = express.Router();
 
@@ -207,6 +207,17 @@ router.get('/dashboard', async (req, res) => {
              FROM debts WHERE user_id = ? AND status != 'paid_off'`,
             [req.userId]
         );
+
+        // 全部历史累计收入/支出（用于计算总体储蓄率 = 累计净结余 / 累计收入）
+        const lifetimeTotals = await db.queryOne(
+            `SELECT
+              COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
+              COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense
+             FROM transactions WHERE user_id = ?`,
+            [req.userId]
+        );
+        const totalIncome = parseFloat(lifetimeTotals.total_income || 0);
+        const totalExpense = parseFloat(lifetimeTotals.total_expense || 0);
         const activeDebts = await db.query(
             'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND status = "active"',
             [req.userId]
@@ -261,6 +272,10 @@ router.get('/dashboard', async (req, res) => {
             income: parseFloat(monthData.income),
             expense: parseFloat(monthData.expense),
             balance: parseFloat(monthData.income) - parseFloat(monthData.expense),
+            // 全部历史累计金额（前端用于储蓄率 = 累计净储蓄 / 总资产）
+            totalIncome,
+            totalExpense,
+            totalSavings: totalIncome - totalExpense,
             months: monthsOut,
             accounts: accounts.map(a => ({ ...a, balance: parseFloat(a.balance) })),
             totalAssets,
@@ -379,6 +394,82 @@ router.get('/dashboard/detail', async (req, res) => {
                 category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
                 account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon }
             }))
+        }));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// 理财组合进阶指标：年化、集中度、预期收益加权
+function calcPortfolioMetrics(investments) {
+    const tCost = investments.reduce((s, i) => s + parseFloat(i.total_cost), 0);
+    const tVal = investments.reduce((s, i) => s + parseFloat(i.current_value), 0);
+    const earliest = investments.reduce((min, i) => {
+        const d = i.buy_date ? new Date(i.buy_date) : null;
+        return (d && (!min || d < min)) ? d : min;
+    }, null);
+    const days = earliest ? Math.max((Date.now() - earliest.getTime()) / 86400000, 1) : 0;
+    const annualizedRate = (tCost > 0 && tVal > 0 && days > 0) ? (Math.pow(tVal / tCost, 365 / days) - 1) * 100 : 0;
+    const maxHolding = investments.reduce((m, i) => Math.max(m, parseFloat(i.current_value)), 0);
+    const concentration = tVal > 0 ? (maxHolding / tVal * 100) : 0;
+    const expectedRateAvg = tCost > 0
+        ? investments.reduce((s, i) => s + (parseFloat(i.expected_rate || 0) * parseFloat(i.total_cost)), 0) / tCost : 0;
+    return {
+        totalCost: tCost, totalValue: tVal, totalProfit: tVal - tCost,
+        annualizedRate: Math.round(annualizedRate * 100) / 100,
+        concentration: Math.round(concentration * 10) / 10,
+        expectedRateAvg: Math.round(expectedRateAvg * 100) / 100
+    };
+}
+
+// 理财趋势数据（折线图：各持仓市值变化 + 柱状图：按类型投入 vs 市值）
+router.get('/investments', async (req, res) => {
+    try {
+        const investments = await db.query(
+            `SELECT i.*, it.name as type_name, it.icon as type_icon
+             FROM investments i JOIN investment_types it ON i.investment_type_id = it.id
+             WHERE i.user_id = ? AND i.status = 'holding'
+             ORDER BY i.current_value DESC`,
+            [req.userId]
+        );
+
+        await ensureWeeklySnapshots(req.userId, investments);
+
+        const trendSeries = [];
+        for (const inv of investments) {
+            const snaps = await db.query(
+                `SELECT nav_date, total_value, total_cost FROM investment_snapshots
+                 WHERE user_id = ? AND investment_id = ? ORDER BY nav_date ASC`,
+                [req.userId, inv.id]
+            );
+            const points = snaps.map(s => ({
+                date: s.nav_date instanceof Date ? s.nav_date.toISOString().slice(0, 10) : String(s.nav_date).slice(0, 10),
+                value: parseFloat(s.total_value)
+            }));
+            if (points.length > 0) {
+                trendSeries.push({
+                    id: inv.id, name: inv.name, type_name: inv.type_name, type_icon: inv.type_icon,
+                    total_cost: parseFloat(inv.total_cost), current_value: parseFloat(inv.current_value),
+                    profit_rate: parseFloat(inv.total_cost) > 0
+                        ? ((parseFloat(inv.current_value) - parseFloat(inv.total_cost)) / parseFloat(inv.total_cost) * 100) : 0,
+                    points
+                });
+            }
+        }
+
+        const byType = {};
+        investments.forEach(i => {
+            const key = i.type_name;
+            if (!byType[key]) byType[key] = { type_name: key, icon: i.type_icon, total_cost: 0, total_value: 0, count: 0 };
+            byType[key].total_cost += parseFloat(i.total_cost);
+            byType[key].total_value += parseFloat(i.current_value);
+            byType[key].count++;
+        });
+
+        res.json(success({
+            trendSeries,
+            byType: Object.values(byType).sort((a, b) => b.total_value - a.total_value),
+            summary: calcPortfolioMetrics(investments)
         }));
     } catch (err) {
         handleServerError(res, err);

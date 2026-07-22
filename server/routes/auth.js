@@ -7,6 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { hashPassword, verifyPassword, verifyPasswordSync, signToken } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
+const { ensureUserSeed } = require('../seed-data');
 
 // 登录失败次数阈值 + 锁定期
 const MAX_FAIL_COUNT = 5;
@@ -20,7 +21,7 @@ function validatePasswordStrength(pw) {
     return null;
 }
 
-// 注册
+// 注册（新用户从空白开始，不自动注入演示数据）
 router.post('/register', async (req, res) => {
     try {
         const { username, password, nickname } = req.body;
@@ -109,6 +110,22 @@ router.post('/demo', async (req, res) => {
             );
             user = { id: result.insertId, username: 'demo', nickname: '演示用户' };
         }
+
+        // 智能种子：演示账号如已有数据则复用，否则注入演示数据
+        // 场景 1：旧库中存在 demo 账号但数据归属 user_id=1（迁移期兼容），则为 demo 补一份种子
+        // 场景 2：demo 账号没有任何数据，注入完整种子数据
+        try {
+            const userHasTransactions = await db.queryOne(
+                'SELECT COUNT(*) AS cnt FROM transactions WHERE user_id = ?', [user.id]
+            );
+            if (parseInt(userHasTransactions.cnt) === 0) {
+                await ensureUserSeed(user.id);
+                console.log(`✅ 演示账号 ${user.id} 已注入演示数据`);
+            }
+        } catch (seedErr) {
+            console.warn('⚠️ 演示账号注入种子数据失败:', seedErr.message);
+        }
+
         const token = signToken({ id: user.id, username: user.username });
         res.json(success({
             token,

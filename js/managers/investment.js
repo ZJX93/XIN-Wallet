@@ -57,6 +57,9 @@ const InvestmentManager = {
             radio.addEventListener('change', (e) => this.updateReduceUI(e.target.value));
         });
         document.getElementById('investBuyDate').value = fmtDate();
+        // 新增持仓按钮
+        const addBtn = document.getElementById('addInvestBtn');
+        if (addBtn) addBtn.addEventListener('click', () => this.openModal());
     },
     bindAutoCalc() {
         const buyPriceEl = document.getElementById('investBuyPrice');
@@ -197,10 +200,10 @@ const InvestmentManager = {
         if (!body.name) { showToast('请输入产品名称', 'error'); return; }
         const editId = this.editId;
         if (editId) {
-            await api(`/investments/${editId}`, 'PUT', body);
+            await api(`/investments/investments/${editId}`, 'PUT', body);
             showToast('持仓已更新', 'success');
         } else {
-            await api('/investments', 'POST', body);
+            await api('/investments/investments', 'POST', body);
             showToast('持仓已添加', 'success');
         }
         this.closeModal();
@@ -208,7 +211,7 @@ const InvestmentManager = {
     },
     async delete(id) {
         try {
-            await api(`/investments/${id}`, 'DELETE');
+            await api(`/investments/investments/${id}`, 'DELETE');
             showToast('持仓已删除', 'warning');
             await this.refresh();
         } catch (err) {
@@ -275,7 +278,7 @@ const InvestmentManager = {
         };
         if (!body.price || !body.quantity) { showToast('请填写成交单价和数量', 'error'); return; }
         try {
-            const result = await api(`/investments/${id}/reduce`, 'POST', body);
+            const result = await api(`/investments/investments/${id}/reduce`, 'POST', body);
             showToast(result?.message || (action === 'buy' ? '加仓成功' : '卖出成功'), 'success');
             this.closeReduceModal();
             await this.refresh();

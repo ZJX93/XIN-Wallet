@@ -121,6 +121,32 @@ async function initDatabase() {
       }
     }
 
+    // 迁移：给已存在的 categories 表补充 user_id 列（兼容首次未含此列的旧库）
+    try {
+      const colExists = await queryOne(
+        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'user_id'"
+      );
+      if (colExists && parseInt(colExists.cnt) === 0) {
+        await query("ALTER TABLE categories ADD COLUMN user_id INT DEFAULT NULL COMMENT '所属用户ID（NULL=系统预设全局分类）' AFTER parent_id");
+        console.log('✅ categories.user_id 列已添加');
+      }
+    } catch (err) {
+      console.warn('⚠️ categories.user_id 迁移警告:', err.message);
+    }
+
+    // 迁移：给 investments 表补充 nav_date 列（行情刷新时记录净值日期）
+    try {
+      const colExists = await queryOne(
+        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'investments' AND COLUMN_NAME = 'nav_date'"
+      );
+      if (colExists && parseInt(colExists.cnt) === 0) {
+        await query("ALTER TABLE investments ADD COLUMN nav_date DATE DEFAULT NULL COMMENT '净值日期' AFTER actual_rate");
+        console.log('✅ investments.nav_date 列已添加');
+      }
+    } catch (err) {
+      console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

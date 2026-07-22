@@ -27,16 +27,23 @@ const PageLoader = {
         const src = el.dataset.lazy;
         if (!src) return true;  // 非懒加载，无需处理
 
-        // 已有缓存 → 直接返回
+        // 已注入过 → 不再重复注入（避免销毁已绑定的事件监听器）
+        if (el.dataset.loaded === 'true') return true;
+
+        // 已有缓存 → 注入并标记
         if (this.cache.has(src)) {
             el.innerHTML = this.cache.get(src);
+            el.dataset.loaded = 'true';
             return true;
         }
 
         // 正在加载 → 复用 in-flight Promise
         if (this.loading.has(src)) {
             await this.loading.get(src);
-            if (this.cache.has(src)) el.innerHTML = this.cache.get(src);
+            if (this.cache.has(src) && el.dataset.loaded !== 'true') {
+                el.innerHTML = this.cache.get(src);
+                el.dataset.loaded = 'true';
+            }
             return this.cache.has(src);
         }
 
@@ -59,6 +66,7 @@ const PageLoader = {
             const inner = rawHtml.replace(/^\s*<section[^>]*>/i, '').replace(/<\/section>\s*$/i, '');
             this.cache.set(src, inner);
             el.innerHTML = inner;
+            el.dataset.loaded = 'true';
             return true;
         }
         return false;

@@ -492,13 +492,14 @@ router.delete('/investments/:id', async (req, res) => {
 // 理财行情 API（代理外部数据源）
 // ==========================================
 
-// 通用 HTTP GET 请求封装（支持 http 和 https，支持 GBK 解码）
-function httpGet(url, timeout = 8000) {
+// 通用 HTTP GET 请求封装（支持 http 和 https，支持自定义 headers 和 GBK 解码）
+function httpGet(url, options = {}) {
+    const { timeout = 8000, headers = {} } = typeof options === 'number' ? { timeout: options } : options;
     return new Promise((resolve, reject) => {
         const client = url.startsWith('https') ? https : http;
-        const req = client.get(url, { timeout }, (resp) => {
+        const req = client.get(url, { timeout, headers }, (resp) => {
             if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
-                httpGet(resp.headers.location, timeout).then(resolve).catch(reject);
+                httpGet(resp.headers.location, options).then(resolve).catch(reject);
                 return;
             }
             const chunks = [];
@@ -543,31 +544,23 @@ function getQuoteStrategy(invTypeCategory, code) {
     return detected;
 }
 
-// 查询基金行情（天天基金 fundgz）
+// 查询基金行情（东方财富基金净值 API，原天天基金 fundgz 已失效）
 async function fetchFundQuote(code) {
-    const ts = Date.now();
-    const url = `http://fundgz.1234567.com.cn/js/${code}.js?rt=${ts}`;
-    const buf = await httpGet(url, 6000);
-    const raw = buf.toString('utf8');
-    // 格式: jsonpgz({...});
-    const jsonMatch = raw.match(/\{.*\}/s);
-    if (!jsonMatch) throw new Error('基金数据解析失败');
-    // 过滤掉一些非 JSON 前缀（如 jsonpgz 的函数名等）
-    let jsonStr = jsonMatch[0].trim();
-    if (!jsonStr.startsWith('{')) {
-        const braceMatch = jsonStr.match(/\{.*\}/s);
-        if (!braceMatch) throw new Error('基金数据解析失败');
-        jsonStr = braceMatch[0];
+    const url = `https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=1`;
+    const buf = await httpGet(url, { timeout: 8000, headers: { 'Referer': 'https://fund.eastmoney.com/' } });
+    const data = JSON.parse(buf.toString('utf8'));
+    if (data.ErrCode !== 0 || !data.Data || !data.Data.LSJZList || data.Data.LSJZList.length === 0) {
+        throw new Error(data.ErrMsg || '基金数据获取失败');
     }
-    const d = JSON.parse(jsonStr);
+    const d = data.Data.LSJZList[0];
     return {
-        code: d.fundcode || code,
-        name: d.name || '',
-        nav: parseFloat(d.dwjz) || 0,
-        navDate: d.jzrq || '',
-        estimatedNav: parseFloat(d.gsz) || 0,
-        estimatedChange: parseFloat(d.gszzl) || 0,
-        lastNav: parseFloat(d.dwjz) || 0
+        code: code,
+        name: '',
+        nav: parseFloat(d.DWJZ) || 0,
+        navDate: d.FSRQ || '',
+        estimatedNav: parseFloat(d.DWJZ) || 0,  // 最新净值（非实时估算）
+        estimatedChange: parseFloat(d.JZZZL) || 0,
+        lastNav: parseFloat(d.DWJZ) || 0
     };
 }
 
@@ -600,7 +593,7 @@ async function fetchStockQuote(code) {
 }
 
 // 查询单个代码行情（自动识别类型）
-router.get('/investments/quote', async (req, res) => {
+router.get('/quote', async (req, res) => {
     try {
         const { code, category } = req.query;
         if (!code) return res.status(400).json(fail('请提供产品代码'));
@@ -624,7 +617,7 @@ router.get('/investments/quote', async (req, res) => {
 });
 
 // 刷新单个持仓行情
-router.post('/investments/:id/refresh', async (req, res) => {
+router.post('/:id/refresh', async (req, res) => {
     try {
         const inv = await db.queryOne(
             `SELECT i.*, it.category as type_category
@@ -672,7 +665,7 @@ router.post('/investments/:id/refresh', async (req, res) => {
 });
 
 // 一键刷新全部持仓行情
-router.post('/investments/refresh-all', async (req, res) => {
+router.post('/refresh-all', async (req, res) => {
     try {
         const investments = await db.query(
             `SELECT i.*, it.category as type_category

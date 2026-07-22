@@ -24,7 +24,6 @@ const ReportManager = {
         document.getElementById('importFullInput').addEventListener('change', (e) => this.importFull(e.target.files[0]));
 
         // 事件委托：.bs-detail-card 内部的「关闭」按钮（替代原内联 onclick）
-        // 通过给按钮打 .js-bs-close 标记，由这里统一处理
         const reportContent = document.getElementById('reportContent');
         if (reportContent && !reportContent._bsCloseDelegated) {
             reportContent.addEventListener('click', (e) => {
@@ -36,8 +35,45 @@ const ReportManager = {
             });
             reportContent._bsCloseDelegated = true;
         }
+
+        // 默认填充周期并立即生成当前月报表，让用户进入页面就能看到内容
+        this.populatePeriods();
+        // 延迟生成避免在 init 流程中重复渲染
+        setTimeout(() => this.generate(), 100);
     },
-    refresh() { return this.generate(); },
+    refresh() {
+        // 懒加载时 init 可能错过，先尝试绑定事件再生成
+        this.tryBindEvents();
+        return this.generate();
+    },
+    tryBindEvents() {
+        const btn = document.getElementById('generateReportBtn');
+        if (!btn || btn._reportBound) return;
+        btn._reportBound = true;
+        this.populatePeriods();
+        btn.addEventListener('click', () => this.generate());
+        const printBtn = document.getElementById('printReportBtn');
+        if (printBtn) printBtn.addEventListener('click', () => this.print());
+        const typeSel = document.getElementById('reportType');
+        if (typeSel) typeSel.addEventListener('change', () => this.populatePeriods());
+        const exportFullBtn = document.getElementById('exportFullBtn');
+        if (exportFullBtn) exportFullBtn.addEventListener('click', () => this.exportFull());
+        const importFullBtn = document.getElementById('importFullBtn');
+        if (importFullBtn) importFullBtn.addEventListener('click', () => document.getElementById('importFullInput').click());
+        const importInput = document.getElementById('importFullInput');
+        if (importInput) importInput.addEventListener('change', (e) => this.importFull(e.target.files[0]));
+        const reportContent = document.getElementById('reportContent');
+        if (reportContent && !reportContent._bsCloseDelegated) {
+            reportContent.addEventListener('click', (e) => {
+                const b = e.target.closest('.js-bs-close');
+                if (b) {
+                    const card = b.closest('.bs-detail-card');
+                    if (card) card.remove();
+                }
+            });
+            reportContent._bsCloseDelegated = true;
+        }
+    },
     populatePeriods() {
         const type = document.getElementById('reportType').value;
         const sel = document.getElementById('reportPeriod');

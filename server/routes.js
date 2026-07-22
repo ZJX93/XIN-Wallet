@@ -33,12 +33,11 @@ router.use('/transfers', require('./routes/transfers'));
 router.use('/transactions', require('./routes/transactions'));   // /transactions, /transactions/months, /transactions/summary, /ledger
 router.use('/budgets', require('./routes/budgets'));
 router.use('/reports', require('./routes/reports'));
-// 同一份 investments 路由同时挂到三个前缀：/investment-types（类型 CRUD）、/investments（持仓）、/stats/investments（统计）
+// investments 路由同时挂到两个前缀：/investment-types（类型 CRUD）、/investments（持仓）
 const investmentsRoutes = require('./routes/investments');
 router.use('/investment-types', investmentsRoutes);
 router.use('/investments', investmentsRoutes);
-router.use('/stats/investments', investmentsRoutes);
-router.use('/stats', require('./routes/stats'));
+router.use('/stats', require('./routes/stats'));   // 含 /stats/dashboard + /stats/investments
 router.use('/categories', require('./routes/categories'));
 router.use('/tags', require('./routes/tags'));
 router.use('/savings-goals', require('./routes/savings'));

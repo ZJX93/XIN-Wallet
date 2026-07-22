@@ -16,17 +16,33 @@ const DashboardManager = {
         await PageLoader.ensureLoaded('page-dashboard');
 
         const bar = document.getElementById('dashKpiBar');
-        if (bar) bar.addEventListener('click', (e) => {
+        if (!bar) {
+            console.warn('[Dashboard] dashKpiBar 元素未找到，KPI 卡片点击事件未绑定');
+            return;
+        }
+        bar.addEventListener('click', (e) => {
             const card = e.target.closest('.kpi-card');
             if (!card) return;
+            // 优先看 data-action，避免与 data-detail 冲突
+            const action = card.dataset.action;
+            if (action === 'navigate') {
+                const page = card.dataset.page;
+                if (page) { window.switchPage && window.switchPage(page); return; }
+            }
+            // 详情弹窗（除非明确标记为 none）
             const type = card.dataset.detail;
-            if (type === 'investments' || type === 'analysis') { switchPage(type); return; }
-            if (type === 'debts') { switchPage('debts'); return; }
-            if (type === 'none') return;
-            if (type) this.showDetail(type);
+            if (!type || type === 'none') return;
+            // 兼容旧 data-detail 标记的 navigate 情况（无 data-action）
+            if (type === 'investments') { window.switchPage && window.switchPage('investments'); return; }
+            if (type === 'debts') { window.switchPage && window.switchPage('debts'); return; }
+            // 否则打开弹窗（week/month/year/assets 等）
+            this.showDetail(type);
         });
-        document.getElementById('dashDetailClose').addEventListener('click', () => this.closeDetail());
-        document.getElementById('dashDetailModal').addEventListener('click', (e) => {
+        // 安全绑定：元素可能因时序问题尚未加载（防御性检查）
+        const dashClose = document.getElementById('dashDetailClose');
+        if (dashClose) dashClose.addEventListener('click', () => this.closeDetail());
+        const dashModal = document.getElementById('dashDetailModal');
+        if (dashModal) dashModal.addEventListener('click', (e) => {
             if (e.target === e.currentTarget) this.closeDetail();
         });
     },
@@ -166,27 +182,34 @@ const DashboardManager = {
                 }
             }
 
-            // 月储蓄率（基于储蓄目标存取流水）
+            // 储蓄率 = 累计净储蓄 / 总资产（反映资产中有多大比例是存下来的）
+            const totalIncome = data.totalIncome || 0;
+            const totalExpense = data.totalExpense || 0;
+            const netSavings = totalIncome - totalExpense;
+            const savingsRate = data.totalAssets > 0 ? (netSavings / data.totalAssets * 100) : 0;
+
+            // 同时保留短期（本月）的辅助信息
             const monthIncome = data.month.income;
             const monthExpense = data.month.expense;
             const monthBalance = data.month.balance;
-            const savingsRate = data.month.savingsRate !== undefined ? data.month.savingsRate : (monthIncome > 0 ? (monthBalance / monthIncome * 100) : 0);
-            const savingsAmount = data.month.savings !== undefined ? data.month.savings : monthBalance;
+
             const srEl = document.getElementById('dashSavingsRate');
             if (srEl) srEl.textContent = `${savingsRate.toFixed(1)}%`;
-            const monthSumEl = document.getElementById('dashMonthSummary');
-            if (monthSumEl) monthSumEl.textContent = savingsAmount !== 0 ? `净储蓄 ${fmt(savingsAmount)}` : (monthIncome > 0 ? '收入 ¥' + fmt(monthIncome) : '无收入数据');
+            const summaryEl = document.getElementById('dashSavingsSummary');
+            if (summaryEl) {
+                if (netSavings === 0 && totalIncome === 0) {
+                    summaryEl.textContent = '暂无储蓄数据';
+                } else {
+                    summaryEl.textContent = `累计净储蓄 ${fmt(netSavings)}`;
+                }
+            }
             const srBadge = document.getElementById('dashSavingsRateBadge');
             if (srBadge) {
-                if (monthIncome === 0) { srBadge.textContent = '无收入'; srBadge.className = 'kpi-badge neutral'; }
-                else if (data.month.savings !== undefined && data.month.savings === 0 && savingsAmount === 0) {
-                    // 没储蓄流水，显示结余率
-                    srBadge.textContent = '净结余'; srBadge.className = 'kpi-badge neutral';
-                }
+                if (netSavings === 0) { srBadge.textContent = '无储蓄'; srBadge.className = 'kpi-badge neutral'; }
                 else if (savingsRate >= 30) { srBadge.textContent = '健康'; srBadge.className = 'kpi-badge good'; }
-                else if (savingsRate >= 10) { srBadge.textContent = '一般'; srBadge.className = 'kpi-badge warn'; }
+                else if (savingsRate >= 15) { srBadge.textContent = '一般'; srBadge.className = 'kpi-badge warn'; }
                 else if (savingsRate > 0) { srBadge.textContent = '偏低'; srBadge.className = 'kpi-badge bad'; }
-                else { srBadge.textContent = '无储蓄'; srBadge.className = 'kpi-badge neutral'; }
+                else { srBadge.textContent = '需关注'; srBadge.className = 'kpi-badge bad'; }
             }
 
             // 本月结余
@@ -469,7 +492,7 @@ const DashboardManager = {
                 </div>`;
             } else {
                 ie.innerHTML = `<div class="empty-hint"><div class="empty-icon">🧠</div><p>尚未生成洞察</p><button class="btn btn-sm btn-primary go-analysis-btn" style="margin-top:8px">前往消费分析</button></div>`;
-                ie.querySelector('.go-analysis-btn')?.addEventListener('click', () => switchPage('analysis'));
+                ie.querySelector('.go-analysis-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('analysis'));
             }
         }
 
@@ -484,7 +507,7 @@ const DashboardManager = {
                 </div>`;
             } else {
                 ae.innerHTML = `<div class="empty-hint"><div class="empty-icon">💡</div><p>尚未生成建议</p><button class="btn btn-sm btn-primary go-analysis-btn" style="margin-top:8px">前往消费分析</button></div>`;
-                ae.querySelector('.go-analysis-btn')?.addEventListener('click', () => switchPage('analysis'));
+                ae.querySelector('.go-analysis-btn')?.addEventListener('click', () => window.switchPage && window.switchPage('analysis'));
             }
         }
     }

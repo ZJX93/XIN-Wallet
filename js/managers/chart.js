@@ -95,7 +95,9 @@ const ChartManager = {
     async renderInvestPie(byType) {
         this.destroy('invAllocation');
         const canvas = document.getElementById('invAllocationPie');
+        if (!canvas) { console.warn('[chart] invAllocationPie canvas not found, skipping'); return; }
         const ctx = canvas.getContext('2d');
+        if (!ctx) return;
         const c = this.colors();
         const entries = Object.entries(byType);
         if (entries.length === 0) return;

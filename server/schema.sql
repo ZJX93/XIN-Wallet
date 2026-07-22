@@ -54,14 +54,9 @@ CREATE TABLE IF NOT EXISTS categories (
   INDEX idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 幂等迁移：兼容已有未带 user_id 的表（initDatabase 调用 ALTER 会被静默忽略）
+-- 幂等迁移：兼容已有未带 user_id 的表
 -- 注意：MariaDB 不支持完整的 IF NOT EXISTS for ADD COLUMN，db.js 会捕获 "Duplicate column" 异常忽略
-SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'user_id');
-SET @sql = IF(@col_exists = 0,
-  'ALTER TABLE categories ADD COLUMN user_id INT DEFAULT NULL COMMENT ''所属用户（NULL=系统预设）'' AFTER parent_id',
-  'SELECT 1');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- 已弃用 PREPARE/EXECUTE（连接池环境兼容性差），改用 db.js JavaScript 层面的迁移检测
 
 -- 交易记录表
 CREATE TABLE IF NOT EXISTS transactions (
@@ -153,6 +148,7 @@ CREATE TABLE IF NOT EXISTS investments (
   buy_date DATE NOT NULL COMMENT '买入日期',
   expected_rate DECIMAL(8,4) DEFAULT 0 COMMENT '预期年化收益率',
   actual_rate DECIMAL(8,4) DEFAULT 0 COMMENT '实际年化收益率',
+  nav_date DATE DEFAULT NULL COMMENT '净值日期（行情刷新时更新）',
   status ENUM('holding','sold','expired') DEFAULT 'holding' COMMENT '状态',
   note VARCHAR(200) DEFAULT '' COMMENT '备注',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
