@@ -8,6 +8,7 @@ const db = require('../db');
 const { hashPassword, verifyPassword, verifyPasswordSync, signToken } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
+const { validate, rules } = require('../validate');
 
 // 登录失败次数阈值 + 锁定期
 const MAX_FAIL_COUNT = 5;
@@ -22,10 +23,15 @@ function validatePasswordStrength(pw) {
 }
 
 // 注册（新用户从空白开始，不自动注入演示数据）
-router.post('/register', async (req, res) => {
+router.post('/register', validate({
+    body: {
+        username: rules.username,
+        password: rules.password,
+        nickname: { type: 'string', min: 1, max: 32, required: false },
+    }
+}), async (req, res) => {
     try {
         const { username, password, nickname } = req.body;
-        if (!username || !password) return res.status(400).json(fail('用户名和密码必填'));
 
         const strengthErr = validatePasswordStrength(password);
         if (strengthErr) return res.status(400).json(fail(strengthErr));
@@ -46,10 +52,14 @@ router.post('/register', async (req, res) => {
 });
 
 // 登录：基于 users.fail_count / users.locked_until 持久化锁定（重启不失效）
-router.post('/login', async (req, res) => {
+router.post('/login', validate({
+    body: {
+        username: { type: 'string', required: true, min: 1, max: 64 },
+        password: { type: 'string', required: true, min: 1, max: 128 },
+    }
+}), async (req, res) => {
     try {
         const { username, password } = req.body;
-        if (!username || !password) return res.status(400).json(fail('用户名和密码必填'));
 
         const user = await db.queryOne(
             'SELECT id, username, password_hash, nickname, fail_count, locked_until FROM users WHERE username = ?',

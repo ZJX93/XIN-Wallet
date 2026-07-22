@@ -16,6 +16,7 @@ const multer = require('multer');
 
 const db = require('./db');
 const routes = require('./routes');
+const logger = require('./logger');
 const { hashPassword } = require('./auth');
 const { ensureUserSeed } = require('./seed-data');
 
@@ -103,6 +104,9 @@ app.use(express.urlencoded({ extended: true }));
 // OCR 上传路由需在 body parser 之后、API 路由之前，使用 multer 局部中间件
 app.use('/api', upload.single('image'), routes);
 
+// 已认证 API 的用户级限流（在 auth 中间件之后生效，由 routes.js 内逐路由挂载）
+// 见 server/rate-limit-user.js
+
 // 全局错误处理中间件：统一所有 API 错误的响应格式
 app.use((err, req, res, next) => {
     // 记录错误日志（生产环境可接入日志系统）
@@ -162,6 +166,36 @@ app.get('/login', (req, res) => {
 // 健康检查：Docker / k8s 探测
 app.get('/healthz', (req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
+// OpenAPI 规范 + Swagger UI
+const openapiSpec = require('./openapi');
+app.get('/openapi.json', (req, res) => res.json(openapiSpec));
+
+// Swagger UI（CDN 加载，避免引入新 npm 依赖）
+app.get('/docs', (req, res) => {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>鑫钱包 API 文档</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+SwaggerUIBundle({
+  url: '/openapi.json',
+  dom_id: '#swagger-ui',
+  deepLinking: true,
+  presets: [SwaggerUIBundle.presets.apis],
+  layout: 'BaseLayout',
+});
+</script>
+</body>
+</html>`);
+});
+
 // 就绪检查：会实际 ping 数据库，失败时返回 503
 app.get('/readyz', async (req, res) => {
     try {
@@ -170,6 +204,56 @@ app.get('/readyz', async (req, res) => {
     } catch (err) {
         res.status(503).json({ success: false, message: 'database not ready' });
     }
+});
+
+// 深度健康检查：DB + 内存 + 磁盘 + 运行时长（运维/监控系统用）
+app.get('/health/deep', async (req, res) => {
+    const checks = {};
+
+    // 1. 数据库连接
+    const dbStart = Date.now();
+    try {
+        await db.queryOne('SELECT 1 AS ok');
+        checks.database = { ok: true, latencyMs: Date.now() - dbStart };
+    } catch (err) {
+        checks.database = { ok: false, error: err.message };
+    }
+
+    // 2. 进程内存
+    const mem = process.memoryUsage();
+    checks.memory = {
+        heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+        rssMB: Math.round(mem.rss / 1024 / 1024),
+        externalMB: Math.round(mem.external / 1024 / 1024),
+    };
+
+    // 3. 运行时长
+    checks.uptime = {
+        seconds: Math.round(process.uptime()),
+        startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    };
+
+    // 4. 关键配置存在性
+    checks.config = {
+        encryptionKey: !!process.env.ENCRYPTION_KEY,
+        jwtSecret: !!process.env.JWT_SECRET,
+        dbHost: !!process.env.DB_HOST,
+    };
+
+    // 5. Node 版本（用于运维追踪）
+    checks.runtime = {
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+    };
+
+    const allOk = checks.database.ok && checks.config.encryptionKey && checks.config.jwtSecret;
+    res.status(allOk ? 200 : 503).json({
+        success: allOk,
+        data: checks,
+        timestamp: new Date().toISOString(),
+    });
 });
 
 // SPA 兜底：未命中静态文件且非 /api 的 GET 请求，统一返回 index.html，
@@ -246,24 +330,63 @@ async function start() {
     }
 
     const server = app.listen(PORT, () => {
-        console.log(`✅ 鑫钱包 API 服务器运行在 http://localhost:${PORT}`);
-        console.log(`✅ 前端页面访问 http://localhost:${PORT}/index.html`);
+        logger.info('Server started', {
+            port: PORT,
+            env: process.env.NODE_ENV,
+            nodeVersion: process.version,
+            docs: `http://localhost:${PORT}/docs`,
+        });
+        logger.info('Frontend ready', { url: `http://localhost:${PORT}/index.html` });
     });
 
-    // 优雅退出：容器 / Ctrl-C 关闭时先收尾连接再退出
+    // 优雅退出：SIGTERM/SIGINT 时先停止接收新请求，等在途请求结束，再关闭资源
+    let isShuttingDown = false;
     const shutdown = async (signal) => {
+        if (isShuttingDown) return; // 避免重复触发
+        isShuttingDown = true;
         console.log(`\n🛑 收到 ${signal}，开始优雅退出...`);
-        server.close(() => console.log('✅ HTTP server 已关闭'));
+
+        // 强制超时：最多等待 25 秒（K8s 默认给 30s）
+        const forceExit = setTimeout(() => {
+            console.error('❌ 25 秒内未完成收尾，强制退出');
+            process.exit(1);
+        }, 25_000);
+        forceExit.unref();
+
         try {
-            if (db && db.pool) await db.pool.end();
-            console.log('✅ 数据库连接池已关闭');
+            // 1. 停止接收新连接（继续完成在途请求）
+            await new Promise((resolve) => {
+                server.close(() => {
+                    console.log('✅ HTTP server 已关闭');
+                    resolve();
+                });
+            });
+
+            // 2. 关闭数据库连接池
+            if (db && db.pool) {
+                await db.pool.end();
+                console.log('✅ 数据库连接池已关闭');
+            }
         } catch (err) {
-            console.warn('⚠️ 关闭数据库连接池时出错:', err.message);
+            console.error('❌ 关闭过程中出错:', err.message);
         }
-        setTimeout(() => process.exit(0), 200).unref();
+
+        clearTimeout(forceExit);
+        console.log('👋 鑫钱包已退出');
+        process.exit(0);
     };
+
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
+
+    // 未捕获异常 → 立即退出（容器编排器会自动重启）
+    process.on('uncaughtException', (err) => {
+        console.error('❌ Uncaught Exception:', err);
+        shutdown('uncaughtException');
+    });
+    process.on('unhandledRejection', (reason) => {
+        console.error('❌ Unhandled Rejection:', reason);
+    });
 }
 
 // insertDemoData 已迁移至 server/seed-data.js
