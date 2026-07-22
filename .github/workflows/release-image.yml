@@ -22,11 +22,11 @@ on:
 # 环境变量
 env:
   REGISTRY: ghcr.io
-  # OCI 规范要求镜像名全小写（包括 owner 名）。
-  # 仓库名可大写（ZJX93/XIN-Wallet），但镜像地址必须小写：zjx93/xin-wallet/xinwallet
+  # OCI 规范要求镜像名全小写。GitHub Actions 不支持 lower()，用 echo 转小写生成 IMAGE_NAME。
   IMAGE_OWNER: ${{ github.repository_owner }}
   IMAGE_REPO: xin-wallet
-  IMAGE_NAME: ${{ lower(github.repository_owner) }}/xin-wallet/xinwallet
+  IMAGE_NAME_LOWER: ${{ steps.compute-name.outputs.name }}
+  IMAGE_NAME: ${{ steps.compute-name.outputs.name }}/xinwallet
 
 jobs:
   build-and-push:
@@ -51,7 +51,14 @@ jobs:
             TAG_NAME=dev-${GITHUB_SHA::7}
           fi
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "FULL_TAG=${REGISTRY}/${IMAGE_OWNER}/xin-wallet/xinwallet:${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "FULL_TAG=${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      # GitHub Actions 不支持表达式内置 lower()，用 shell 转小写
+      - name: 计算小写镜像名
+        id: compute-name
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=${OWNER_LOWER}/xin-wallet" >> $GITHUB_OUTPUT
 
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
