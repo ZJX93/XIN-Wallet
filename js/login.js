@@ -19,9 +19,12 @@ function setHint(msg, isError) {
     el.setAttribute('role', isError ? 'alert' : 'status');
 }
 
+// loginApi：在全局声明之前先捕获 utils.js 设置的真实 window.api
+// 否则本文件顶层的 function api() 会覆盖 window.api，导致自调用无限递归
+const _rawApi = window.api;
+
 async function api(path, method = 'GET', body = null) {
-    // 复用 utils.js 统一实现：自动注入 Authorization + 401 派发 auth:unauthorized + silent 模式
-    return window.api(path, method, body, { silent: true });
+    return _rawApi(path, method, body, { silent: true });
 }
 
 function applyTheme() {
@@ -54,24 +57,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('authForm');
     if (form) form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        console.log('[login] 表单提交, mode='+mode);
         const username = document.getElementById('authUser').value.trim();
         const password = document.getElementById('authPass').value;
         const nickname = document.getElementById('authNick').value.trim();
+        console.log('[login] 用户名='+username, '密码长度='+password.length);
         if (!username || !password) { setHint('请输入用户名和密码', true); return; }
         if (submitBtn) submitBtn.disabled = true;
 
         try {
             let data;
+            console.log('[login] 开始 API 调用...');
             if (mode === 'login') {
                 data = await api('/auth/login', 'POST', { username, password });
+                console.log('[login] 登录响应:', data);
                 setHint('登录成功，正在进入...');
             } else {
                 data = await api('/auth/register', 'POST', { username, password, nickname });
                 setHint('注册成功，正在进入...');
             }
+            console.log('[login] setSession token='+data.token+' user='+data.user?.username);
             setSession(data.token, data.user);
+            console.log('[login] 跳转到 /');
             location.href = '/';
         } catch (err) {
+            console.error('[login] 失败:', err.message, err);
             setHint(err.message || '操作失败，请重试', true);
             if (submitBtn) submitBtn.disabled = false;
         }
