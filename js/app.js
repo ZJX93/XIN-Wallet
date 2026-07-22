@@ -394,18 +394,23 @@ document.getElementById('genInsightBtn').addEventListener('click', async () => {
 document.getElementById('aiGenAdviceBtn').addEventListener('click', () => AnalysisManager.genAdvice());
 
 // ==========================================
-// 交易月份筛选选项（原依赖统计页面的 statsMonth，现独立初始化）
-(function initTransMonthFilter() {
+// 交易月份筛选选项（依赖 cache.currentMonth，由 boot() 中 initCache() 之后调用）
+function initTransMonthFilter() {
+    const sel = document.getElementById('transMonthFilter');
+    if (!sel) return;
     const now = new Date();
-    let opts = '';
+    const opts = ['<option value="all">所有月份</option>'];
     for (let m = 0; m < 12; m++) {
         const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
         const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        opts += `<option value="${val}">${val}</option>`;
+        opts.push(`<option value="${val}">${val}</option>`);
     }
-    document.getElementById('transMonthFilter').innerHTML = '<option value="all">所有月份</option>' + opts;
-    document.getElementById('transMonthFilter').value = cache.currentMonth;
-})();
+    sel.innerHTML = opts.join('');
+    // 仅在 cache.currentMonth 已设置且不为空时设置选中值；否则保留默认（所有月份）
+    if (cache.currentMonth) {
+        sel.value = cache.currentMonth;
+    }
+}
 
 // ==========================================
 // 标签管理（参考 Firefly III tags）
@@ -436,6 +441,8 @@ async function boot() {
     console.log('🚀 鑫钱包启动...');
     const safeInit = (name, fn) => { try { fn(); console.log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
     try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
+    // 交易月份筛选：依赖 cache.currentMonth，必须在 initCache 之后
+    safeInit('TransMonthFilter', () => initTransMonthFilter());
     safeInit('ThemeManager', () => ThemeManager.init());
     safeInit('AccountManager', () => AccountManager.init());
     safeInit('TransferManager', () => TransferManager.init());
