@@ -48,12 +48,22 @@ window.DashboardManager = DashboardManager;
 window.ChartManager = ChartManager;
 
 // ==========================================
-// 应用启动
+// 应用启动（防止重复调用 + 错误兜底）
 // ==========================================
-// 实际 boot() 在 ../app.js 中定义（含所有 init 顺序和路由恢复逻辑）
-// 这里把它挂到 DOMContentLoaded 上即可——app.js 已经不再自己绑事件
+let _booted = false;
+async function safeBoot() {
+    if (_booted) return;
+    _booted = true;
+    try {
+        await boot();
+    } catch (e) {
+        console.error('❌ 启动失败:', e.message, e.stack);
+        document.body.innerHTML = '<div style=\"padding:40px;text-align:center;font-size:18px\">⚠️ 应用启动失败<br><small>' + e.message + '</small><br><br><button onclick=\"location.reload()\">刷新重试</button></div>';
+    }
+}
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => boot());
+    document.addEventListener('DOMContentLoaded', safeBoot);
 } else {
-    boot();
+    safeBoot();
 }

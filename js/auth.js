@@ -22,6 +22,7 @@ export function getStoredUser() {
 
 // 拦截全局 fetch，自动附加 Authorization 头；业务接口 401 则清会话并跳登录页
 const _origFetch = window.fetch ? window.fetch.bind(window) : null;
+let _redirecting = false;  // 防止 401 → 跳转 → 重载 → 再次 401 的递归
 if (_origFetch) {
     window.fetch = async (input, init = {}) => {
         const url = typeof input === 'string' ? input : (input.url || '');
@@ -31,7 +32,8 @@ if (_origFetch) {
             init.headers = { ...(init.headers || {}), Authorization: 'Bearer ' + token };
         }
         const res = await _origFetch(input, init);
-        if (res.status === 401) {
+        if (res.status === 401 && !_redirecting) {
+            _redirecting = true;
             clearSession();
             window.location.href = '/login';
         }
