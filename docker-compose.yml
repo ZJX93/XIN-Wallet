@@ -49,10 +49,16 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
       DB_NAME: ${DB_NAME:-xinwallet}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # ENCRYPTION_KEY 优先级：环境变量 > 数据卷持久化文件 > 启动时生成
+      # 不传环境变量时，会自动从 /app/data/.encryption-key 读取或生成
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       ALLOW_DEMO: ${ALLOW_DEMO}
       DEMO_PASSWORD: ${DEMO_PASSWORD}
       CORS_ORIGIN: ${CORS_ORIGIN}
+    volumes:
+      # 加密密钥持久化：与数据库同卷管理，docker-compose down -v 才会清除
+      # 这样 docker-compose restart / pull 新镜像重启时，密钥和 DB 数据一起保留
+      - xinwallet-app-data:/app/data
     ports:
       - "${APP_PORT:-18888}:18888"
     networks:
@@ -60,6 +66,7 @@ services:
 
 volumes:
   xinwallet-db-data:
+  xinwallet-app-data:
 
 networks:
   xinwallet-net:

@@ -38,10 +38,15 @@ req.on('timeout', () => process.exit(1));
 req.end();
 EOF
 
+# 数据卷挂载点：存放加密密钥文件（/app/data/.encryption-key）
+# 持久化到 docker volume，跨容器重启保持稳定
+# 必须在 USER appuser 之前用 root 创建，避免 chown 失败
+RUN mkdir -p /app/data && chown -R appuser:appgroup /app/data
+
 USER appuser
 
 # 生产环境强烈建议显式注入 ENCRYPTION_KEY（用于 AI 凭证等敏感字段加密）
-# 不注入时，crypto.js 启动时会自动生成临时密钥（每次容器重启会失效）
+# 不注入时，crypto.js 启动时会从 /app/data/.encryption-key 读取或自动生成
 # 使用：docker run -e ENCRYPTION_KEY=$(openssl rand -hex 32) ...
 ENV ENCRYPTION_KEY=
 

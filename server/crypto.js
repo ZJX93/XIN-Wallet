@@ -1,11 +1,18 @@
 /* ============================================
    鑫钱包 · 敏感数据加密模块
    使用 AES-256-GCM 对 API Key / Secret 进行加密存储。
-   密钥从环境变量 ENCRYPTION_KEY 读取（32 字节 hex）。
-   首次部署时自动生成并打印密钥，运维需将其写入 .env 持久化。
+   密钥优先级（从高到低）：
+     1) 环境变量 ENCRYPTION_KEY（运维显式设置，最稳）
+     2) /app/data/.encryption-key（容器启动时从数据卷读取，跨重启稳定）
+     3) 首次启动自动生成并写入数据卷（最方便）
+   这样：
+     - docker-compose up -d → 密钥保持稳定（数据可解密）
+     - docker-compose down -v → 数据+密钥一起清除（安全）
    ============================================ */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -16,23 +23,55 @@ const TAG_POSITION = IV_LENGTH;
 const PBKDF2_SALT = Buffer.from('xin-wallet-v1-encryption-key', 'utf8');
 const PBKDF2_ITERATIONS = 100000;
 
-function getKey() {
-    let keyHex = process.env.ENCRYPTION_KEY;
-    if (!keyHex) {
-        if (process.env.NODE_ENV === 'production') {
-            // 生产环境：自动生成 + 强烈警告（避免 process.exit 反复打印导致日志洪水）
-            keyHex = crypto.randomBytes(32).toString('hex');
-            console.warn('⚠️  ⚠️  ⚠️  生产环境未配置 ENCRYPTION_KEY，已自动生成临时密钥！⚠️  ⚠️  ⚠️');
-            console.warn('   容器重启后已加密数据将永久无法解密（API Key / Secret 全部丢失）');
-            console.warn('   请设置环境变量 ENCRYPTION_KEY=<openssl rand -hex 32> 并重新部署');
-            console.warn(`   临时密钥: ENCRYPTION_KEY=${keyHex}`);
-        } else {
-            // 开发环境：自动生成 + 提示用户持久化
-            keyHex = crypto.randomBytes(32).toString('hex');
-            console.warn('⚠️  ENCRYPTION_KEY 未设置，已自动生成临时密钥（仅开发场景）。');
-            console.warn(`   ENCRYPTION_KEY=${keyHex}`);
-        }
+// 密钥持久化路径：放在数据卷内（/app/data/）
+// 第一次启动生成并写入，后续启动读取——保证容器重启后密钥稳定
+const KEY_FILE = process.env.ENCRYPTION_KEY_FILE || '/app/data/.encryption-key';
+
+function readKeyFile() {
+    try {
+        return fs.readFileSync(KEY_FILE, 'utf8').trim();
+    } catch {
+        return null;
     }
+}
+
+function writeKeyFile(keyHex) {
+    try {
+        const dir = path.dirname(KEY_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(KEY_FILE, keyHex, { mode: 0o600 }); // 仅 owner 可读
+    } catch (err) {
+        console.warn(`⚠️  无法写入加密密钥文件 ${KEY_FILE}: ${err.message}`);
+    }
+}
+
+function getKey() {
+    // 优先级 1：环境变量（非空字符串）
+    let keyHex = process.env.ENCRYPTION_KEY;
+    if (keyHex && keyHex.trim()) {
+        return deriveKey(keyHex.trim());
+    }
+    // 优先级 2：从数据卷读取
+    keyHex = readKeyFile();
+    if (keyHex) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('🔐 从数据卷读取 ENCRYPTION_KEY');
+        }
+        return deriveKey(keyHex);
+    }
+    // 优先级 3：首次启动自动生成 + 持久化
+    keyHex = crypto.randomBytes(32).toString('hex');
+    writeKeyFile(keyHex);
+    console.warn('🔐 首次启动自动生成 ENCRYPTION_KEY（已写入 ' + KEY_FILE + '）');
+    console.warn('   后续容器重启将自动使用此密钥');
+    if (process.env.NODE_ENV === 'production') {
+        console.warn('   ⚠️  生产环境建议显式设置 ENCRYPTION_KEY 环境变量以增强可控性');
+        console.warn(`      密钥: ENCRYPTION_KEY=${keyHex}`);
+    }
+    return deriveKey(keyHex);
+}
+
+function deriveKey(keyHex) {
     // 64 hex 字符：直接作为 32 字节密钥使用
     if (keyHex.length === 64 && /^[0-9a-fA-F]+$/.test(keyHex)) {
         return Buffer.from(keyHex, 'hex');
