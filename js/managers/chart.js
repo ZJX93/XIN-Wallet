@@ -49,7 +49,9 @@ const ChartManager = {
         const c = this.colors();
         // 趋势图
         this.destroy('dashTrend');
-        const ctx1 = document.getElementById('dashTrendChart').getContext('2d');
+        const trendCanvas = document.getElementById('dashTrendChart');
+        if (!trendCanvas) { console.warn('[chart] dashTrendChart canvas not found, skipping'); return; }
+        const ctx1 = trendCanvas.getContext('2d');
         const months = [...data.months].reverse();
         this.charts['dashTrend'] = new Chart(ctx1, {
             type: 'line',
@@ -74,7 +76,9 @@ const ChartManager = {
 
         // 饼图
         this.destroy('dashPie');
-        const ctx2 = document.getElementById('dashPieChart').getContext('2d');
+        const pieCanvas = document.getElementById('dashPieChart');
+        if (!pieCanvas) { console.warn('[chart] dashPieChart canvas not found'); return; }
+        const ctx2 = pieCanvas.getContext('2d');
         const summary = await api(`/transactions/summary?month=${cache.currentMonth}`);
         if (summary && summary.expenseByCategory && summary.expenseByCategory.length > 0) {
             this.charts['dashPie'] = new Chart(ctx2, {
@@ -130,6 +134,7 @@ const ChartManager = {
     async renderInvTrend(trendSeries) {
         this.destroy('invTrend');
         const canvas = document.getElementById('invTrendChart');
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const c = this.colors();
         if (!trendSeries || trendSeries.length === 0) return;
@@ -213,6 +218,7 @@ const ChartManager = {
     async renderInvTypeBar(byType) {
         this.destroy('invTypeBar');
         const canvas = document.getElementById('invTypeBarChart');
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const c = this.colors();
         if (!byType || byType.length === 0) return;
