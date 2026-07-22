@@ -112,8 +112,8 @@ const InvestmentManager = {
         this.editId = null;
     },
     async edit(id) {
-        const data = await api('/investments');
-        if (!data) return;
+        const data = await api('/investments/investments');
+        if (!data) return;   // data = { investments: [...], summary: {...}, byType: [...] }
         const inv = data.investments.find(i => i.id === id);
         if (!inv) { showToast('持仓不存在', 'error'); return; }
         this.editId = id;
@@ -323,8 +323,8 @@ const InvestmentManager = {
         this.init();  // 如果 init 之前被 null-guard 跳过，在 refresh 时补上
         const container = document.getElementById('investList');
         showSkeleton(container, 4, 'grid');
-        const data = await api('/investments');
-        if (!data) return;
+        const data = await api('/investments/investments');
+        if (!data) return;   // data = { investments: [...], summary: {...}, byType: [...] }
         cache.investments = data.investments || [];
         const s = data.summary;
         document.getElementById('invTotalCost').textContent = fmt(s.totalCost);
