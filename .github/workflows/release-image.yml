@@ -6,59 +6,53 @@
 # ============================================
 name: Build & Publish Docker Image
 
-# 触发器：v*.*.* 形式的 tag 推送
 on:
   push:
     tags:
       - 'v*.*.*'
-  # 允许手动触发（用于测试）
   workflow_dispatch:
     inputs:
       tag:
-        description: '手动构建的版本号（留空生成 dev-<sha>）'
+        description: '手动构建的版本号'
         required: false
         default: ''
 
-# 环境变量
 env:
   REGISTRY: ghcr.io
-  # OCI 规范要求镜像名全小写。GitHub Actions 不支持 lower()，用 echo 转小写生成 IMAGE_NAME。
-  IMAGE_OWNER: ${{ github.repository_owner }}
-  IMAGE_REPO: xin-wallet
-  IMAGE_NAME_LOWER: ${{ steps.compute-name.outputs.name }}
-  IMAGE_NAME: ${{ steps.compute-name.outputs.name }}/xinwallet
+  # 镜像名必须全小写。GitHub Actions 表达式不支持 lower()，改用 shell tr。
+  IMAGE_REPO_LOWER: xin-wallet
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write   # 推送镜像到 GHCR 所需
+      packages: write
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 计算镜像 tag
-        id: meta
+      # 一个 step 同时计算 tag + 转小写 owner，输出供后续步骤引用
+      - name: 准备镜像配置
+        id: setup
         run: |
-          # 优先使用推送的 tag，否则用手动参数，否则用 main-<sha>
+          # 1) 计算 VERSION（推送的 tag / 手动参数 / dev-<sha>）
           if [ "${{ github.event_name }}" = "push" ]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
+            VERSION=${GITHUB_REF#refs/tags/}
           elif [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG_NAME=${{ github.event.inputs.tag }}
+            VERSION=${{ github.event.inputs.tag }}
           else
-            TAG_NAME=dev-${GITHUB_SHA::7}
+            VERSION=dev-${GITHUB_SHA::7}
           fi
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_OUTPUT
-          echo "FULL_TAG=${REGISTRY}/${IMAGE_NAME}:${TAG_NAME}" >> $GITHUB_OUTPUT
-
-      # GitHub Actions 不支持表达式内置 lower()，用 shell 转小写
-      - name: 计算小写镜像名
-        id: compute-name
-        run: |
+          # 2) owner 转小写（OCI 镜像名要求小写）
           OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "name=${OWNER_LOWER}/xin-wallet" >> $GITHUB_OUTPUT
+          IMAGE_PATH="${OWNER_LOWER}/${IMAGE_REPO_LOWER}/xinwallet"
+          FULL_TAG="${REGISTRY}/${IMAGE_PATH}:${VERSION}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "IMAGE_PATH=${IMAGE_PATH}" >> $GITHUB_OUTPUT
+          echo "FULL_TAG=${FULL_TAG}" >> $GITHUB_OUTPUT
+          echo "📦 ${FULL_TAG}"
 
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -78,8 +72,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ steps.setup.outputs.FULL_TAG }}
+            ${{ env.REGISTRY }}/${{ steps.setup.outputs.IMAGE_PATH }}:latest
           labels: |
             org.opencontainers.image.title=XIN Wallet
             org.opencontainers.image.description=鑫钱包 - 个人财务助手
@@ -94,8 +88,8 @@ jobs:
         if: success()
         run: |
           echo "✅ 镜像构建完成:"
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}"
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "  ${{ steps.setup.outputs.FULL_TAG }}"
+          echo "  ${{ env.REGISTRY }}/${{ steps.setup.outputs.IMAGE_PATH }}:latest"
           echo ""
-          echo "📋 pull 命令:"
-          echo "  docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.TAG_NAME }}"
+          echo "📋 pull:"
+          echo "  docker pull ${{ steps.setup.outputs.FULL_TAG }}"
