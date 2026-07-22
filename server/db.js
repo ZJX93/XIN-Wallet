@@ -104,6 +104,21 @@ async function initDatabase() {
       }
     }
 
+    // 迁移：给已存在的 users 表补充 fail_count/locked_until/last_fail_at 列
+    const userCols = ['fail_count INT NOT NULL DEFAULT 0',
+                       'locked_until DATETIME NULL',
+                       'last_fail_at DATETIME NULL'];
+    for (const colDef of userCols) {
+      const colName = colDef.split(' ')[0];
+      try {
+        await query(`ALTER TABLE users ADD COLUMN ${colDef}`);
+      } catch (err) {
+        if (!/already exists|duplicate/i.test(err.message)) {
+          console.warn(`⚠️ users.${colName} 迁移警告:`, err.message);
+        }
+      }
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

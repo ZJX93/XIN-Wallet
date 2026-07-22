@@ -12,21 +12,32 @@ const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 const TAG_POSITION = IV_LENGTH;
 
+// 短密钥派生：使用 PBKDF2 替代单次 SHA256（密钥强化 + 抵御暴力）
+const PBKDF2_SALT = Buffer.from('xin-wallet-v1-encryption-key', 'utf8');
+const PBKDF2_ITERATIONS = 100000;
+
 function getKey() {
     let keyHex = process.env.ENCRYPTION_KEY;
     if (!keyHex) {
-        // 首次启动自动生成密钥（仅开发/首次部署场景；生产应手动配置）
+        if (process.env.NODE_ENV === 'production') {
+            // 生产环境禁止启动——避免已加密数据永久不可读
+            console.error('\n❌ FATAL: ENCRYPTION_KEY 未设置。');
+            console.error('   生产环境必须显式配置 ENCRYPTION_KEY（64 位 hex / `openssl rand -hex 32`）');
+            console.error('   否则一旦容器重启，数据库中已加密的 API Key / Secret 将永久无法解密。\n');
+            process.exit(1);
+        }
+        // 开发环境：自动生成 + 提示用户持久化
         keyHex = crypto.randomBytes(32).toString('hex');
-        console.warn('⚠️  ENCRYPTION_KEY 未设置，已自动生成临时密钥。');
+        console.warn('⚠️  ENCRYPTION_KEY 未设置，已自动生成临时密钥（仅开发场景）。');
         console.warn('   请将以下配置写入 .env 文件以持久化（否则重启后已加密数据无法解密）:');
         console.warn(`   ENCRYPTION_KEY=${keyHex}`);
     }
-    // 确保是 32 字节的 Buffer
-    if (keyHex.length === 64) {
+    // 64 hex 字符：直接作为 32 字节密钥使用
+    if (keyHex.length === 64 && /^[0-9a-fA-F]+$/.test(keyHex)) {
         return Buffer.from(keyHex, 'hex');
     }
-    // 如果用户设置了短字符串，用 sha256 派生 32 字节密钥
-    return crypto.createHash('sha256').update(keyHex).digest();
+    // 短字符串：使用 PBKDF2 派生 32 字节密钥（防暴力破解）
+    return crypto.pbkdf2Sync(keyHex, PBKDF2_SALT, PBKDF2_ITERATIONS, 32, 'sha256');
 }
 
 const KEY = getKey();

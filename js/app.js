@@ -467,4 +467,5 @@ async function boot() {
     console.log('✅ 鑫钱包系统已就绪');
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+// app.js 作为经典 <script> 加载时也兼容自启动；ES Module 路径 (js/managers/index.js) 主动调用 boot()
+export { boot };

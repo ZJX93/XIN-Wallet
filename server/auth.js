@@ -19,15 +19,25 @@ if (!JWT_SECRET || JWT_SECRET === 'zhicai-dev-secret-change-me' || JWT_SECRET ==
     }
 }
 const EFFECTIVE_SECRET = JWT_SECRET || 'zhicai-dev-secret-change-me';
-const JWT_EXPIRES = '7d';
+// Token 有效期缩短到 1 小时（短期凭证），演示 / 离线环境可通过 JWT_EXPIRES 覆盖
+const JWT_EXPIRES = process.env.JWT_EXPIRES || '1h';
 
-// 生成密码哈希
-function hashPassword(plain) {
-    return bcrypt.hashSync(plain, 10);
+// 异步哈希（避免阻塞事件循环）
+async function hashPassword(plain) {
+    return bcrypt.hash(plain, 10);
 }
 
-// 校验密码
-function verifyPassword(plain, hash) {
+// 异步校验密码
+async function verifyPassword(plain, hash) {
+    try {
+        return await bcrypt.compare(plain, hash);
+    } catch {
+        return false;
+    }
+}
+
+// 同步校验密码（向后兼容 —— 部分路由 sync 调用，现已迁移到 async 但保留导出避免破坏）
+function verifyPasswordSync(plain, hash) {
     try {
         return bcrypt.compareSync(plain, hash);
     } catch {
@@ -35,12 +45,12 @@ function verifyPassword(plain, hash) {
     }
 }
 
-// 签发 JWT
+// 签发 JWT：显式声明算法，避免未来库默认值变更
 function signToken(user) {
     return jwt.sign(
         { id: Number(user.id), username: user.username },
         EFFECTIVE_SECRET,
-        { expiresIn: JWT_EXPIRES }
+        { algorithm: 'HS256', expiresIn: JWT_EXPIRES }
     );
 }
 
@@ -52,7 +62,7 @@ function authMiddleware(req, res, next) {
         return res.status(401).json({ success: false, message: '未授权，请先登录' });
     }
     try {
-        const payload = jwt.verify(token, EFFECTIVE_SECRET);
+        const payload = jwt.verify(token, EFFECTIVE_SECRET, { algorithms: ['HS256'] });
         req.userId = payload.id;
         next();
     } catch {
@@ -60,4 +70,4 @@ function authMiddleware(req, res, next) {
     }
 }
 
-module.exports = { hashPassword, verifyPassword, signToken, authMiddleware };
+module.exports = { hashPassword, verifyPassword, verifyPasswordSync, signToken, authMiddleware };

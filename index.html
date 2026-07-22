@@ -11,12 +11,14 @@
     <link rel="stylesheet" href="css/components.css">
     <link rel="stylesheet" href="css/dashboard.css?v=2">
     <link rel="stylesheet" href="css/auth.css">
-    <script src="js/vendor/chart.umd.min.js"></script>
-    <script src="js/vendor/xlsx.full.min.js"></script>
     <!-- 自动推导 API 基址：兼容「反向代理 / 子路径」部署，避免 /api 请求打到错误 origin -->
     <script>
         window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
     </script>
+    <!-- Chart.js 同步加载（Dashboard / 报表 / 理财 / 储蓄 等页面首屏用到图表） -->
+    <script src="js/vendor/chart.umd.min.js"></script>
+    <!-- xlsx (CSV/账单导入) 移到主入口之后，按需动态加载；不在 <head> 阻塞首屏 -->
+    <link rel="preload" href="js/vendor/xlsx.full.min.js" as="script">
 </head>
 <body>
     <script>if (!localStorage.getItem('zhicai_token')) location.href = '/login';</script>
@@ -594,28 +596,8 @@
     <script src="js/page-loader.js"></script>
     <script type="module" src="js/auth.js"></script>
     <script src="js/app.js"></script>
-    <!-- 管理器模块：拆分为独立 ES Module，统一通过 boot() 入口初始化 -->
-    <script type="module">
-        // 按依赖顺序加载所有 Manager（每个模块自挂到 window）
-        import './js/managers/theme.js';
-        import './js/managers/chart.js';
-        import './js/managers/dashboard.js';
-        import './js/managers/transfer.js';
-        import './js/managers/account.js';
-        import './js/managers/transaction.js';
-        import './js/managers/budget.js';
-        import './js/managers/investment.js';
-        import './js/managers/ai-recognition.js';
-        import './js/managers/report.js';
-        import './js/managers/analysis.js';
-        import './js/managers/quick-add.js';
-        import './js/managers/data.js';
-        import './js/managers/tag.js';
-        import './js/managers/savings.js';
-        import './js/managers/csv.js';
-        import './js/managers/ai-provider.js';
-        import './js/managers/debt.js';
-    </script>
+    <!-- 管理器模块：统一通过 index.js 一行入口加载（内含 window.* 桥接 + boot） -->
+    <script type="module" src="js/managers/index.js"></script>
     <script type="module">
         import { renderUserMenu, bindLogout } from './js/auth.js';
         renderUserMenu();

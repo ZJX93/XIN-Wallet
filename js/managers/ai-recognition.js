@@ -160,6 +160,18 @@ const AIRecognition = {
         try {
             const name = this.billFile.name.toLowerCase();
             const isCsv = name.endsWith('.csv');
+            if (!isCsv) {
+                // XLS/XLSX：按需动态加载 xlsx.full.min.js（默认已 preload）
+                if (typeof XLSX === 'undefined') {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        s.src = 'js/vendor/xlsx.full.min.js';
+                        s.onload = resolve;
+                        s.onerror = () => reject(new Error('xlsx.full.min.js 加载失败'));
+                        document.head.appendChild(s);
+                    });
+                }
+            }
             const buf = await this.billFile.arrayBuffer();
 
             let rows;

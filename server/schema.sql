@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   nickname VARCHAR(100),
+  -- 登录失败计数 + 账号锁定（持久化，重启不丢）
+  fail_count INT NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
+  last_fail_at DATETIME NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

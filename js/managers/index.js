@@ -49,37 +49,10 @@ window.ChartManager = ChartManager;
 // ==========================================
 // 应用启动
 // ==========================================
-async function boot() {
-    console.log('🚀 鑫钱包启动...');
-    await initCache();
-    ThemeManager.init();
-    AccountManager.init();
-    TransferManager.init();
-    TransactionManager.init();
-    BudgetManager.init();
-    InvestmentManager.init();
-    DebtManager.init();
-    TagManager.init();
-    DataManager.init();
-    SavingsGoalManager.init();
-    CsvManager.init();
-    AIRecognition.init();
-    AIProviderManager.init();
-    ReportManager.init();
-    QuickAdd.init();
-    DashboardManager.init();
-
-    // 从 URL path 恢复页面状态（干净路由：/transactions）
-    const page = currentRoute();
-    const validPages = Object.keys(PAGE_META);
-    if (validPages.includes(page)) {
-        history.replaceState({ page }, '', pageUrl(page));
-        showPage(page);
-    } else {
-        history.replaceState({ page: 'dashboard' }, '', pageUrl('dashboard'));
-        showPage('dashboard');
-    }
-    console.log('✅ 鑫钱包系统已就绪');
+// 实际 boot() 在 ../app.js 中定义（含所有 init 顺序和路由恢复逻辑）
+// 这里把它挂到 DOMContentLoaded 上即可——app.js 已经不再自己绑事件
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => boot());
+} else {
+    boot();
 }
-
-export { boot };
