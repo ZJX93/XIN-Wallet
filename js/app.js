@@ -467,5 +467,4 @@ async function boot() {
     console.log('✅ 鑫钱包系统已就绪');
 }
 
-// app.js 作为经典 <script> 加载时也兼容自启动；ES Module 路径 (js/managers/index.js) 主动调用 boot()
-export { boot };
+// boot() 由 js/managers/index.js 在 DOMContentLoaded 后直接调用；app.js 加载为普通 script，所有变量已在全局

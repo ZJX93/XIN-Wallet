@@ -23,8 +23,9 @@ import AnalysisManager from './analysis.js';
 import DashboardManager from './dashboard.js';
 import ChartManager from './chart.js';
 
-// app.js 中残留的辅助函数（initCache、switchPage 等）通过 import 引入
-import { initCache, switchPage, pageUrl, showPage, currentRoute, PAGE_META } from '../app.js';
+// app.js 是经典 script（非 module），所有函数自动在 window 上，直接用
+const boot = window.boot;
+const initCache = window.initCache;
 
 // 把导入的 Manager 挂到全局，让 app.js 中残留的内联调用仍能访问
 window.ThemeManager = ThemeManager;
