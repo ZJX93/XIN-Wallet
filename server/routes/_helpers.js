@@ -82,6 +82,32 @@ function maskKey(key) {
     return key.slice(0, 6) + '...' + key.slice(-4);
 }
 
+/**
+ * 尝试解密凭证，并返回是否成功 + 解密后的明文（用于诊断密钥是否匹配）
+ * @param {string} key 密文（hex）
+ * @returns {{ ok: boolean, value: string, error?: string }}
+ */
+function tryDecrypt(key) {
+    if (!key) return { ok: true, value: '' };
+    try {
+        const buf = Buffer.from(key, 'hex');
+        if (buf.length < 32) {
+            // 不是加密格式（旧数据明文），直接返回
+            return { ok: true, value: key };
+        }
+        // 通过 _helpers 暴露的内部解密（这里用相对路径的 crypto 模块）
+        const { decrypt } = require('../crypto');
+        const decrypted = decrypt(key);
+        // 如果解密返回原密文（说明失败 fallback），则不 ok
+        if (decrypted === key) {
+            return { ok: false, value: '', error: '密钥不匹配或数据已损坏' };
+        }
+        return { ok: true, value: decrypted };
+    } catch (err) {
+        return { ok: false, value: '', error: err.message };
+    }
+}
+
 // 从模型输出中安全提取 JSON（兼容 markdown 代码块包裹）
 function extractJson(text) {
     if (!text) return null;
@@ -170,5 +196,6 @@ module.exports = {
     success, fail, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
     extractJson, sumLedgerEffects, computeAccountBalance, ensureWeeklySnapshots,
     calcDebtDueSummary,
-    ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest
+    ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
+    tryDecrypt
 };

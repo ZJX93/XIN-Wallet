@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
-const { success, fail, handleServerError, maskKey, extractJson } = require('./_helpers');
+const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt } = require('./_helpers');
 const { getActiveProvider, callProvider } = require('../services/ai');
 const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
 const OcrClient = tencentOcr.v20181119.Client;
@@ -301,12 +301,23 @@ router.post('/insight', async (req, res) => {
 // OCR 配置
 router.get('/ocr-config', async (req, res) => {
     try {
-        const cfg = await db.queryOne('SELECT provider, secret_id, region FROM ai_ocr_config WHERE user_id = ?', [req.userId]);
-        res.json(success(cfg ? {
+        const cfg = await db.queryOne('SELECT provider, secret_id, secret_key, region FROM ai_ocr_config WHERE user_id = ?', [req.userId]);
+        if (!cfg) {
+            res.json(success({ provider: 'tencent', secret_id: '', region: 'ap-guangzhou' }));
+            return;
+        }
+        // 诊断：是否成功解密
+        const idResult = tryDecrypt(cfg.secret_id);
+        const keyResult = tryDecrypt(cfg.secret_key);
+        const decryptOk = idResult.ok && keyResult.ok;
+        res.json(success({
             provider: cfg.provider,
-            secret_id: maskKey(decrypt(cfg.secret_id)),
-            region: cfg.region
-        } : { provider: 'tencent', secret_id: '', region: 'ap-guangzhou' }));
+            secret_id: maskKey(idResult.value),
+            region: cfg.region,
+            // 关键：告知前端"凭证是否可正常解密"
+            credentialsValid: decryptOk,
+            credentialsError: decryptOk ? null : (idResult.error || keyResult.error || '密钥不匹配，请重新添加凭证'),
+        }));
     } catch (err) { handleServerError(res, err); }
 });
 

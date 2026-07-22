@@ -230,6 +230,15 @@ const AIProviderManager = {
         document.getElementById('ocrRegion').value = res.region || 'ap-guangzhou';
         document.getElementById('ocrConfigMsg').textContent = '';
         document.getElementById('ocrConfigMsg').className = 'form-msg';
+
+        // 关键：若后端报告 credentialsValid=false（密钥不匹配），明确提示用户
+        if (res.secret_id && res.credentialsValid === false) {
+            showToast('⚠️ 已加密的凭证无法解密，请重新填写 SecretId 和 SecretKey', 'warning', 6000);
+            this.ocrSetMsg('⚠️ 已加密的凭证无法解密（' + (res.credentialsError || '密钥不匹配') + '），请重新填写凭证', 'error');
+            // 强制清空占位符，让用户知道必须重新输入
+            document.getElementById('ocrSecretId').value = '';
+            document.getElementById('ocrSecretId').placeholder = '请重新输入（已加密数据无法解密）';
+        }
     },
 
     async saveOcrConfig() {
