@@ -19,11 +19,10 @@ function setHint(msg, isError) {
     el.setAttribute('role', isError ? 'alert' : 'status');
 }
 
-// 用 const 箭头函数（不提升），避免 function 声明提升后 window.api 已指向自身
-const _rawApi = window.api;
-const api = (path, method = 'GET', body = null) => {
-    return _rawApi(path, method, body, { silent: true });
-};
+// 直接调用 utils.js 暴露的 window.api，避免任何命名冲突
+function loginApi(path, method = 'GET', body = null) {
+    return window.api(path, method, body, { silent: true });
+}
 
 function applyTheme() {
     const saved = localStorage.getItem('zhicai_theme') || 'light';
@@ -67,11 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
             let data;
             console.log('[login] 开始 API 调用...');
             if (mode === 'login') {
-                data = await api('/auth/login', 'POST', { username, password });
+                data = await loginApi('/auth/login', 'POST', { username, password });
                 console.log('[login] 登录响应:', data);
                 setHint('登录成功，正在进入...');
             } else {
-                data = await api('/auth/register', 'POST', { username, password, nickname });
+                data = await loginApi('/auth/register', 'POST', { username, password, nickname });
                 setHint('注册成功，正在进入...');
             }
             console.log('[login] setSession token='+data.token+' user='+data.user?.username);
@@ -89,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setHint('正在登录演示账号...');
         if (submitBtn) submitBtn.disabled = true;
         try {
-            const data = await api('/auth/demo', 'POST');
+            const data = await loginApi('/auth/demo', 'POST');
             setSession(data.token, data.user);
             location.href = '/';
         } catch (err) {
