@@ -429,23 +429,24 @@ function initColorSwatches(containerId, inputId) {
 // ==========================================
 async function boot() {
     console.log('🚀 鑫钱包启动...');
-    try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message, e.stack); throw e; }
-    try { ThemeManager.init(); console.log('  ✅ ThemeManager'); } catch(e) { console.error('  ❌ ThemeManager:', e.message, e.stack); throw e; }
-    try { AccountManager.init(); console.log('  ✅ AccountManager'); } catch(e) { console.error('  ❌ AccountManager:', e.message, e.stack); throw e; }
-    try { TransferManager.init(); console.log('  ✅ TransferManager'); } catch(e) { console.error('  ❌ TransferManager:', e.message, e.stack); throw e; }
-    try { TransactionManager.init(); console.log('  ✅ TransactionManager'); } catch(e) { console.error('  ❌ TransactionManager:', e.message, e.stack); throw e; }
-    try { BudgetManager.init(); console.log('  ✅ BudgetManager'); } catch(e) { console.error('  ❌ BudgetManager:', e.message, e.stack); throw e; }
-    try { InvestmentManager.init(); console.log('  ✅ InvestmentManager'); } catch(e) { console.error('  ❌ InvestmentManager:', e.message, e.stack); throw e; }
-    try { DebtManager.init(); console.log('  ✅ DebtManager'); } catch(e) { console.error('  ❌ DebtManager:', e.message, e.stack); throw e; }
-    try { TagManager.init(); console.log('  ✅ TagManager'); } catch(e) { console.error('  ❌ TagManager:', e.message, e.stack); throw e; }
-    try { DataManager.init(); console.log('  ✅ DataManager'); } catch(e) { console.error('  ❌ DataManager:', e.message, e.stack); throw e; }
-    try { SavingsGoalManager.init(); console.log('  ✅ SavingsGoal'); } catch(e) { console.error('  ❌ SavingsGoal:', e.message, e.stack); throw e; }
-    try { CsvManager.init(); console.log('  ✅ CsvManager'); } catch(e) { console.error('  ❌ CsvManager:', e.message, e.stack); throw e; }
-    try { AIRecognition.init(); console.log('  ✅ AIRecognition'); } catch(e) { console.error('  ❌ AIRecognition:', e.message, e.stack); throw e; }
-    try { AIProviderManager.init(); console.log('  ✅ AIProvider'); } catch(e) { console.error('  ❌ AIProvider:', e.message, e.stack); throw e; }
-    try { ReportManager.init(); console.log('  ✅ ReportManager'); } catch(e) { console.error('  ❌ ReportManager:', e.message, e.stack); throw e; }
-    try { QuickAdd.init(); console.log('  ✅ QuickAdd'); } catch(e) { console.error('  ❌ QuickAdd:', e.message, e.stack); throw e; }
-    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.error('  ❌ Dashboard:', e.message, e.stack); throw e; }
+    const safeInit = (name, fn) => { try { fn(); console.log('  ✅ '+name); } catch(e) { console.warn('  ⚠️  '+name+' (跳过):', e.message); } };
+    try { await initCache(); console.log('  ✅ initCache'); } catch(e) { console.error('  ❌ initCache:', e.message); throw e; }
+    safeInit('ThemeManager', () => ThemeManager.init());
+    safeInit('AccountManager', () => AccountManager.init());
+    safeInit('TransferManager', () => TransferManager.init());
+    safeInit('TransactionManager', () => TransactionManager.init());
+    safeInit('BudgetManager', () => BudgetManager.init());
+    safeInit('InvestmentManager', () => InvestmentManager.init());
+    safeInit('DebtManager', () => DebtManager.init());
+    safeInit('TagManager', () => TagManager.init());
+    safeInit('DataManager', () => DataManager.init());
+    safeInit('SavingsGoalManager', () => SavingsGoalManager.init());
+    safeInit('CsvManager', () => CsvManager.init());
+    safeInit('AIRecognition', () => AIRecognition.init());
+    safeInit('AIProviderManager', () => AIProviderManager.init());
+    safeInit('ReportManager', () => ReportManager.init());
+    safeInit('QuickAdd', () => QuickAdd.init());
+    try { await DashboardManager.init(); console.log('  ✅ Dashboard'); } catch(e) { console.warn('  ⚠️  Dashboard (跳过):', e.message); }
 
     // 从 URL path 恢复页面状态（干净路由：/transactions）
     const page = currentRoute();

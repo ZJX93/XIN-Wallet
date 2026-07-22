@@ -28,7 +28,9 @@
 const InvestmentManager = {
     refreshTimer: null,
     init() {
-        document.getElementById('addInvestBtn').addEventListener('click', () => this.openModal());
+        // investModal 等 DOM 在 pages/investments.html 中，可能尚未通过 PageLoader 加载
+        const investForm = document.getElementById('investForm');
+        if (!investForm) return;  // 懒加载时机未到，等待 refresh() 时加载
         document.getElementById('investModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('investCancelBtn').addEventListener('click', () => this.closeModal());
         document.getElementById('investForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
