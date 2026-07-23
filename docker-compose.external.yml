@@ -27,6 +27,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME:-xinwallet}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       DEMO_PASSWORD: ${DEMO_PASSWORD}
       CORS_ORIGIN: ${CORS_ORIGIN}
     ports:
