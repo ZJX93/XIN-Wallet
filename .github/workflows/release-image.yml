@@ -6,6 +6,11 @@
 # ============================================
 name: Build & Publish Docker Image
 
+# 同一分支/标签同一时间仅允许一个构建运行，避免堆积
+concurrency:
+  group: build-image-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     tags:
