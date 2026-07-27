@@ -124,7 +124,7 @@ const DashboardManager = {
                     }
                     return (showDate ? `<div class="detail-date-sep"><span>${dateLabel}</span></div>` : '') + `
                     <div class="detail-row">
-                        <div class="detail-row-icon">${t.category.icon}</div>
+                        <div class="detail-row-icon">${escapeHtml(t.category.icon || "📌")}</div>
                         <div class="detail-row-info">
                             <span class="detail-row-name">${escapeHtml(t.category.name)}</span>
                             <span class="detail-row-sub">${escapeHtml(t.note || '无备注')} · ${t.account ? escapeHtml(t.account.icon || "") + " " + escapeHtml(t.account.name || "") : ""}</span>
