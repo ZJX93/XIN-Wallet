@@ -6,7 +6,13 @@ Thumbs.db
 __pycache__/
 .venv/
 dist/
+dist-build/
+dist-preview/
+dist.prebuild-*/
 .cache/
+.npm-cache*/
+inspect-output/
+inspect-build-preview.mjs
 # 排除临时图片，但保留 logo 和 images 目录下的图片
 *.png
 !images/*.png
