@@ -64,7 +64,7 @@ const TagManager = {
         const sel = document.getElementById('transTagFilter');
         if (!sel) return;
         const cur = sel.value;
-        sel.innerHTML = '<option value="all">所有标签</option>' + (cache.tags || []).map(t => `<option value="${t.id}">${t.icon || ''} ${escapeHtml(t.name)}</option>`).join('');
+        sel.innerHTML = '<option value="all">所有标签</option>' + (cache.tags || []).map(t => `<option value="${t.id}">${escapeHtml(t.icon || '')} ${escapeHtml(t.name)}</option>`).join('');
         if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
     },
     async refresh() {
@@ -76,7 +76,7 @@ const TagManager = {
         if (!cache.tags.length) { showEmpty(grid, '还没有标签，点击右上角「新建标签」创建第一个吧', '🏷️'); return; }
         grid.innerHTML = cache.tags.map(t => `
             <div class="tag-card" style="--tag-color:${t.color}" data-id="${t.id}">
-                <div class="tag-card-icon">${t.icon || '🏷️'}</div>
+                <div class="tag-card-icon">${escapeHtml(t.icon || "🏷️")}</div>
                 <div class="tag-card-body">
                     <div class="tag-card-name">${escapeHtml(t.name)}</div>
                     <div class="tag-card-meta">点击按此标签筛选交易</div>

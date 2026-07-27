@@ -86,7 +86,7 @@ const DataManager = {
 
         const renderRow = (c, depth) => `
             <tr class="${depth > 0 ? 'dc-sub-row' : 'dc-parent-row'}">
-                <td><span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth * 20}px;display:inline-block">${depth > 0 ? '└ ' : ''}${c.icon}</span></td>
+                <td><span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth * 20}px;display:inline-block">${depth > 0 ? '└ ' : ''}${escapeHtml(c.icon || "📌")}</span></td>
                 <td>${escapeHtml(c.name)}${c.children && c.children.length > 0 ? ` <span class="dc-child-count">(${c.children.length}个子类)</span>` : ''}</td>
                 <td><span class="badge ${c.type === 'income' ? 'badge-income' : 'badge-expense'}">${typeLabel[c.type] || c.type}</span></td>
                 <td><span class="color-dot" style="background:${c.color}"></span></td>
@@ -161,7 +161,7 @@ const DataManager = {
         const riskLabel = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
         tbody.innerHTML = data.map(t => `
             <tr>
-                <td><span style="font-size:20px">${t.icon}</span></td>
+                <td><span style="font-size:20px">${escapeHtml(t.icon || "💹")}</span></td>
                 <td>${escapeHtml(t.name)}</td>
                 <td><span class="badge badge-risk ${t.risk_level}">${riskLabel[t.risk_level] || t.risk_level}</span></td>
                 <td>${escapeHtml(t.description || '-')}</td>

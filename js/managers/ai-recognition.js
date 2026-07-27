@@ -530,7 +530,7 @@ const AIRecognition = {
             return `<div class="ai-edit-row" data-idx="${i}">
                 <div class="ai-edit-col ai-edit-acc">
                     <select class="ai-edit-acc-sel" data-field="account" data-idx="${i}">
-                        ${accounts.map(a => `<option value="${a.id}" ${a.id === accId ? 'selected' : ''}>${a.icon || '🏦'} ${escapeHtml(a.name)}</option>`).join('')}
+                        ${accounts.map(a => `<option value="${a.id}" ${a.id === accId ? 'selected' : ''}>${escapeHtml(a.icon || "🏦")} ${escapeHtml(a.name)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="ai-edit-col ai-edit-type">
@@ -541,7 +541,7 @@ const AIRecognition = {
                 </div>
                 <div class="ai-edit-col ai-edit-cat">
                     <select class="ai-edit-cat-sel" data-field="category" data-idx="${i}">
-                        ${catList.map(c => `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-icon="${c.icon || '📌'}" ${(item.category_id === c.id || item.category === c.name) ? 'selected' : ''}>${c.icon || '📌'} ${escapeHtml(c.name)}</option>`).join('')}
+                        ${catList.map(c => `<option value="${c.id}" data-name="${escapeHtml(c.name)}" data-icon="${escapeHtml(c.icon || "📌")}" ${(item.category_id === c.id || item.category === c.name) ? 'selected' : ''}>${c.icon || '📌'} ${escapeHtml(c.name)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="ai-edit-col ai-edit-amt">
@@ -762,7 +762,7 @@ const AIRecognition = {
         if (!input) return;
         const cat = this.guessCat(input);
         document.getElementById('aiCatResult').style.display = 'block';
-        document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${cat.icon} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-primary" id="aiQuickAddBtn">直接记一笔</button></div>`;
+        document.getElementById('aiCatResult').innerHTML = `<div class="ai-cat-suggestion"><span class="ai-cat-label">${escapeHtml(cat.icon || "📌")} ${escapeHtml(cat.name)}</span></div><div style="margin-top:8px"><button class="btn btn-primary" id="aiQuickAddBtn">直接记一笔</button></div>`;
         document.getElementById('aiQuickAddBtn').addEventListener('click', () => window.quickAddFromAI && window.quickAddFromAI(cat.id, input));
     }
 };

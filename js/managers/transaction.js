@@ -148,9 +148,9 @@ const TransactionManager = {
         parents.forEach(p => {
             const subs = children.filter(c => c.parent_id === p.id);
             if (subs.length > 0) {
-                catSel.innerHTML += `<optgroup label="${p.icon} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${s.icon} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
+                catSel.innerHTML += `<optgroup label="${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${escapeHtml(s.icon || "📌")} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
             } else {
-                catSel.innerHTML += `<option value="${p.id}">${p.icon} ${escapeHtml(p.name)}</option>`;
+                catSel.innerHTML += `<option value="${p.id}">${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}</option>`;
             }
         });
         const accSel = document.getElementById('transAccFilter');
@@ -167,7 +167,7 @@ const TransactionManager = {
         sel.innerHTML = parents.map(p => {
             const subs = children.filter(c => c.parent_id === p.id);
             if (subs.length > 0) {
-                return `<optgroup label="${p.icon} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${s.icon} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
+                return `<optgroup label="${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${escapeHtml(s.icon || "📌")} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
             }
             return `<option value="${p.id}">${p.icon} ${escapeHtml(p.name)}</option>`;
         }).join('');
@@ -326,7 +326,7 @@ const TransactionManager = {
             const time = fmtTransTime(t.date);
             const typeLabel = isTransfer ? '转账' : (t.type === 'income' ? '收入' : '支出');
             const typeClass = isTransfer ? 'transfer' : t.type;
-            const categoryHtml = `<span class="trans-cat-icon">${t.category.icon}</span><span>${escapeHtml(t.category.name)}</span>`;
+            const categoryHtml = `<span class="trans-cat-icon">${escapeHtml(t.category.icon || "📌")}</span><span>${escapeHtml(t.category.name)}</span>`;
             const tagsHtml = (t.tags && t.tags.length)
                 ? t.tags.map(tg => `<span class="tag-badge" style="--tag-color:${tg.color}">${escapeHtml(tg.icon)} ${escapeHtml(tg.name)}</span>`).join('')
                 : '';

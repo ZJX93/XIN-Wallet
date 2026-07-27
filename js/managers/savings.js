@@ -34,7 +34,7 @@ const SavingsGoalManager = {
     },
     populateAccounts() {
         const sel = document.getElementById('goalAccount');
-        sel.innerHTML = '<option value="">不关联账户</option>' + cache.accounts.map(a => `<option value="${a.id}">${a.icon} ${escapeHtml(a.name)}</option>`).join('');
+        sel.innerHTML = '<option value="">不关联账户</option>' + cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)}</option>`).join('');
     },
     openModal() {
         document.getElementById('goalEditId').value = '';
@@ -102,7 +102,7 @@ const SavingsGoalManager = {
         document.getElementById('goalAmountTitle').textContent = isAlloc ? '💰 存入金额' : '↩️ 取回金额';
         document.getElementById('goalAmountLabel').textContent = (isAlloc ? '存入' : '取回') + '金额 (¥)';
         document.getElementById('goalAmountMeta').innerHTML =
-            `<div>${g.icon || '🎯'} <strong>${escapeHtml(g.name)}</strong></div>` +
+            `<div>${escapeHtml(g.icon || '🎯')} <strong>${escapeHtml(g.name)}</strong></div>` +
             `<div>已存 ${fmt(cur)} / 目标 ${fmt(target)}（缺口 ${fmt(remaining)}）</div>`;
         const input = document.getElementById('goalAmountInput');
         const errEl = document.getElementById('goalAmountError');
@@ -115,7 +115,7 @@ const SavingsGoalManager = {
         // 填充账户下拉
         const accSel = document.getElementById('goalAmountAccount');
         accSel.innerHTML = '<option value="">-- 请选择账户 * --</option>' +
-            (cache.accounts || []).map(a => `<option value="${a.id}" ${g.account_id === a.id ? 'selected' : ''}>${a.icon || ''} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+            (cache.accounts || []).map(a => `<option value="${a.id}" ${g.account_id === a.id ? 'selected' : ''}>${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
         const quick = document.getElementById('goalQuickAmounts');
         const presets = isAlloc
             ? [100, 500, 1000, { label: '填满缺口', value: remaining }]
@@ -232,7 +232,7 @@ const SavingsGoalManager = {
             return `
             <div class="goal-card ${done ? 'completed' : ''}" data-id="${g.id}">
                 <div class="goal-head">
-                    <div class="goal-icon">${g.icon || '🎯'}</div>
+                    <div class="goal-icon">${escapeHtml(g.icon || "🎯")}</div>
                     <div class="goal-title">${escapeHtml(g.name)}</div>
                     ${done ? '<span class="goal-status">已达成</span>' : ''}
                 </div>

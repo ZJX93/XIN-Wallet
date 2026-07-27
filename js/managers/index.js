@@ -58,7 +58,7 @@ async function safeBoot() {
         await boot();
     } catch (e) {
         console.error('❌ 启动失败:', e.message, e.stack);
-        document.body.innerHTML = '<div style=\"padding:40px;text-align:center;font-size:18px\">⚠️ 应用启动失败<br><small>' + e.message + '</small><br><br><button onclick=\"location.reload()\">刷新重试</button></div>';
+        document.body.innerHTML = '<div style=\"padding:40px;text-align:center;font-size:18px\">⚠️ 应用启动失败<br><small>' + escapeHtml(e.message) + '</small><br><br><button onclick=\"location.reload()\">刷新重试</button></div>';
     }
 }
 

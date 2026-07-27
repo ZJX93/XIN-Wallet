@@ -594,10 +594,6 @@
     <script src="js/app.js"></script>
     <!-- 管理器模块：统一通过 index.js 一行入口加载（内含 window.* 桥接 + boot） -->
     <script type="module" src="js/managers/index.js"></script>
-    <script type="module">
-        import { renderUserMenu, bindLogout } from './js/auth.js';
-        renderUserMenu();
-        bindLogout();
-    </script>
+    <script type="module" src="js/bootstrap.js"></script>
 </body>
 </html>

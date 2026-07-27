@@ -53,6 +53,15 @@ function signToken(user) {
         { algorithm: 'HS256', expiresIn: JWT_EXPIRES }
     );
 }
+// 签发 Refresh Token（默认 7 天、独立 secret、payload 带 type='refresh' 区分）
+function signRefreshToken(user) {
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || EFFECTIVE_SECRET;
+    return jwt.sign(
+        { id: Number(user.id), type: 'refresh' },
+        refreshSecret,
+        { algorithm: 'HS256', expiresIn: '7d' }
+    );
+}
 
 // 路由鉴权中间件：校验 Bearer Token，注入 req.userId
 function authMiddleware(req, res, next) {
@@ -63,6 +72,10 @@ function authMiddleware(req, res, next) {
     }
     try {
         const payload = jwt.verify(token, EFFECTIVE_SECRET, { algorithms: ['HS256'] });
+        // 防御：refresh token 不可用于访问受保护资源
+        if (payload.type === 'refresh') {
+            return res.status(401).json({ success: false, message: 'Refresh token 不可用于访问受保护资源' });
+        }
         req.userId = payload.id;
         next();
     } catch {
@@ -70,4 +83,4 @@ function authMiddleware(req, res, next) {
     }
 }
 
-module.exports = { hashPassword, verifyPassword, verifyPasswordSync, signToken, authMiddleware };
+module.exports = { hashPassword, verifyPassword, verifyPasswordSync, signToken, signRefreshToken, authMiddleware };

@@ -229,7 +229,7 @@ const ReportManager = {
         const incTotal = data.summary.income;
         const expRows = data.expenseByCategory.map((e, i) => `
             <tr>
-                <td><span class="report-cat-rank">${i + 1}</span> ${e.icon} ${escapeHtml(e.name)}</td>
+                <td><span class="report-cat-rank">${i + 1}</span> ${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</td>
                 <td class="report-amount">${fmt(e.total)}</td>
                 <td>
                     <div class="report-progress-wrap">
@@ -241,7 +241,7 @@ const ReportManager = {
         `).join('') || '<tr><td colspan="3" class="report-empty">暂无支出数据</td></tr>';
         const incRows = data.incomeByCategory.map((e, i) => `
             <tr>
-                <td><span class="report-cat-rank">${i + 1}</span> ${e.icon} ${escapeHtml(e.name)}</td>
+                <td><span class="report-cat-rank">${i + 1}</span> ${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</td>
                 <td class="report-amount">${fmt(e.total)}</td>
                 <td>
                     <div class="report-progress-wrap">
@@ -296,7 +296,7 @@ const ReportManager = {
         if (!data.accountFlows || data.accountFlows.length === 0) return '';
         const rows = data.accountFlows.map(a => `
             <div class="report-account-flow-row">
-                <div class="report-account-flow-name">${a.icon} ${escapeHtml(a.name)}</div>
+                <div class="report-account-flow-name">${escapeHtml(a.icon || "💰")} ${escapeHtml(a.name)}</div>
                 <div class="report-account-flow-value ${a.net >= 0 ? 'income' : 'expense'}">${a.net >= 0 ? '+' : ''}${fmt(a.net)}</div>
             </div>
         `).join('');
@@ -314,7 +314,7 @@ const ReportManager = {
             return `
                 <div class="report-budget-item">
                     <div class="report-budget-header">
-                        <span class="report-budget-name">${b.icon} ${escapeHtml(b.name)}</span>
+                        <span class="report-budget-name">${escapeHtml(b.icon || "📊")} ${escapeHtml(b.name)}</span>
                         <span class="report-budget-amount ${over ? 'over' : ''}">${fmt(b.actual)} / ${fmt(b.budget)}</span>
                     </div>
                     <div class="report-progress-wrap">

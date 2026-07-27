@@ -157,7 +157,7 @@ const DebtManager = {
         // 每次打开都重新填充账户下拉（cache.accounts 可能已更新）
         const sel = document.getElementById('repayAccount');
         sel.innerHTML = '<option value="">-- 请选择还款账户（支出账户）* --</option>';
-        (cache.accounts || []).forEach(a => { sel.innerHTML += `<option value="${a.id}">${a.icon || ''} ${escapeHtml(a.name)}</option>`; });
+        (cache.accounts || []).forEach(a => { sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)}</option>`; });
         sel.value = '';
     },
 

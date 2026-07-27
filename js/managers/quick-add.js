@@ -49,9 +49,9 @@ const QuickAdd = {
         document.getElementById('quickCategory').innerHTML = parents.map(p => {
             const subs = children.filter(c => c.parent_id === p.id);
             if (subs.length > 0) {
-                return `<optgroup label="${p.icon} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${s.icon} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
+                return `<optgroup label="${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}">${subs.map(s => `<option value="${s.id}">${escapeHtml(s.icon || "📌")} ${escapeHtml(s.name)}</option>`).join('')}</optgroup>`;
             }
-            return `<option value="${p.id}">${p.icon} ${escapeHtml(p.name)}</option>`;
+            return `<option value="${p.id}">${escapeHtml(p.icon || "📌")} ${escapeHtml(p.name)}</option>`;
         }).join('');
     },
     updateAccSelect() {

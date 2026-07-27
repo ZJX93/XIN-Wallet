@@ -76,9 +76,9 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],                  // unsafe-inline 暂保留：index.html 中的内联 script（XIN_API_BASE / token check / module bootstrap）尚未完全外部化
-            scriptSrcAttr: ["'unsafe-inline'"],                         // 临时放宽：index.html 中有少量内联事件属性
-            styleSrc: ["'self'", "'unsafe-inline'"],              // 临时保留（详见注释）
+            scriptSrc: ["'self'"],                                      // Phase 0 收紧：内联脚本已全部外置为外部文件
+            scriptSrcAttr: ["'unsafe-inline'"],                         // 暂保留：onclick/onchange 等内联事件属性需进一步重构后再移除
+            styleSrc: ["'self'", "'unsafe-inline'"],                    // 暂保留：CSS-in-JS 或内联 style 属性需逐步外置
             fontSrc: ["'self'", "data:"],
             imgSrc: ["'self'", "data:"],
             connectSrc: ["'self'"],

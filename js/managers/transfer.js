@@ -86,7 +86,7 @@ const TransferManager = {
             const toAcc = getAcc(t.to_account_id);
             return `
             <div class="transfer-item">
-                <div class="transfer-icon">${fromAcc?.icon || '💰'}</div>
+                <div class="transfer-icon">${escapeHtml(fromAcc?.icon || "💰")}</div>
                 <div class="transfer-body">
                     <div class="transfer-accounts">
                         <span class="transfer-acc-name">${escapeHtml(fromAcc?.name || '未知')}</span>

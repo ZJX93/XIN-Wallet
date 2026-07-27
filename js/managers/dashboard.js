@@ -67,7 +67,7 @@ const DashboardManager = {
             summaryEl.innerHTML = `<div class="detail-total"><span class="detail-total-label">总资产</span><span class="detail-total-value">${fmt(data.total)}</span></div>`;
             listEl.innerHTML = data.accounts.map(a => `
                 <div class="detail-row">
-                    <div class="detail-row-icon">${a.icon}</div>
+                    <div class="detail-row-icon">${escapeHtml(a.icon || "💰")}</div>
                     <div class="detail-row-info"><span class="detail-row-name">${escapeHtml(a.name)}</span><span class="detail-row-sub">${a.type === 'credit_card' ? '信用卡' : a.type === 'cash' ? '现金' : a.type === 'electronic_payment' ? '电子支付' : a.type === 'financial_account' ? '金融账户' : a.type === 'digital' ? '数字货币' : '银行账户'}${a.inv_value > 0 ? ' · 含理财' + fmt(a.inv_value) : ''}</span></div>
                     <div class="detail-row-right"><span class="detail-row-value">${fmt(a.balance)}</span><div class="detail-bar-wrap"><div class="detail-bar" style="width:${Math.max(a.ratio, 2)}%"></div></div></div>
                 </div>
@@ -112,7 +112,7 @@ const DashboardManager = {
                         const toName = inAcc ? `${escapeHtml(inAcc.icon || '')} ${escapeHtml(inAcc.name || '')}` : '?';
                         return (showDate ? `<div class="detail-date-sep"><span>${dateLabel}</span></div>` : '') + `
                     <div class="detail-row">
-                        <div class="detail-row-icon">${t.category.icon}</div>
+                        <div class="detail-row-icon">${escapeHtml(t.category.icon || "📌")}</div>
                         <div class="detail-row-info">
                             <span class="detail-row-name">${escapeHtml(t.category.name)}</span>
                             <span class="detail-row-sub">${fromName} → ${toName} · ${escapeHtml(t.note || '无备注')}</span>
@@ -127,7 +127,7 @@ const DashboardManager = {
                         <div class="detail-row-icon">${t.category.icon}</div>
                         <div class="detail-row-info">
                             <span class="detail-row-name">${escapeHtml(t.category.name)}</span>
-                            <span class="detail-row-sub">${escapeHtml(t.note || '无备注')} · ${t.account ? t.account.icon + ' ' + t.account.name : ''}</span>
+                            <span class="detail-row-sub">${escapeHtml(t.note || '无备注')} · ${t.account ? escapeHtml(t.account.icon || "") + " " + escapeHtml(t.account.name || "") : ""}</span>
                         </div>
                         <div class="detail-row-right">
                             <span class="detail-row-value ${t.type === 'income' ? 'positive' : t.type === 'expense' ? 'negative' : 'transfer'}">${fmtSigned(t.amount, t.type)}</span>
@@ -242,7 +242,7 @@ const DashboardManager = {
 
             const invProfitEl = document.getElementById('dashInvProfit');
             if (invProfitEl) {
-                invProfitEl.textContent = fmtSigned(invProfit, invProfit >= 0 ? 'income' : 'expense');
+                invProfitEl.textContent = fmt(invProfit);
                 invProfitEl.className = 'kpi-value ' + (invProfit >= 0 ? 'positive' : 'negative');
             }
             const invBadge = document.getElementById('dashInvBadge');

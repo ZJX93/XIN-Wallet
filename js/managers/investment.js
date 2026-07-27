@@ -353,7 +353,7 @@ const InvestmentManager = {
             return `
             <div class="goal-card" data-id="${i.id}">
                 <div class="goal-head">
-                    <div class="goal-icon">${i.type_icon}</div>
+                    <div class="goal-icon">${escapeHtml(i.type_icon || "📈")}</div>
                     <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
                     <span class="goal-status type">${riskLabels[i.risk_level] || i.risk_level}</span>
                 </div>

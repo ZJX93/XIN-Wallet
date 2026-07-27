@@ -8,10 +8,8 @@
     <title>登录 · 鑫钱包</title>
     <link rel="icon" type="image/png" href="images/logo.png">
     <link rel="stylesheet" href="css/login.css">
-    <!-- 自动推导 API 基址：兼容「反向代理 / 子路径」部署 -->
-    <script>
-        window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
-    </script>
+    <!-- API 基址推导 = 复用 js/config.js（路径豁免跳转） -->
+    <script src="js/config.js"></script>
 </head>
 <body>
     <div class="login-page">

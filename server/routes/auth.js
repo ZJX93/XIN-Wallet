@@ -4,8 +4,9 @@
 
 const express = require('express');
 const router = express.Router();
+const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { hashPassword, verifyPassword, verifyPasswordSync, signToken } = require('../auth');
+const { hashPassword, verifyPassword, verifyPasswordSync, signToken, signRefreshToken } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
@@ -45,7 +46,7 @@ router.post('/register', validate({
             [username, hash, nickname || username]
         );
         const user = { id: result.insertId, username, nickname: nickname || username };
-        res.json(success({ token: signToken(user), user }, '注册成功'));
+        res.json(success({ token: signToken(user), refreshToken: signRefreshToken(user), user }, '注册成功'));
     } catch (err) {
         handleServerError(res, err);
     }
@@ -93,8 +94,10 @@ router.post('/login', validate({
             await db.query('UPDATE users SET fail_count = 0, locked_until = NULL WHERE username = ?', [username]);
         }
         const token = signToken({ id: user.id, username: user.username });
+        const refreshToken = signRefreshToken({ id: user.id, username: user.username });
         res.json(success({
             token,
+            refreshToken,
             user: { id: user.id, username: user.username, nickname: user.nickname }
         }, '登录成功'));
     } catch (err) {
@@ -137,12 +140,47 @@ router.post('/demo', async (req, res) => {
         }
 
         const token = signToken({ id: user.id, username: user.username });
+        const refreshToken = signRefreshToken({ id: user.id, username: user.username });
         res.json(success({
             token,
+            refreshToken,
             user: { id: user.id, username: user.username, nickname: user.nickname }
         }, '演示登录成功'));
     } catch (err) {
         handleServerError(res, err);
+    }
+});
+
+// POST /api/auth/refresh — 使用 refresh token 换取新的 access token
+router.post('/refresh', validate([
+    { field: 'refreshToken', type: 'string', min: 10, max: 1024, required: true, label: 'RefreshToken' }
+]), (req, res) => {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+        return res.status(400).json(fail('缺少 refreshToken'));
+    }
+    try {
+        const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'zhicai-dev-secret-change-me';
+        const payload = jwt.verify(refreshToken, JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
+        // 仅允许 refresh token
+        if (payload.type !== 'refresh') {
+            return res.status(401).json(fail('非法的 refresh token 类型'));
+        }
+        // 二次校验用户是否仍存在
+        db.queryOne('SELECT id, username FROM users WHERE id = ?', [payload.id])
+            .then(user => {
+                if (!user) {
+                    return res.status(401).json(fail('用户不存在或已被禁用'));
+                }
+                const newToken = signToken(user);
+                res.json(success({ token: newToken }, '令牌刷新成功'));
+            })
+            .catch(err => {
+                console.error('refresh: db error', err.message);
+                res.status(500).json(fail('服务器内部错误'));
+            });
+    } catch (err) {
+        return res.status(401).json(fail('Refresh token 无效或已过期'));
     }
 });
 
