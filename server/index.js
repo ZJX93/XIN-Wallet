@@ -77,7 +77,7 @@ app.use(helmet({
         directives: {
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'"],                                      // Phase 0 收紧：内联脚本已全部外置为外部文件
-            scriptSrcAttr: ["'unsafe-inline'"],                         // 暂保留：onclick/onchange 等内联事件属性需进一步重构后再移除
+            scriptSrcAttr: ["'none'"],                                  // 禁止 onclick/onchange 等内联事件属性
             styleSrc: ["'self'", "'unsafe-inline'"],                    // 暂保留：CSS-in-JS 或内联 style 属性需逐步外置
             fontSrc: ["'self'", "data:"],
             imgSrc: ["'self'", "data:"],

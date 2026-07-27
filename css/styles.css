@@ -645,6 +645,42 @@ button { font-family: inherit; cursor: pointer; }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+@keyframes drawerEnter {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (max-width: 720px) {
+  .modal-overlay {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+    margin: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    padding: var(--space-5);
+    animation: drawerEnter var(--duration-300) var(--ease-out-expo);
+  }
+
+  .modal::before {
+    content: '';
+    display: block;
+    width: 44px;
+    height: 4px;
+    margin: 0 auto var(--space-4);
+    border-radius: 999px;
+    background: var(--border-default);
+  }
+}
+
 /* --------------------------------------------------------------------------
    8. SKELETON LOADING
    -------------------------------------------------------------------------- */

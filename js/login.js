@@ -3,10 +3,12 @@
    ============================================ */
 
 const TOKEN_KEY = 'zhicai_token';
+const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
 const USER_KEY = 'zhicai_user';
 
-function setSession(token, user) {
+function setSession(token, refreshToken, user) {
     localStorage.setItem(TOKEN_KEY, token);
+    if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
@@ -74,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setHint('注册成功，正在进入...');
             }
             console.log('[login] setSession token='+data.token+' user='+data.user?.username);
-            setSession(data.token, data.user);
+            setSession(data.token, data.refreshToken, data.user);
             console.log('[login] 跳转到 /');
             location.href = '/';
         } catch (err) {
@@ -89,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (submitBtn) submitBtn.disabled = true;
         try {
             const data = await loginApi('/auth/demo', 'POST');
-            setSession(data.token, data.user);
+            setSession(data.token, data.refreshToken, data.user);
             location.href = '/';
         } catch (err) {
             setHint(err.message || '演示账号登录失败', true);
