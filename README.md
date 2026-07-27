@@ -291,6 +291,24 @@ npm start
 
 **错误**：`400` 用户名或密码缺失；`401` 用户名或密码错误。
 
+#### `POST /auth/demo` — 演示登录
+
+**请求体**：无。需 `.env` 中 `ALLOW_DEMO=true`（默认开启）。
+
+**响应** `200` — 同登录，返回 token + 用户信息（demo 用户）。
+**错误**：`403` 演示登录已禁用。
+
+#### `POST /auth/refresh` — 刷新 Token
+
+**请求体**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `refreshToken` | string | 是 | 登录时返回的 refreshToken（有效期 7 天） |
+
+**响应** `200` — 返回新的 JWT（1h 有效期）。
+**错误**：`401` refreshToken 无效或已过期。
+
 ---
 
 ### 2. 账户管理
@@ -875,7 +893,64 @@ npm start
 
 ---
 
-### 14. CSV 导入 / 导出
+### 14. 债务管理
+
+#### `GET /debts` — 债务列表
+
+**响应** `200` — 数组，每项含 `id, name, type, creditor, principal, remaining, interest_rate, monthly_payment, start_date, due_date, billing_day, payment_day, status` 及 `repayments[]`（还款流水）。
+
+已还清超过 7 天的债务会自动清理（仅删债务记录，保留还款流水）。
+
+#### `POST /debts` — 新增债务
+
+**请求体**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | 是 | 债务名称 |
+| `type` | string | 是 | `credit_card` / `loan` / `personal` / `other` |
+| `principal` | number | 是 | 本金/初始总额 |
+| `creditor` | string | 否 | 债权人/机构/个人 |
+| `remaining` | number | 否 | 剩余本金（默认等于 principal） |
+| `interest_rate` | number | 否 | 年利率(%) |
+| `term_months` | number | 否 | 期限月数 |
+| `method` | string | 否 | 还款方式：`equal_installment` / `equal_principal` / `interest_only` / `minimum` / `lump_sum` / `manual` |
+| `monthly_payment` | number | 否 | 月供 |
+| `start_date` | string | 否 | 起始日期 |
+| `due_date` | string | 否 | 到期/下次还款日 |
+| `billing_day` | number | 否 | 信用卡账单日(1-28) |
+| `payment_day` | number | 否 | 信用卡还款日(1-28) |
+| `min_payment` | number | 否 | 最低还款额 |
+| `note` | string | 否 | 备注 |
+
+**响应** `200` — `data: { id }`。
+
+#### `PUT /debts/:id` — 更新债务
+
+**请求体**：同 `POST`（全部可选）。**响应** `200` — `message: "债务已更新"`。
+
+#### `DELETE /debts/:id` — 删除债务
+
+**响应** `200` — `message: "债务已删除"`。
+
+#### `POST /debts/:id/repay` — 记录还款
+
+**请求体**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `amount` | number | 是 | 还款金额 |
+| `paid_at` | string | 是 | 还款日期 |
+| `account_id` | number | 否 | 还款账户（自动扣减余额 + 写入交易记录） |
+| `principal_part` | number | 否 | 本金部分 |
+| `interest_part` | number | 否 | 利息部分 |
+| `note` | string | 否 | 备注 |
+
+事务内：写入 `debt_repayments` → 更新 `debts.remaining` → 若关联账户则写入交易（`expense`）并扣减余额。**响应** `200` — `message: "还款已记录"`。
+
+---
+
+### 15. CSV 导入 / 导出
 
 #### `GET /export/csv` — 导出 CSV
 
