@@ -23,13 +23,17 @@
 // ============================================================
 
 const TransactionManager = {
+    _saving: false,
+    _filterTimer: null,
     init() {
         this.populateFilters();
-        document.getElementById('transSearch').addEventListener('input', () => this.refresh());
-        document.getElementById('transCatFilter').addEventListener('change', () => this.refresh());
-        document.getElementById('transTypeFilter').addEventListener('change', () => this.refresh());
-        document.getElementById('transMonthFilter').addEventListener('change', () => this.refresh());
-        document.getElementById('transAccFilter').addEventListener('change', () => this.refresh());
+        const refreshNow = () => this.refresh({ syncUrl: true });
+        const refreshDebounced = () => this.debouncedRefresh();
+        document.getElementById('transSearch').addEventListener('input', refreshDebounced);
+        document.getElementById('transCatFilter').addEventListener('change', refreshNow);
+        document.getElementById('transTypeFilter').addEventListener('change', refreshNow);
+        document.getElementById('transMonthFilter').addEventListener('change', refreshNow);
+        document.getElementById('transAccFilter').addEventListener('change', refreshNow);
         // ===== 金额筛选下拉面板 =====
         const amtBtn = document.getElementById('transAmountBtn');
         const amtPanel = document.getElementById('transAmountPanel');
@@ -59,7 +63,7 @@ const TransactionManager = {
                 this._amtVal.value = ''; this._amtVal2.value = '';
                 amtLabel.textContent = '金额';
                 closeAmtPanel();
-                this.refresh();
+                this.refresh({ syncUrl: true });
             }
         };
 
@@ -84,7 +88,7 @@ const TransactionManager = {
             }
             amtLabel.textContent = label;
             closeAmtPanel();
-            this.refresh();
+            this.refresh({ syncUrl: true });
         };
 
         const clearAmountFilter = () => {
@@ -127,9 +131,9 @@ const TransactionManager = {
         });
         // ===== 金额筛选下拉面板结束 =====
         const tagF = document.getElementById('transTagFilter');
-        if (tagF) tagF.addEventListener('change', () => this.refresh());
+        if (tagF) tagF.addEventListener('change', refreshNow);
         const noteF = document.getElementById('transNoteFilter');
-        if (noteF) noteF.addEventListener('input', () => this.refresh());
+        if (noteF) noteF.addEventListener('input', refreshDebounced);
         document.getElementById('addTransBtn').addEventListener('click', () => this.openModal());
         document.getElementById('transModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('transCancelBtn').addEventListener('click', () => this.closeModal());
@@ -140,6 +144,59 @@ const TransactionManager = {
             this.updateCatSelect(b.dataset.type);
         }));
         document.getElementById('transForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
+    },
+    debounce(fn, delay = 300) {
+        clearTimeout(this._filterTimer);
+        this._filterTimer = setTimeout(fn, delay);
+    },
+    debouncedRefresh() {
+        this.debounce(() => this.refresh({ syncUrl: true }));
+    },
+    restoreFiltersFromUrl() {
+        if (window.location.pathname.replace(/\/+$/, '').split('/').pop() !== 'transactions') return;
+        const q = new URLSearchParams(window.location.search);
+        const setVal = (id, key) => {
+            const el = document.getElementById(id);
+            const val = q.get(key);
+            if (el && val !== null) el.value = val;
+        };
+        setVal('transSearch', 'search');
+        setVal('transCatFilter', 'category_id');
+        setVal('transTypeFilter', 'type');
+        setVal('transMonthFilter', 'month');
+        setVal('transAccFilter', 'account_id');
+        setVal('transTagFilter', 'tag_id');
+        setVal('transNoteFilter', 'note');
+        const amtOp = q.get('amount_op');
+        if (amtOp && amtOp !== 'all') {
+            this._currentAmtOp = amtOp;
+            if (this._amtVal) this._amtVal.value = q.get('amount_val') || '';
+            if (this._amtVal2) this._amtVal2.value = q.get('amount_val2') || '';
+            const label = document.getElementById('transAmountLabel');
+            if (label) label.textContent = '金额筛选';
+        }
+    },
+    syncFiltersToUrl() {
+        if (window.location.pathname.replace(/\/+$/, '').split('/').pop() !== 'transactions') return;
+        const q = new URLSearchParams();
+        const add = (key, val, skip = 'all') => {
+            if (val && val !== skip) q.set(key, val);
+        };
+        add('search', document.getElementById('transSearch')?.value?.trim(), '');
+        add('category_id', document.getElementById('transCatFilter')?.value);
+        add('type', document.getElementById('transTypeFilter')?.value);
+        add('month', document.getElementById('transMonthFilter')?.value);
+        add('account_id', document.getElementById('transAccFilter')?.value);
+        add('tag_id', document.getElementById('transTagFilter')?.value);
+        add('note', document.getElementById('transNoteFilter')?.value?.trim(), '');
+        if (this._currentAmtOp && this._currentAmtOp !== 'all') {
+            q.set('amount_op', this._currentAmtOp);
+            add('amount_val', this._amtVal?.value?.trim(), '');
+            add('amount_val2', this._amtVal2?.value?.trim(), '');
+        }
+        const base = window.location.pathname;
+        const next = q.toString() ? `${base}?${q.toString()}` : base;
+        window.history.replaceState(window.history.state, '', next);
     },
     populateFilters() {
         const catSel = document.getElementById('transCatFilter');
@@ -230,6 +287,12 @@ const TransactionManager = {
     },
     closeModal() { document.getElementById('transModal').classList.remove('show'); },
     async save() {
+        if (this._saving) return;
+        const form = document.getElementById('transForm');
+        const submitBtn = form?.querySelector('button[type="submit"], .btn-primary');
+        this._saving = true;
+        if (submitBtn) submitBtn.disabled = true;
+        try {
         const editId = document.getElementById('transEditId').value;
         const type = document.querySelector('#transForm .type-btn.active').dataset.type;
         const budgetVal = document.getElementById('transBudget').value;
@@ -252,7 +315,11 @@ const TransactionManager = {
         }
         this.closeModal();
         await initCache();
-        await this.refresh();
+        await this.refresh({ syncUrl: true });
+        } finally {
+            this._saving = false;
+            if (submitBtn) submitBtn.disabled = false;
+        }
     },
     async delete(id) {
         try {
@@ -264,7 +331,9 @@ const TransactionManager = {
             // api() 已显示错误 toast
         }
     },
-    async refresh() {
+    async refresh(options = {}) {
+        if (!options.syncUrl) this.restoreFiltersFromUrl();
+        if (options.syncUrl) this.syncFiltersToUrl();
         const search = document.getElementById('transSearch').value;
         const cat = document.getElementById('transCatFilter').value;
         const type = document.getElementById('transTypeFilter').value;
@@ -275,6 +344,7 @@ const TransactionManager = {
         if (month && month !== 'all') params += `&month=${month}`;
         if (type && type !== 'all') params += `&type=${type}`;
         if (cat && cat !== 'all') params += `&category_id=${cat}`;
+        if (acc && acc !== 'all') params += `&account_id=${acc}`;
         if (tag && tag !== 'all') params += `&tag_id=${tag}`;
         if (this._currentAmtOp && this._currentAmtOp !== 'all') {
             params += `&amount_op=${this._currentAmtOp}`;

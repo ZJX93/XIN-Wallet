@@ -19,7 +19,7 @@ const { ensureCategory, syncCreditCardDebt } = require('./utils');
 // 获取交易列表
 router.get('/', async (req, res) => {
     try {
-        const { month, type, category_id, search, limit, offset, tag_id, amount_op, amount_val, amount_val2 } = req.query;
+        const { month, type, category_id, account_id, search, limit, offset, tag_id, amount_op, amount_val, amount_val2 } = req.query;
         let sql = `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
       a.name as acc_name, a.icon as acc_icon,
       sa.name as src_name, sa.icon as src_icon,
@@ -56,6 +56,10 @@ router.get('/', async (req, res) => {
         if (category_id && category_id !== 'all') {
             sql += ' AND t.category_id = ?';
             params.push(parseInt(category_id));
+        }
+        if (account_id && account_id !== 'all') {
+            sql += ' AND t.account_id = ?';
+            params.push(parseInt(account_id));
         }
         if (search) {
             sql += ' AND (t.note LIKE ? OR c.name LIKE ?)';

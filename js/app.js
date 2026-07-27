@@ -347,6 +347,9 @@ async function refreshPage(page) {
     if (page === 'analysis' && M.AnalysisManager) await M.AnalysisManager.refresh();
 }
 
+window.refreshCurrentPage = () => refreshPage(currentPage);
+window.getCurrentPage = () => currentPage;
+
 function quickAddFromAI(catId, note) {
     document.getElementById('quickAddModal').classList.add('show');
     document.querySelectorAll('#quickAddForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === 'expense') { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });

@@ -8,6 +8,11 @@ const assert = require('node:assert');
 const {
     success, fail, fmtDateOnly, fmtDateTime, maskKey, extractJson
 } = require('../server/routes/_helpers');
+const db = require('../server/db');
+
+test.after(async () => {
+    await db.pool.end();
+});
 
 // ==========================================
 // 响应封装

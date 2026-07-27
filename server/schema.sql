@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_user_date (user_id, date),
   INDEX idx_account (account_id),
+  INDEX idx_account_date (account_id, date),
   INDEX idx_category (category_id),
   INDEX idx_type (type),
   INDEX idx_budget (budget_id),

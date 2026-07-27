@@ -147,6 +147,19 @@ async function initDatabase() {
       console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
     }
 
+    // 迁移：给 transactions 表补充 account_id + date 复合索引，优化按账户/时间筛选
+    try {
+      const idxExists = await queryOne(
+        "SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions' AND INDEX_NAME = 'idx_account_date'"
+      );
+      if (idxExists && parseInt(idxExists.cnt) === 0) {
+        await query('ALTER TABLE transactions ADD INDEX idx_account_date (account_id, date)');
+        console.log('✅ transactions.idx_account_date 索引已添加');
+      }
+    } catch (err) {
+      console.warn('⚠️ transactions.idx_account_date 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

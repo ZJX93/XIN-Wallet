@@ -19,15 +19,37 @@ function extractRoutes(filePath) {
     return routes;
 }
 
+function extractMountedRoutes(filePath) {
+    const code = fs.readFileSync(filePath, 'utf8');
+    const mounts = [];
+    const vars = new Map();
+
+    const requireRe = /const\s+(\w+)\s*=\s*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)/g;
+    let m;
+    while ((m = requireRe.exec(code)) !== null) {
+        vars.set(m[1], `server/routes/${m[2]}.js`);
+    }
+
+    const inlineRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)\s*\)/g;
+    while ((m = inlineRe.exec(code)) !== null) {
+        mounts.push({ prefix: m[1], file: `server/routes/${m[2]}.js` });
+    }
+
+    const varRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*(\w+)\s*\)/g;
+    while ((m = varRe.exec(code)) !== null) {
+        const file = vars.get(m[2]);
+        if (file) mounts.push({ prefix: m[1], file });
+    }
+
+    return mounts;
+}
+
 // 后端路由
-const mainRoutes = extractRoutes(path.join(ROOT, 'server', 'routes.js'));
-const subRoutes = [
-    { file: 'server/routes/ai.js', prefix: '/ai' },
-    { file: 'server/routes/auth.js', prefix: '/auth' },
-    { file: 'server/routes/accounts.js', prefix: '/accounts' },
-];
+const mainRouteFile = path.join(ROOT, 'server', 'routes.js');
+const mainRoutes = extractRoutes(mainRouteFile);
+const mountedRoutes = extractMountedRoutes(mainRouteFile);
 const allBackend = new Set(mainRoutes);
-for (const s of subRoutes) {
+for (const s of mountedRoutes) {
     const f = path.join(ROOT, s.file);
     if (!fs.existsSync(f)) continue;
     for (const r of extractRoutes(f)) {

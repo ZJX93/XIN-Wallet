@@ -41,7 +41,13 @@ const ChartManager = {
         };
     },
 
-    refreshAll() { this.renderDash(); },
+    async refreshAll() {
+        if (typeof window !== 'undefined' && typeof window.refreshCurrentPage === 'function') {
+            await window.refreshCurrentPage();
+            return;
+        }
+        await this.renderDash();
+    },
 
     async renderDash() {
         const data = await api('/stats/dashboard');

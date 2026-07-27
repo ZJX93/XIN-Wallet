@@ -140,7 +140,9 @@
 .trans-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .trans-desc { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.trans-actions { display: flex; gap: 4px; justify-content: flex-end; }  background: transparent; border: none; cursor: pointer;
+.trans-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.trans-actions button {
+  background: transparent; border: none; cursor: pointer;
   padding: 4px; border-radius: var(--radius-sm); font-size: 14px;
   opacity: 0.6; transition: all var(--duration-150) var(--ease-out-quart);
 }
