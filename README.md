@@ -3,7 +3,7 @@
 <img src="images/logo.png" alt="鑫钱包" width="25%" />
 
 > 本地私有部署的个人财务管理工具：记账、多账户、内部转账、预算、理财持仓追踪、统计分析、报表导出。
-> 技术栈：Node.js + Express + MariaDB + 原生前端(毛玻璃 UI) + Chart.js。
+> 技术栈：Node.js + Express + PostgreSQL + 原生前端(毛玻璃 UI) + Chart.js。
 
 ## ✨ 功能特性
 
@@ -28,7 +28,7 @@
 
 | 层 | 选型 |
 |---|---|
-| 后端 | Node.js · Express 4 · MariaDB(mariadb 驱动) |
+| 后端 | Node.js · Express 4 · PostgreSQL (pg 驱动) |
 | 安全 | helmet(CSP) · cors · bcryptjs · jsonwebtoken |
 | 前端 | 原生 HTML/CSS/JS · Chart.js 4 |
 | 设计 | Premium 毛玻璃(glassmorphism) |
@@ -56,21 +56,42 @@ xinwallet/
 │   ├── utils.js        # 前端通用工具（escapeHtml / fmt / csvCell）
 │   └── vendor/         # 第三方前端库（Chart.js 等）
 ├── server/
-│   ├── index.js        # Express 入口 + 数据库/演示数据种子
+│   ├── index.js        # Express 入口 + 启动引导
 │   ├── auth.js         # 密码哈希 + JWT 签发/校验 + 鉴权中间件
-│   ├── crypto.js       # 加密 / 签名辅助（如 OCR 凭据处理）
-│   ├── db.js           # 连接池 + 事务封装 + 自动建库建表
-│   ├── validate.js     # 后端数值 / 类型校验（toNumber 等）
-│   ├── routes.js       # 历史路由汇总（逐步拆分为 routes/ 下模块）
-│   ├── schema.sql      # 数据表 DDL + 默认数据
-│   ├── routes/         # 按域拆分的路由模块
-│   │   ├── accounts.js # 账户 / 转账 / 对账
-│   │   ├── auth.js     # 注册 / 登录
-│   │   ├── ai.js       # AI 识别接口
-│   │   └── _helpers.js # 路由公共辅助
-│   ├── services/       # 业务服务层
-│   │   └── ai.js       # AI 识别后端服务（票据 OCR / 分类）
-│   ├── package.json    # server 依赖（如需独立安装）
+│   ├── crypto.js       # AES-256-GCM 加密/解密
+│   ├── db.js           # PostgreSQL 连接池 + ?→$N 占位符转换 + 事务封装
+│   ├── validate.js     # 数值/类型校验（toNumber、CSV 解析、Express 验证中间件）
+│   ├── logger.js       # 结构化日志
+│   ├── schema.sql      # 数据表 DDL + 预置种子数据（12 个自定义 ENUM 类型）
+│   ├── bootstrap.js    # 启动引导：演示账号创建 + 种子数据注入
+│   ├── migrations.js   # 数据库幂等迁移（列/索引自动检测与补充）
+│   ├── seed-data.js    # 演示数据生成
+│   ├── openapi.js      # OpenAPI 规范定义
+│   ├── routes.js       # 路由注册入口
+│   ├── routes/         # 按域拆分的路由模块（14 个）
+│   │   ├── auth.js     # 注册/登录/刷新 Token
+│   │   ├── accounts.js # 账户 CRUD + 一键对账
+│   │   ├── transactions.js  # 交易管理（查询构建器 + 复式记账）
+│   │   ├── transfers.js     # 内部转账
+│   │   ├── investments.js   # 理财类型 + 持仓管理 + 行情 API
+│   │   ├── stats.js         # 仪表盘 + 综合统计
+│   │   ├── reports.js       # 综合报表
+│   │   ├── budgets.js       # 预算管理
+│   │   ├── categories.js    # 分类管理
+│   │   ├── tags.js          # 标签管理
+│   │   ├── savings.js       # 储蓄目标
+│   │   ├── debts.js         # 债务台账
+│   │   ├── csv.js           # CSV 导入/导出
+│   │   ├── ai.js            # AI 洞察与分析
+│   │   ├── _helpers.js      # 公共响应/复式记账计算/错误码
+│   │   └── utils.js         # 路由辅助（分类/信用卡同步）
+│   ├── services/       # 可复用业务服务层
+│   │   ├── market-data.js   # 行情数据（东方财富基金/腾讯证券）
+│   │   ├── portfolio.js     # 理财计算（年化/集中度/盈亏）
+│   │   ├── query-builder.js # 轻量 SQL 查询构建器（?→$N 自动转换）
+│   │   ├── quote-cache.js   # 行情 LRU 缓存
+│   │   └── debt-summary.js  # 债务汇总纯逻辑
+│   ├── package.json    # server 依赖（Docker 构建用）
 │   └── package-lock.json
 ├── scripts/            # 运维 / 排查脚本
 │   ├── verify-routes.js  # 路由可达性自检
@@ -82,8 +103,8 @@ xinwallet/
 │   └── debt-summary.test.js
 ├── images/            # 静态图片（如 logo.png）
 ├── Dockerfile             # 多阶段构建（生产依赖 + 非 root 运行）
-├── docker-compose.yml     # 应用 + MariaDB，数据卷持久化
-├── docker-compose.external.yml  # 仅应用容器，复用已有 MariaDB
+├── docker-compose.yml     # 应用 + PostgreSQL，数据卷持久化
+├── docker-compose.external.yml  # 仅应用容器，复用已有 PostgreSQL
 ├── .dockerignore
 ├── .env.example           # 环境变量示例（复制为 .env 使用）
 ├── package.json           # 依赖清单与启动脚本（仓库根）
@@ -99,7 +120,7 @@ xinwallet/
 ### 前置要求
 
 - Node.js **20+**（与 `.nvmrc`、Docker 基础镜像一致；推荐 22 LTS）
-- MariaDB 10+ 正在运行（默认 `localhost:3306`，账号 `root`）
+- PostgreSQL 10+ 正在运行（默认 `localhost:5432`，账号 `postgres`）
 
 ### 安装与启动
 
@@ -158,9 +179,9 @@ npm start
 |---|---|---|---|
 | `PORT` | 否 | 服务端口 | `18888` |
 | `APP_PORT` | 否 | 宿主机映射端口（Docker 部署时使用） | `18888` |
-| `DB_HOST` | 否 | MariaDB 地址 | `localhost` |
-| `DB_PORT` | 否 | MariaDB 端口 | `3306` |
-| `DB_USER` | 否 | 数据库账号 | `root` |
+| `DB_HOST` | 否 | PostgreSQL 地址 | `localhost` |
+| `DB_PORT` | 否 | PostgreSQL 端口 | `5432` |
+| `DB_USER` | 否 | 数据库账号 | `postgres` |
 | `DB_PASSWORD` | **是**（生产） | 数据库密码 | 空 |
 | `DB_NAME` | 否 | 数据库名 | `xinwallet` |
 | `JWT_SECRET` | **是**（生产） | JWT 签名密钥，**生产务必改为 32+ 字节随机串** | 内置开发默认值 |
@@ -720,7 +741,7 @@ npm start
 
 ### 10. 行情 API（代理外部数据源）
 
-行情由服务端代理外部数据源：**基金**走天天基金（`fundgz.1234567.com.cn`），**股票**走腾讯证券（`qt.gtimg.cn`，GBK 解码）。存款 / 其他类型不支持行情查询。
+行情由服务端代理外部数据源：**基金**走东方财富（`api.fund.eastmoney.com`），**股票**走腾讯证券（`qt.gtimg.cn`，GBK 解码）。存款 / 其他类型不支持行情查询。
 
 #### `GET /investments/quote` — 查询单只产品行情
 
@@ -881,7 +902,7 @@ npm start
 - 密码使用 `bcryptjs` 加盐哈希存储，无明文。
 - 业务接口受 JWT 鉴权中间件保护，按用户隔离数据。
 - `helmet` 开启 CSP（放行字体 / 本地资源），`cors` 严格白名单：前端由本服务同源托管时默认**不开放跨域**；仅在 `.env` 配置 `CORS_ORIGIN` 时才放行对应来源，且禁止任意站点携带凭据请求。
-- `/api/auth/*` 登录注册接口启用频率限制（默认 15 分钟最多 20 次），防暴力破解。
+- `/api/auth/*` 登录注册接口启用频率限制（默认 15 分钟最多 5 次），防暴力破解。
 - 所有 SQL 均为参数化查询，无注入风险。
 - 前端所有用户可控字段（账户名、交易备注、标签名、理财名称等）在 `innerHTML` 渲染前均经 `escapeHtml` 转义，避免存储型 XSS。
 - 服务端错误统一返回通用提示，完整堆栈仅记录在服务端日志，不向客户端泄露 SQL / 内部细节。
@@ -893,8 +914,8 @@ npm start
 
 提供两种部署模式，按需选择：
 
-- **模式 A · 一体部署（默认）**：用 `docker-compose.yml`，一条命令跑起「应用 + 内置 MariaDB」，数据存命名卷，最省心。适合 NAS 上还没有 MariaDB、或想独立隔离的场景。
-- **模式 B · 复用已有 MariaDB**：用 `docker-compose.external.yml`，只启动应用容器，连接你 NAS / 服务器上**已经存在的 MariaDB**（复用既有数据，不另起库实例）。适合已经在跑 MariaDB 的用户。
+- **模式 A · 一体部署（默认）**：用 `docker-compose.yml`，一条命令跑起「应用 + 内置 PostgreSQL」，数据存命名卷，最省心。适合 NAS 上还没有 PostgreSQL、或想独立隔离的场景。
+- **模式 B · 复用已有 PostgreSQL**：用 `docker-compose.external.yml`，只启动应用容器，连接你 NAS / 服务器上**已经存在的 PostgreSQL**（复用既有数据，不另起库实例）。适合已经在跑 PostgreSQL 的用户。
 
 两种模式均通过 `.env` 配置数据库连接；`initDatabase()` 会幂等建库建表（已存在则跳过），因此外部模式接入后**自动复用你已有的 xinwallet 数据**。
 
@@ -903,7 +924,7 @@ npm start
 ```bash
 cp .env.example .env
 # 务必修改以下两项（不要使用示例值）：
-#   DB_PASSWORD   —— 一体模式同时作为 MariaDB root 密码；外部模式填你已有库的密码
+#   DB_PASSWORD   —— 一体模式同时作为 PostgreSQL postgres 密码；外部模式填你已有库的密码
 #   JWT_SECRET    —— 用 `openssl rand -hex 32` 生成一个长随机串
 ```
 
@@ -911,7 +932,7 @@ cp .env.example .env
 >
 > 想从源码本地构建（而非拉取镜像），加 `--build` 即可：`docker compose up -d --build`（或模式 B 加 `-f docker-compose.external.yml`）。`app` 服务已同时声明 `image:` 与 `build:`，默认拉取 GHCR 镜像，`--build` 时才走本地源码构建。
 
-### 1. 模式 A · 一体部署（自带 MariaDB）
+### 1. 模式 A · 一体部署（自带 PostgreSQL）
 
 ```bash
 docker compose up -d
@@ -919,23 +940,23 @@ docker compose up -d
 
 - `DB_HOST` 会被 compose 固定为 `db`，无需手动改 `.env`
 - 应用对外暴露端口：`${APP_PORT:-18888}`（默认 `18888`），浏览器访问 `http://<NAS_IP>:18888/index.html`
-- MariaDB 仅在内部网络（`db:3306`）可达，不对外暴露，更安全
-- 应用容器通过启动前的数据库就绪探测（最多重试 30 次 / 约 60s），避免 MariaDB 尚未就绪就连接导致启动失败
+- PostgreSQL 仅在内部网络（`db:5432`）可达，不对外暴露，更安全
+- 应用容器通过启动前的数据库就绪探测（最多重试 30 次 / 约 60s），避免 PostgreSQL 尚未就绪就连接导致启动失败
 
-### 2. 模式 B · 复用已有 MariaDB
+### 2. 模式 B · 复用已有 PostgreSQL
 
 编辑 `.env`，把 `DB_HOST` 改成你现有库的主机/IP：
 
-- 同一台 Docker 主机上的其他 MariaDB 容器 → 填该容器名（需与它在同一网络）
-- NAS 原生安装的 MariaDB → 填宿主机局域网 IP，或 `host.docker.internal`（本 compose 已通过 `extra_hosts` 映射）
+- 同一台 Docker 主机上的其他 PostgreSQL 容器 → 填该容器名（需与它在同一网络）
+- NAS 原生安装的 PostgreSQL → 填宿主机局域网 IP，或 `host.docker.internal`（本 compose 已通过 `extra_hosts` 映射）
 - `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` 填你既有库的对应值
 
 ```bash
-# 使用外部 MariaDB 的 compose 文件启动（仅应用容器）
+# 使用外部 PostgreSQL 的 compose 文件启动（仅应用容器）
 docker compose -f docker-compose.external.yml up -d --build
 ```
 
-> ⚠️ 权限要求：应用所用的 `DB_USER` 需具备在目标库上「建表与改表」的权限，即 `CREATE DATABASE`（若库尚未创建）、`CREATE TABLE`、`ALTER`、`INDEX`；`initDatabase` 会自动建库建表，并在每次启动时执行幂等迁移（`ALTER TABLE` 补充 `source/destination_account_id`、`opening_balance` 等列）。若仅授予 `CREATE TABLE` 而无 `ALTER` 权限，迁移会因权限不足失败、列未创建，写入交易时将报 “Unknown column” 错误。若账号无建库权限，请先手动执行 `CREATE DATABASE <DB_NAME> CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`。
+> ⚠️ 权限要求：应用所用的 `DB_USER` 需具备在目标库上「建表与改表」的权限，即 `CREATE DATABASE`（若库尚未创建）、`CREATE TABLE`、`ALTER`、`INDEX`；`initDatabase` 会自动建库建表，并在每次启动时执行幂等迁移。若账号无建库权限，请先手动执行 `CREATE DATABASE "xinwallet" ENCODING 'UTF8';`。
 
 ### 3. 各 NAS 平台要点
 
@@ -946,10 +967,10 @@ docker compose -f docker-compose.external.yml up -d --build
 
 ### 4. 数据备份与升级
 
-- **模式 A** 数据库存储在 Docker 命名卷 `xinwallet-db-data`；要固定到 NAS 共享文件夹，可把 `docker-compose.yml` 中 `xinwallet-db-data:/var/lib/mysql` 改为绑定挂载，例如 `/volume1/docker/xinwallet/db:/var/lib/mysql`（群晖路径示例）。
-- **模式 B** 数据就在你已有的 MariaDB 中，按你原有的备份策略管理即可（如 `mariadb-dump`）。
+- **模式 A** 数据库存储在 Docker 命名卷 `xinwallet-db-data`；要固定到 NAS 共享文件夹，可把 `docker-compose.yml` 中 `xinwallet-db-data:/var/lib/postgresql/data` 改为绑定挂载，例如 `/volume1/docker/xinwallet/db:/var/lib/postgresql/data`（群晖路径示例）。
+- **模式 B** 数据就在你已有的 PostgreSQL 中，按你原有的备份策略管理即可（如 `pg_dump`）。
 - 升级：拉取最新代码后重新 `docker compose up -d`（模式 B 加 `-f docker-compose.external.yml`）；schema 幂等（`IF NOT EXISTS`），不会破坏现有数据。
-- 备份（模式 A 示例）：`docker exec xinwallet-db mariadb-dump -u root -p"$DB_PASSWORD" xinwallet > xinwallet_$(date +%F).sql`。
+- 备份（模式 A 示例）：`docker exec xinwallet-db pg_dump -U postgres xinwallet > xinwallet_$(date +%F).sql`。
 
 > 若 NAS 处于无外网环境，前端所用的 Chart.js（jsdelivr CDN）与 Google Fonts 将无法加载，图表与字体回退为默认。如需完全离线，可将这两类资源改为本地引入（列入后续增强）。
 
@@ -978,9 +999,18 @@ npm test
 
 > 仓库含两份 `package.json`：`根 package.json` 承载启动脚本（`npm start` → `node server/index.js`）、测试（`npm test`）与依赖；`server/package.json` 是后端 API 的独立依赖清单（版本可能与根略有差异，以 `server/` 目录安装为准）。本地从源码启动请在 `server/` 目录执行 `npm install && npm start`。
 
+## 📝 架构升级记录（v2.0）
+
+- **数据库**：MariaDB → PostgreSQL（支持 CTE/窗口函数/generate_series，为多币种/投资回报率分析铺路）
+- **服务分层**：行情数据（`services/market-data.js`）、理财计算（`services/portfolio.js`）、查询构建器（`services/query-builder.js`）从路由中独立
+- **数据库迁移**：`server/migrations.js` 幂等迁移模块，自动检测并补充缺失列/索引
+- **启动引导**：`server/bootstrap.js` 分离演示账号与种子数据逻辑
+- **兼容层**：`db.js` 内置 `?→$N` 占位符自动转换 + `INSERT RETURNING id` + SQL 双引号→单引号转换
+
 ## 📝 后续可增强
 
+- 多币种支持与汇率换算
+- 投资回报率分析（XIRR/夏普比率，基于 PostgreSQL 窗口函数）
 - AI 识别后端服务化（票据 OCR / LLM 分类）
-- 前端 `app.js`（约 1.3k 行）按功能模块进一步拆分为 ES Modules
-- 接口 / 集成测试（基于测试数据库，覆盖交易、转账、预算等核心流程）
+- 接口 / 集成测试（基于测试数据库）
 - 数据导入导出（JSON 备份）
