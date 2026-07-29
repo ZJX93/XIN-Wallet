@@ -10,8 +10,6 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0",
     "test": "node --test \"test/*.test.js\"",
     "test:integration": "node scripts/smoke-test.js",
     "test:routes": "node scripts/verify-routes.js",
@@ -31,9 +29,6 @@
     "pg": "^8.13.1",
     "swagger-ui-dist": "^5.32.11",
     "tencentcloud-sdk-nodejs-ocr": "^4.1.268"
-  },
-  "devDependencies": {
-    "vite": "^5.4.11"
   },
   "overrides": {
     "uuid": "^11.1.1"
