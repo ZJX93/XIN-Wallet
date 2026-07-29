@@ -412,6 +412,7 @@ CREATE TRIGGER trg_ocr_updated BEFORE UPDATE ON ai_ocr_config FOR EACH ROW EXECU
 CREATE TABLE IF NOT EXISTS debts (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
+  account_id INT DEFAULT NULL,
   name VARCHAR(100) NOT NULL,
   type VARCHAR(15) NOT NULL DEFAULT 'loan' CHECK (type IN ('credit_card','loan','personal','other')),
   direction VARCHAR(10) NOT NULL DEFAULT 'payable' CHECK (direction IN ('payable','receivable')),
@@ -434,6 +435,7 @@ CREATE TABLE IF NOT EXISTS debts (
 );
 CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
 CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction);
+CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id);
 DROP TRIGGER IF EXISTS trg_debts_updated ON debts;
 CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

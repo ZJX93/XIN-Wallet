@@ -220,6 +220,15 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.direction 迁移警告:', err.message);
     }
 
+    // 8) 幂等迁移：debts.account_id（可选关联账户）
+    //     应付场景（信用卡/贷款）关联发卡/放款账户，应收可留空
+    try {
+      await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS account_id INT DEFAULT NULL`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id)`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.account_id 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

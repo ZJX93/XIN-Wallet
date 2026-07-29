@@ -178,10 +178,11 @@ router.post('/', async (req, res) => {
             monthly = calcMonthlyPayment(P, b.interest_rate, b.term_months, methodV);
         }
         const rem = b.remaining !== undefined && b.remaining !== '' && b.remaining !== null ? parseFloat(b.remaining) : P;
+        const accId = b.account_id ? parseInt(b.account_id) : null;
         const result = await db.query(
-            `INSERT INTO debts (user_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [req.userId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
+            `INSERT INTO debts (user_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [req.userId, accId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
         );
         res.json(success({ id: result.insertId }, directionV === 'receivable' ? '借出已记录' : '债务已添加'));
     } catch (err) { handleServerError(res, err); }
@@ -209,10 +210,11 @@ router.put('/:id', async (req, res) => {
         const rem = b.remaining !== undefined && b.remaining !== '' && b.remaining !== null ? parseFloat(b.remaining)
             : (newPrincipal !== parseFloat(debt.principal) ? parseFloat(debt.remaining) + (newPrincipal - parseFloat(debt.principal))
                 : parseFloat(debt.remaining));
+        const accId = b.account_id !== undefined && b.account_id !== '' && b.account_id !== null ? parseInt(b.account_id) : (debt.account_id || null);
         const newStatus = b.status || (rem <= 0 ? 'paid_off' : 'active');
         await db.query(
-            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=? WHERE id=? AND user_id=?`,
-            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, req.params.id, req.userId]
+            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=? WHERE id=? AND user_id=?`,
+            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, req.params.id, req.userId]
         );
         res.json(success(null, '债务已更新'));
     } catch (err) { handleServerError(res, err); }

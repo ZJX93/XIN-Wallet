@@ -121,6 +121,8 @@ const DebtManager = {
             : d.status === 'overdue'
                 ? '<span class="goal-status overdue">逾期</span>'
                 : `<span class="goal-status type">${deptLabel} · ${typeName}</span>`;
+        const acc = (d.account_id && (cache.accounts || []).find(a => a.id === d.account_id)) || null;
+        const acctLine = acc ? `<div class="goal-sub">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name)}</div>` : '';
         const icon = isRecv ? '📤' : '📥';
         const term = parseInt(d.term_months) || 0;
         const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
@@ -137,7 +139,10 @@ const DebtManager = {
         <div class="goal-card ${d.status === 'paid_off' ? 'completed' : ''} ${d.status === 'overdue' ? 'overdue' : ''}">
             <div class="goal-head">
                 <div class="goal-icon">${icon}</div>
-                <div class="goal-title">${escapeHtml(d.name || '')}${d.creditor ? ' · ' + escapeHtml(d.creditor) : ''}</div>
+                <div class="goal-head-text">
+                    <div class="goal-title">${escapeHtml(d.name || '')}${d.creditor ? ' · ' + escapeHtml(d.creditor) : ''}</div>
+                    ${acctLine}
+                </div>
                 ${stTag}
             </div>
             <div class="goal-amounts"><span>${leftLabel} ${fmt(leftVal)}</span><span>${rightLabel} ${fmt(rightVal)}</span></div>
@@ -156,6 +161,18 @@ const DebtManager = {
         const type = document.getElementById('debtType').value;
         const ccBlock = document.querySelector('.debt-cc-fields');
         if (ccBlock) ccBlock.style.display = type === 'credit_card' ? '' : 'none';
+    },
+
+    // 填充账户下拉（新增/编辑债务时可选关联账户）
+    _populateAccountSelect(selId, selectedId) {
+        const sel = document.getElementById(selId);
+        if (!sel) return;
+        const current = selectedId != null && selectedId !== '' ? String(selectedId) : sel.value;
+        sel.innerHTML = '<option value="">— 不关联 —</option>';
+        (cache.accounts || []).forEach(a => {
+            sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}</option>`;
+        });
+        if (current) sel.value = current;
     },
 
     onDirChange() {
@@ -178,13 +195,14 @@ const DebtManager = {
     openAddModal() {
         document.getElementById('debtModal').classList.add('show');
         document.getElementById('debtEditId').value = '';
-        ['debtName','debtType','debtCreditor','debtPrincipal','debtRate','debtTerm','debtMethod','debtMonthly','debtStart','debtDue','debtBillingDay','debtPaymentDay','debtMinPayment','debtNote'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        ['debtName','debtType','debtCreditor','debtPrincipal','debtRate','debtTerm','debtMethod','debtMonthly','debtStart','debtDue','debtBillingDay','debtPaymentDay','debtMinPayment','debtNote','debtAccount'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
         document.getElementById('debtType').value = 'loan';
         document.getElementById('debtMethod').value = 'manual';
         // 默认沿用当前列表的筛选方向
         this._currentDir = this._filter === 'receivable' ? 'receivable' : 'payable';
         this.onDirChange();
         this.onTypeChange();
+        this._populateAccountSelect('debtAccount', '');
     },
 
     openEditModal(d) {
@@ -207,6 +225,7 @@ const DebtManager = {
         this._currentDir = d.direction || 'payable';
         this.onDirChange();
         this.onTypeChange();
+        this._populateAccountSelect('debtAccount', d.account_id || '');
     },
 
     closeModal() { document.getElementById('debtModal').classList.remove('show'); },
@@ -228,6 +247,7 @@ const DebtManager = {
             billing_day: parseInt(document.getElementById('debtBillingDay').value) || null,
             payment_day: parseInt(document.getElementById('debtPaymentDay').value) || null,
             min_payment: parseFloat(document.getElementById('debtMinPayment').value) || 0,
+            account_id: document.getElementById('debtAccount').value || null,
             note: document.getElementById('debtNote').value.trim()
         };
         if (!payload.name) { showToast('请填写项目名称', 'error'); return; }
@@ -271,7 +291,8 @@ const DebtManager = {
         const sel = document.getElementById('repayAccount');
         sel.innerHTML = '<option value="">-- 请选择账户 * --</option>';
         (cache.accounts || []).forEach(a => { sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)}</option>`; });
-        sel.value = '';
+        // 若债务已关联账户，默认带入为收/付款账户
+        if (debt && debt.account_id) sel.value = debt.account_id; else sel.value = '';
     },
 
     closeRepayModal() { document.getElementById('repayModal').classList.remove('show'); },
