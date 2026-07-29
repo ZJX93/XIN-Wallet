@@ -103,65 +103,48 @@ const DebtManager = {
         `;
     },
 
-    // 列表行：与理财卡片对齐的"投入/市值"双金额 + 进度条 + 4 按钮节奏
+    // 列表行：直接复用项目全局 goal-card 类（与预算卡片完全一致的 HTML 结构）
     _renderRow(d) {
         const isRecv = d.direction === 'receivable';
-        const cls = isRecv ? 'dtr-recv' : 'dtr-pay';
-        const tag = isRecv ? '<span class="dtr-tag recv">应收</span>' : '<span class="dtr-tag pay">应付</span>';
-        const typeLabel = ({ credit_card: '信用卡', loan: '长期借款', personal: '自然人借贷', other: '其他' })[d.type] || d.type;
-        const methodLabel = ({ equal_installment: '等额本息', equal_principal: '等额本金', interest_only: '按期付息到期还本', minimum: '最低还款', lump_sum: '一次性还本', manual: '手动' })[d.method] || d.method;
-        const statusLabel = ({ active: '正常', paid_off: '已结清', overdue: '逾期' })[d.status] || d.status;
-        const statusCls = ({ active: 'dtr-status-active', paid_off: 'dtr-status-done', overdue: 'dtr-status-overdue' })[d.status] || '';
+        const deptLabel = isRecv ? '应收' : '应付';
+        const typeName = ({ credit_card: '信用卡', loan: '长期借款', personal: '自然人借贷', other: '其他' })[d.type] || d.type;
+        const methodName = ({ equal_installment: '等额本息', equal_principal: '等额本金', interest_only: '按期付息到期还本', minimum: '最低还款', lump_sum: '一次性还本', manual: '手动' })[d.method] || d.method;
+        const stLabel = ({ active: '正常', paid_off: '已结清', overdue: '逾期' })[d.status] || d.status;
         const pct = d.principal > 0 ? Math.min(100, Math.round(d.paid_total / d.principal * 100)) : 0;
-        // 对齐理财卡片的"投入/市值"行：左边金额 = 本金，右边金额 = 剩余/待收
-        const leftField = isRecv ? '投入' : '本金';
-        const rightField = isRecv ? '待收' : '剩余';
-        const rightValueClass = isRecv ? 'text-recv' : 'text-pay';
+        const remain = isRecv ? d.remaining : (d.principal - d.paid_total);
+        const surplus = isRecv ? (d.principal - d.paid_total) : (d.principal - d.paid_total);
+        const stTag = d.status === 'paid_off'
+            ? '<span class="goal-status done">已结清</span>'
+            : d.status === 'overdue'
+                ? '<span class="goal-status overdue">逾期</span>'
+                : `<span class="goal-status type">${deptLabel} · ${typeName}</span>`;
+        const icon = isRecv ? '📤' : '📥';
+        const term = parseInt(d.term_months) || 0;
+        const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
+        const leftLabel = isRecv ? '已收回' : '已偿付';
+        const rightLabel = isRecv ? '待收' : '剩余';
+        const leftVal = d.paid_total || 0;
+        const rightVal = remain > 0 ? remain : 0;
         const actBtn = isRecv
             ? `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
             : `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
-        // 进度条颜色（与理财"红跌绿涨"同语义）
-        const progCls = d.status === 'overdue' ? 'danger' : (isRecv ? 'recv' : (pct >= 100 ? 'recv' : 'pay'));
-        // 对齐理财"年化 X%"行：左 = 利率 + 进度百分比（颜色随进度），右 = 期限/方式
-        const term = parseInt(d.term_months) || 0;
-        const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
-        const rateLine = d.interest_rate ? `${d.interest_rate}%` : '—';
-        const termLine = term > 0 ? `${paidTimes}/${term} 期` : (isRecv ? '随时收回' : '无固定期数');
-        const pctCls = isRecv ? (pct >= 50 ? 'positive' : 'neutral') : (pct >= 50 ? 'positive' : 'negative');
+        const metaLeft = `${pct}% 进度`;
+        const metaRight = d.interest_rate ? `年利率 ${d.interest_rate}%` : methodName;
         return `
-        <div class="debt-row ${cls} ${d.status === 'paid_off' ? 'is-done' : ''}">
-            <div class="dr-head">
-                <div class="dr-id">
-                    <span class="dr-type-icon">${isRecv ? '📤' : '📥'}</span>
-                    <span class="dr-name">${escapeHtml(d.name || '')}</span>
-                    ${tag}
-                    <span class="dtr-type-chip">${typeLabel}</span>
-                    <span class="dtr-status-chip ${statusCls}">${statusLabel}</span>
-                </div>
-                <div class="dr-actions">
-                    ${actBtn}
-                    <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">明细</button>
-                    <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">编辑</button>
-                    <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">删除</button>
-                </div>
+        <div class="goal-card ${d.status === 'paid_off' ? 'completed' : ''} ${d.status === 'overdue' ? 'overdue' : ''}">
+            <div class="goal-head">
+                <div class="goal-icon">${icon}</div>
+                <div class="goal-title">${escapeHtml(d.name || '')}${d.creditor ? ' · ' + escapeHtml(d.creditor) : ''}</div>
+                ${stTag}
             </div>
-            <div class="dr-amounts">
-                <span class="dr-amount-item"><span class="dr-amount-label">${leftField}</span><span class="dr-amount-value">${fmt(d.principal)}</span></span>
-                <span class="dr-amount-item"><span class="dr-amount-label">${rightField}</span><span class="dr-amount-value ${rightValueClass}">${fmt(d.remaining)}</span></span>
-            </div>
-            <div class="dr-meta">
-                <span class="dr-meta-left">
-                    <span class="dr-meta-pct ${pctCls}">${isRecv ? '+' : ''}${pct}%</span>
-                    <span class="dr-meta-rate">年利率 ${rateLine}</span>
-                </span>
-                <span class="dr-meta-right">
-                    <span class="dr-meta-term">${termLine}</span>
-                    <span class="dr-meta-method">${methodLabel}</span>
-                </span>
-            </div>
-            <div class="dr-progress">
-                <div class="dr-progress-bar ${progCls}" style="width:${pct}%"></div>
-                <span class="dr-progress-text">${isRecv ? '已收回' : '已偿付'} ${pct}%（${fmt(d.paid_total || 0)} / ${fmt(d.principal)}）</span>
+            <div class="goal-amounts"><span>${leftLabel} ${fmt(leftVal)}</span><span>${rightLabel} ${fmt(rightVal)}</span></div>
+            <div class="goal-progress"><div class="goal-progress-fill ${d.status === 'overdue' ? 'danger' : ''}" style="width:${Math.min(pct, 100)}%"></div></div>
+            <div class="goal-amounts"><span class="goal-pct">${metaLeft}</span><span>${metaRight}</span></div>
+            <div class="goal-actions">
+                ${actBtn}
+                <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">📜 明细</button>
+                <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">✏️ 编辑</button>
+                <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">🗑️ 删除</button>
             </div>
         </div>`;
     },

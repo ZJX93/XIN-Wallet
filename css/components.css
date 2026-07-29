@@ -1355,90 +1355,8 @@
 .dsp-row.danger strong { color: #ef4444; }
 .dsp-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px; color: var(--muted, #777); }
 
-/* 列表行（账表风格） */
 .debt-table-wrap { margin-top: 8px; }
 .debt-list { display: flex; flex-direction: column; gap: 8px; }
-.debt-row {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px; padding: 12px 14px;
-  border-left: 3px solid #3b82f6;
-  transition: background 0.15s;
-}
-.debt-row:hover { background: rgba(255,255,255,0.05); }
-.debt-row.dtr-pay  { border-left-color: #ef4444; }
-.debt-row.dtr-recv { border-left-color: #10b981; }
-.debt-row.is-done  { opacity: 0.55; }
-.dr-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.dr-id   { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dr-type-icon { font-size: 16px; }
-.dr-name { font-size: 15px; font-weight: 600; color: var(--text); }
-.dtr-tag {
-  display: inline-block; padding: 2px 8px; border-radius: 4px;
-  font-size: 11px; font-weight: 600;
-}
-.dtr-tag.pay  { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
-.dtr-tag.recv { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
-.dtr-type-chip {
-  display: inline-block; padding: 2px 8px; border-radius: 4px;
-  font-size: 11px; background: rgba(99,102,241,0.15); color: #a5b4fc;
-  border: 1px solid rgba(99,102,241,0.3);
-}
-.dtr-status-chip {
-  display: inline-block; padding: 2px 8px; border-radius: 4px;
-  font-size: 11px; font-weight: 600;
-}
-.dtr-status-active  { background: rgba(16,185,129,0.12); color: #6ee7b7; }
-.dtr-status-done    { background: rgba(99,102,241,0.12); color: #a5b4fc; }
-.dtr-status-overdue { background: rgba(239,68,68,0.18);  color: #fecaca; }
-.dr-actions { display: flex; gap: 6px; align-items: center; }
-.btn.btn-sm { padding: 5px 10px; font-size: 12px; }
-
-/* 双金额行（对齐理财卡片"投入/市值"） */
-.dr-amounts {
-  display: flex; justify-content: space-between; align-items: baseline;
-  padding: 8px 0 4px 0;
-  border-top: 1px dashed rgba(255,255,255,0.06);
-  margin-top: 6px;
-  gap: 12px;
-}
-.dr-amount-item { display: flex; flex-direction: column; gap: 2px; }
-.dr-amount-label { font-size: 12px; color: var(--muted, #888); }
-.dr-amount-value { font-size: 15px; font-weight: 600; color: var(--text); font-feature-settings: 'tnum'; }
-.dr-amount-value.text-pay  { color: #fca5a5; }
-.dr-amount-value.text-recv { color: #6ee7b7; }
-
-/* 副信息行（对齐理财"年化 X%"行） */
-.dr-meta {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 2px 0 8px 0;
-  border-bottom: 1px dashed rgba(255,255,255,0.06);
-  margin-bottom: 6px;
-  font-size: 12px; color: var(--muted, #888);
-}
-.dr-meta-left, .dr-meta-right { display: flex; gap: 10px; align-items: center; }
-.dr-meta-pct { font-weight: 600; font-feature-settings: 'tnum'; }
-.dr-meta-pct.positive { color: #10b981; }
-.dr-meta-pct.negative { color: #ef4444; }
-.dr-meta-pct.neutral  { color: var(--muted, #888); }
-.dr-meta-rate  { color: var(--muted, #999); }
-.dr-meta-term  { color: var(--text); font-weight: 500; }
-.dr-meta-method{ color: var(--muted, #999); }
-
-.dr-progress { position: relative; height: 18px; background: rgba(255,255,255,0.04); border-radius: 4px; overflow: hidden; }
-.dr-progress-bar {
-  position: absolute; left: 0; top: 0; bottom: 0;
-  background: linear-gradient(90deg, #3b82f6, #6366f1);
-  transition: width 0.3s ease;
-}
-.dr-progress-bar.recv   { background: linear-gradient(90deg, #10b981, #34d399); }
-.dr-progress-bar.danger { background: linear-gradient(90deg, #ef4444, #f59e0b); }
-.dr-progress-text {
-  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: var(--text); font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-}
 
 /* 必填星号 */
 .req { color: #ef4444; margin-left: 2px; }
@@ -1452,7 +1370,6 @@
   .debt-kpi { grid-template-columns: repeat(2, 1fr); }
   .debt-summary-grid { grid-template-columns: 1fr; }
   .debt-type-tabs { width: 100%; overflow-x: auto; }
-  .dr-amounts { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 480px) {
   .debt-kpi { grid-template-columns: 1fr; }
