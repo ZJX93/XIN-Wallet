@@ -13,6 +13,9 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
+  // 显式指定客户端编码为 UTF-8，避免在 Windows / Git Bash 中文 locale 环境下
+  // pg 驱动读取 LC_* / LANG 环境变量导致中文被错误地按 GBK 编码往返。
+  options: '-c client_encoding=UTF8',
 });
 
 /**
