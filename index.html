@@ -259,24 +259,40 @@
                     </div>
                 </div>
                 <div class="glass-card">
-                    <h3 class="card-title">💳 债务管理 <button class="btn btn-primary" id="addDebtBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 添加债务</button> <span class="see-all" id="debtCount"></span></h3>
-                    <p class="card-desc">管理贷款、信用卡、个人借贷，追踪还款进度与逾期风险</p>
+                    <h3 class="card-title">💳 债务管理 <button class="btn btn-primary" id="addDebtBtn" style="font-size:13px;padding:6px 14px;margin-left:12px">＋ 添加</button> <span class="see-all" id="debtCount"></span></h3>
+                    <p class="card-desc">同时管理我欠别人的（应付）和别人欠我的（借出）</p>
+                    <!-- 方向 Tab 筛选 -->
+                    <div class="debt-dir-tabs">
+                        <button class="debt-dir-tab active" data-debt-dir="all">全部</button>
+                        <button class="debt-dir-tab" data-debt-dir="payable">💳 应付（我欠别人）</button>
+                        <button class="debt-dir-tab" data-debt-dir="receivable">📥 借出（别人欠我）</button>
+                    </div>
+                    <!-- 双面板 summary -->
+                    <div class="debt-summary-row" style="margin-top:12px">
+                        <div class="debt-summary-panel" id="debtPayablePanel"></div>
+                        <div class="debt-summary-panel" id="debtReceivablePanel"></div>
+                    </div>
                     <div class="debt-list" id="debtList"></div>
                 </div>
                 <div class="modal-overlay" id="debtModal"><div class="modal glass-card">
                     <div class="modal-header"><h3 id="debtModalTitle">添加债务</h3><button class="modal-close" id="debtModalClose">✕</button></div>
-                    <form class="debt-form" id="debtForm"><input type="hidden" id="debtEditId">
+                    <form class="debt-form" id="debtForm"><input type="hidden" id="debtEditId"><input type="hidden" id="debtDirection" value="payable">
+                        <!-- 方向 Tab -->
+                        <div class="debt-dir-tabs" style="margin-bottom:14px">
+                            <button type="button" class="debt-dir-tab active" data-form-dir="payable">💳 应付（我欠别人）</button>
+                            <button type="button" class="debt-dir-tab" data-form-dir="receivable">📥 借出（别人欠我）</button>
+                        </div>
                         <div class="form-row">
-                            <div class="form-group"><label>债务名称</label><input type="text" id="debtName" placeholder="如：房贷 / 招行信用卡 / 借给张三" required></div>
+                            <div class="form-group"><label>名称</label><input type="text" id="debtName" placeholder="如：房贷 / 借给张三" required></div>
                             <div class="form-group"><label>类型</label><select id="debtType" required>
                                 <option value="loan">贷款（房贷/车贷/网贷）</option>
                                 <option value="credit_card">信用卡/循环信用</option>
                                 <option value="personal">个人借贷</option>
-                                <option value="other">其他应付</option>
+                                <option value="other">其他</option>
                             </select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>债权人/机构</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三"></div>
+                            <div class="form-group"><label data-counterparty-label>债权人/机构</label><input type="text" id="debtCreditor" placeholder="如：工商银行 / 张三"></div>
                             <div class="form-group"><label>本金/总额 (¥)</label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
                         <div class="form-row">
@@ -285,12 +301,12 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>还款方式</label><select id="debtMethod" required>
+                                <option value="manual" selected>手动/不自动算</option>
                                 <option value="equal_installment">等额本息</option>
                                 <option value="equal_principal">等额本金</option>
                                 <option value="interest_only">先息后本</option>
                                 <option value="minimum">最低还款（信用卡）</option>
                                 <option value="lump_sum">一次性还本</option>
-                                <option value="manual">手动/不自动算</option>
                             </select></div>
                             <div class="form-group"><label>月供/每期 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"></div>
                         </div>
@@ -308,23 +324,23 @@
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="repayModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3>记录还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
+                    <div class="modal-header"><h3 id="repayModalTitle">记录还款</h3><button class="modal-close" id="repayModalClose">✕</button></div>
                     <form class="repay-form" id="repayForm"><input type="hidden" id="repayDebtId">
-                        <div class="form-group"><label>还款金额 (¥)</label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
+                        <div class="form-group"><label>金额 (¥)</label><input type="number" id="repayAmount" step="0.01" min="0" required autocomplete="off"></div>
                         <div class="form-row">
-                            <div class="form-group"><label>还款日期</label><input type="date" id="repayDate" required></div>
-                            <div class="form-group"><label>还款账户 *</label><select id="repayAccount" required></select></div>
+                            <div class="form-group"><label>日期</label><input type="date" id="repayDate" required></div>
+                            <div class="form-group"><label data-repay-account-label>还款账户 *</label><select id="repayAccount" required></select></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>本金部分 (¥)</label><input type="number" id="repayPrincipal" step="0.01" min="0" placeholder="留空=全额计本金"></div>
                             <div class="form-group"><label>利息部分 (¥)</label><input type="number" id="repayInterest" step="0.01" min="0" placeholder="选填"></div>
                         </div>
                         <div class="form-group"><label>备注</label><input type="text" id="repayNote" placeholder="可选"></div>
-                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-primary">记录</button></div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="repayCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="repaySubmitBtn">记录</button></div>
                     </form>
                 </div></div>
                 <div class="modal-overlay" id="repayHistoryModal"><div class="modal glass-card">
-                    <div class="modal-header"><h3>还款明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
+                    <div class="modal-header"><h3>明细</h3><button class="modal-close" id="repayHistoryModalClose">✕</button></div>
                     <div class="repay-history" id="repayHistoryBody"></div>
                 </div></div>
             </section>

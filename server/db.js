@@ -210,6 +210,16 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ transactions.idx_account_date 迁移警告:', err.message);
     }
 
+    // 7) 幂等迁移：debts.direction（区分应付/应收）
+    //     payable = 我欠别人（默认，旧数据全归此类）
+    //     receivable = 别人欠我（借出、人情借款等）
+    try {
+      await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS direction VARCHAR(10) NOT NULL DEFAULT 'payable' CHECK (direction IN ('payable','receivable'))`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction)`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.direction 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

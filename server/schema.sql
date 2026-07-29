@@ -406,12 +406,15 @@ CREATE TABLE IF NOT EXISTS ai_ocr_config (
 DROP TRIGGER IF EXISTS trg_ocr_updated ON ai_ocr_config;
 CREATE TRIGGER trg_ocr_updated BEFORE UPDATE ON ai_ocr_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 债务台账
+-- 债务台账（应付 + 应收双向）
+-- direction: payable = 我欠别人（默认，旧数据保持）; receivable = 别人欠我
+-- creditor: 对方名称（银行/机构/个人，语义通用：应付时是债权人，应收时是债务人）
 CREATE TABLE IF NOT EXISTS debts (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   type VARCHAR(15) NOT NULL DEFAULT 'loan' CHECK (type IN ('credit_card','loan','personal','other')),
+  direction VARCHAR(10) NOT NULL DEFAULT 'payable' CHECK (direction IN ('payable','receivable')),
   creditor VARCHAR(100) DEFAULT '',
   principal DECIMAL(15,2) NOT NULL DEFAULT 0,
   remaining DECIMAL(15,2) NOT NULL DEFAULT 0,
@@ -430,6 +433,7 @@ CREATE TABLE IF NOT EXISTS debts (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
+CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction);
 DROP TRIGGER IF EXISTS trg_debts_updated ON debts;
 CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

@@ -1282,6 +1282,55 @@
 .debt-form, .repay-form {
   display: flex; flex-direction: column; gap: var(--space-3);
 }
+
+/* 债务方向 Tab（应付 / 借出） */
+.debt-dir-tabs {
+  display: flex; gap: 4px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px; padding: 4px;
+  width: fit-content;
+}
+.debt-dir-tab {
+  background: transparent; border: 0;
+  color: var(--muted, #888);
+  padding: 8px 16px; border-radius: 7px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all 0.18s ease;
+}
+.debt-dir-tab:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.debt-dir-tab.active {
+  background: linear-gradient(135deg, rgba(99,102,241,0.85), rgba(59,130,246,0.85));
+  color: #fff; font-weight: 600;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+}
+
+/* 债务 summary 面板（应付/应收） */
+.debt-summary-panel {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px; padding: 14px 18px;
+  min-height: 120px;
+}
+.dsp-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+.dsp-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 13px; color: var(--muted, #999); }
+.dsp-row strong { color: var(--text); font-weight: 600; font-size: 14px; }
+.dsp-row.warn strong { color: #f59e0b; }
+.dsp-row.danger strong { color: #ef4444; }
+.dsp-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 12px; color: var(--muted, #777); }
+
+/* 卡片方向徽章 */
+.debt-dir-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; font-weight: 600; margin-right: 6px;
+}
+.debt-dir-badge.pay  { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+.debt-dir-badge.recv { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+
+/* 应收卡片的视觉强调（左侧绿色色条） */
+.goal-card.debt-receivable { border-left: 3px solid #10b981; }
+.goal-card.debt-payable    { border-left: 3px solid #ef4444; }
+.goal-progress-fill.recv   { background: linear-gradient(90deg, #10b981, #34d399); }
+
 @media (max-width: 720px) {
   .debt-overview { grid-template-columns: 1fr; }
   .debt-summary-row { grid-template-columns: repeat(2, 1fr); }

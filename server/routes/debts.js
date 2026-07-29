@@ -96,10 +96,20 @@ router.get('/', async (req, res) => {
             };
         });
         const active = list.filter(d => d.status === 'active');
-        const totalRemaining = list.reduce((s, d) => s + d.remaining, 0);
-        const totalMonthly = active.reduce((s, d) => s + d.monthly_payment, 0);
+        const payables = list.filter(d => d.direction === 'payable');
+        const receivables = list.filter(d => d.direction === 'receivable');
+        const activePayables = payables.filter(d => d.status === 'active');
+        const activeReceivables = receivables.filter(d => d.status === 'active');
+        // 应付总额（我欠别人）= 减项
+        const payableRemaining = payables.reduce((s, d) => s + d.remaining, 0);
+        const payableMonthly = activePayables.reduce((s, d) => s + d.monthly_payment, 0);
+        // 应收总额（别人欠我）= 加项（资产）
+        const receivableRemaining = receivables.reduce((s, d) => s + d.remaining, 0);
+        const receivableExpected = activeReceivables.reduce((s, d) => s + d.monthly_payment, 0);
+        // 净债务 = 应付 - 应收
+        const netDebt = payableRemaining - receivableRemaining;
 
-        // 本月需还款 / 逾期：基于全部还款流水逐期核对（而非仅当前月）
+        // 本月需还款 / 逾期：基于全部还款流水逐期核对（仅对应付生效）
         const todayStr = new Date().toISOString().slice(0, 10);
         const allReps = await db.query(
             'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = ?',
@@ -112,19 +122,44 @@ router.get('/', async (req, res) => {
                 paid_at: fmtDateOnly(r.paid_at)
             });
         });
-        const dueSummary = calcDebtDueSummary(active, repaymentsByDebt, todayStr);
+        // 仅对应付计算 due/overdue
+        const dueSummary = calcDebtDueSummary(activePayables, repaymentsByDebt, todayStr);
+        // 应收也计算 due/overdue（语义：应收款的"已到期未收回"= "逾期"）
+        const recvDueSummary = calcDebtDueSummary(activeReceivables, repaymentsByDebt, todayStr);
 
         res.json(success({
             debts: list,
             summary: {
-                totalRemaining,
-                totalMonthly,
+                // 总额（兼容旧字段）
+                totalRemaining: netDebt,
+                totalMonthly: payableMonthly,
                 dueThisMonth: dueSummary.dueThisMonth,
                 dueAmount: dueSummary.dueAmount,
                 overdue: dueSummary.overdue,
                 overdueAmount: dueSummary.overdueAmount,
                 count: list.length,
-                activeCount: active.length
+                activeCount: active.length,
+                // 拆分：应付（我欠别人）
+                payable: {
+                    remaining: payableRemaining,
+                    monthly: payableMonthly,
+                    count: payables.length,
+                    activeCount: activePayables.length,
+                    dueThisMonth: dueSummary.dueThisMonth,
+                    dueAmount: dueSummary.dueAmount,
+                    overdue: dueSummary.overdue,
+                    overdueAmount: dueSummary.overdueAmount
+                },
+                // 拆分：应收（别人欠我）
+                receivable: {
+                    remaining: receivableRemaining,
+                    expectedMonthly: receivableExpected,
+                    count: receivables.length,
+                    activeCount: activeReceivables.length,
+                    overdue: recvDueSummary.overdue,
+                    overdueAmount: recvDueSummary.overdueAmount
+                },
+                netDebt
             }
         }));
     } catch (err) { handleServerError(res, err); }
@@ -137,17 +172,18 @@ router.post('/', async (req, res) => {
         if (!b.name || !b.name.trim()) return res.status(400).json(fail('债务名称必填'));
         const P = parseFloat(b.principal) || 0;
         const methodV = b.method || 'equal_installment';
+        const directionV = b.direction === 'receivable' ? 'receivable' : 'payable';
         let monthly = parseFloat(b.monthly_payment) || 0;
         if (!monthly && autoCalcMethods().includes(methodV)) {
             monthly = calcMonthlyPayment(P, b.interest_rate, b.term_months, methodV);
         }
         const rem = b.remaining !== undefined && b.remaining !== '' && b.remaining !== null ? parseFloat(b.remaining) : P;
         const result = await db.query(
-            `INSERT INTO debts (user_id, name, type, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [req.userId, b.name.trim(), b.type || 'loan', b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
+            `INSERT INTO debts (user_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [req.userId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
         );
-        res.json(success({ id: result.insertId }, '债务已添加'));
+        res.json(success({ id: result.insertId }, directionV === 'receivable' ? '借出已记录' : '债务已添加'));
     } catch (err) { handleServerError(res, err); }
 });
 
@@ -159,6 +195,7 @@ router.put('/:id', async (req, res) => {
         const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
         const methodV = b.method || debt.method;
+        const directionV = b.direction === 'receivable' ? 'receivable' : (b.direction === 'payable' ? 'payable' : debt.direction);
         let monthly = parseFloat(b.monthly_payment) || 0;
         if (!monthly && autoCalcMethods().includes(methodV)) {
             monthly = calcMonthlyPayment(
@@ -174,8 +211,8 @@ router.put('/:id', async (req, res) => {
                 : parseFloat(debt.remaining));
         const newStatus = b.status || (rem <= 0 ? 'paid_off' : 'active');
         await db.query(
-            `UPDATE debts SET name=?, type=?, creditor=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=? WHERE id=? AND user_id=?`,
-            [b.name.trim(), b.type || debt.type, b.creditor || '', newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, req.params.id, req.userId]
+            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=? WHERE id=? AND user_id=?`,
+            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, req.params.id, req.userId]
         );
         res.json(success(null, '债务已更新'));
     } catch (err) { handleServerError(res, err); }
@@ -214,44 +251,57 @@ router.get('/:id', async (req, res) => {
     } catch (err) { handleServerError(res, err); }
 });
 
-// 添加还款记录
+// 添加还款/收款记录（按 direction 分叉）
+// - payable（应付/我欠别人）：从我的账户扣款，建支出交易
+// - receivable（应收/别人欠我）：我的账户入账，建收入交易
 router.post('/:id/repayments', async (req, res) => {
     try {
         const { amount, paid_at, note, principal_part, interest_part, account_id } = req.body;
         const amt = parseFloat(amount);
-        if (!amt || amt <= 0) return res.status(400).json(fail('还款金额必填'));
+        if (!amt || amt <= 0) return res.status(400).json(fail('金额必填'));
         const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
         const accId = account_id ? parseInt(account_id) : null;
-        if (!accId) return res.status(400).json(fail('请选择还款账户（支出账户）'));
+        if (!accId) return res.status(400).json(fail('请选择账户'));
+        const isReceivable = (debt.direction === 'receivable');
         const pp = principal_part !== undefined && principal_part !== '' && principal_part !== null ? parseFloat(principal_part) : amt;
         const ip = interest_part !== undefined && interest_part !== '' && interest_part !== null ? parseFloat(interest_part) : 0;
-        // 1) 插入还款记录
+        // 1) 插入还款/收款记录
         const repResult = await db.query(
             'INSERT INTO debt_repayments (user_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             [req.userId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString().slice(0, 10), note || '']
         );
         const repId = repResult.insertId;
-        // 2) 入账：从支出账户出账（建交易、减余额）
-        let cat = await db.queryOne("SELECT id FROM categories WHERE name='还款' AND type='expense'");
+        // 2) 准备分类
+        const catName = isReceivable ? '收还款' : '还款';
+        const catType = isReceivable ? 'income' : 'expense';
+        const catIcon = isReceivable ? '💰' : '💸';
+        let cat = await db.queryOne("SELECT id FROM categories WHERE name=? AND type=?", [catName, catType]);
         if (!cat) {
-            const catResult = await db.query("INSERT INTO categories (name, type, icon, color, is_system) VALUES ('还款', 'expense', '💸', '#ef4444', TRUE)");
+            const catResult = await db.query("INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)", [catName, catType, catIcon, isReceivable ? '#10b981' : '#ef4444']);
             cat = { id: catResult.insertId };
         }
+        // 3) 建交易：应收建 income + destination_account_id；应付建 expense + source_account_id
         const txDate = (paid_at || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
-        const txResult = await db.query(
-            "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id) VALUES (?, ?, ?, 'expense', ?, ?, ?, ?)",
-            [req.userId, accId, cat.id, amt, `还款·${debt.name}`, txDate, accId]
-        );
+        const txType = isReceivable ? 'income' : 'expense';
+        const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
+        const srcCol = isReceivable ? 'NULL' : '?';
+        const dstCol = isReceivable ? '?' : 'NULL';
+        const insertSQL = `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol})`;
+        const txParams = [req.userId, accId, cat.id, txType, amt, txNote, txDate];
+        if (isReceivable) txParams.push(accId); else txParams.push(accId);
+        const txResult = await db.query(insertSQL, txParams);
         await db.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txResult.insertId, repId]);
-        // 3) 更新支出账户余额（以账本为准，与 POST /transactions 一致）
+        // 4) 账户余额重算（以账本为准）
         const newAccBalance = await computeAccountBalance(db, req.userId, accId);
         await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newAccBalance, accId]);
-        // 4) 更新债务剩余
-        const newRemain = Math.max(0, parseFloat(debt.remaining) - pp);
+        // 5) 更新剩余本金 + 状态
+        const newRemain = isReceivable
+            ? Math.max(0, parseFloat(debt.remaining) - pp)   // 收回 = 减少应收
+            : Math.max(0, parseFloat(debt.remaining) - pp);  // 还款 = 减少应付
         const newStatus = newRemain <= 0 ? 'paid_off' : 'active';
         await db.query('UPDATE debts SET remaining = ?, status = ? WHERE id = ?', [Math.round(newRemain * 100) / 100, newStatus, debt.id]);
-        res.json(success(null, '还款已记录'));
+        res.json(success(null, isReceivable ? '收款已记录' : '还款已记录'));
     } catch (err) { handleServerError(res, err); }
 });
 
