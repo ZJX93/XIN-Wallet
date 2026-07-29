@@ -1440,6 +1440,53 @@
   .debt-kpi { grid-template-columns: 1fr; }
 }
 
+/* === 通用明细弹窗（rh-*）：账户资金明细 + 收/还款明细 共用 === */
+.repay-history,
+.account-detail-body,
+.savings-history-body,
+.dash-detail-body { padding: 4px 0; }
+.rh-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.rh-head {
+  padding: 12px 14px;
+  background: var(--surface-hover, rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md, 10px);
+}
+.rh-debt { font-size: 15px; font-weight: 600; color: var(--text); }
+.rh-sub  { font-size: 12px; color: var(--text-tertiary, #888); margin-top: 4px; }
+.rh-item {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface, rgba(255,255,255,0.03));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: var(--radius-md, 10px);
+  transition: background 0.15s;
+}
+.rh-item:hover { background: var(--surface-hover, rgba(255,255,255,0.05)); }
+.rh-row1 { display: flex; justify-content: space-between; align-items: baseline; }
+.rh-row2 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.rh-amount { font-size: 16px; font-weight: 600; color: var(--text); font-feature-settings: 'tnum'; }
+.rh-amount.positive { color: #10b981; }
+.rh-amount.negative { color: #ef4444; }
+.rh-amount.transfer { color: #6366f1; }
+.rh-date   { font-size: 12px; color: var(--text-tertiary, #888); }
+.rh-tag    {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 500;
+  background: rgba(99,102,241,0.15); color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.rh-acc    {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  background: rgba(255,255,255,0.05); color: var(--text-tertiary, #aaa);
+}
+.rh-note   {
+  font-size: 12px; color: var(--text-tertiary, #999);
+  padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.06);
+  margin-top: 4px;
+}
+
 /* 仪表盘债务卡片 */
 .debt-dash-summary {
   display: grid; grid-template-columns: repeat(2, 1fr);
