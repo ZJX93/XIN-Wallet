@@ -413,6 +413,7 @@ CREATE TABLE IF NOT EXISTS debts (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
   account_id INT DEFAULT NULL,
+  create_transaction_id INT DEFAULT NULL,                -- 创建债务时同步生成的台账交易（应收借出时扣减关联账户余额）
   name VARCHAR(100) NOT NULL,
   type VARCHAR(15) NOT NULL DEFAULT 'loan' CHECK (type IN ('credit_card','loan','personal','other')),
   direction VARCHAR(10) NOT NULL DEFAULT 'payable' CHECK (direction IN ('payable','receivable')),

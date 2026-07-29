@@ -229,6 +229,13 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.account_id 迁移警告:', err.message);
     }
 
+    // 9) 幂等迁移：debts.create_transaction_id（创建应收借出时同步生成的台账交易，用于回滚）
+    try {
+      await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS create_transaction_id INT DEFAULT NULL`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.create_transaction_id 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

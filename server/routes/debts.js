@@ -4,6 +4,38 @@ const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance } = require('./_helpers');
 
+// 创建债务时同步生成台账交易（仅"应收/借出"从关联账户流出资金）
+// 返回生成的交易 id；不满足条件时返回 null
+async function createDebtCreateTxn(db, userId, accId, principal, name, dateStr) {
+  if (!accId || !(principal > 0)) return null;
+  // 借出分类（无则创建）
+  const catName = '借出', catType = 'expense', catIcon = '🤝';
+  let cat = await db.queryOne('SELECT id FROM categories WHERE name=? AND type=?', [catName, catType]);
+  if (!cat) {
+    const catResult = await db.query('INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)', [catName, catType, catIcon, '#f59e0b']);
+    cat = { id: catResult.insertId };
+  }
+  const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
+  const txResult = await db.query(
+    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+    [userId, accId, cat.id, 'expense', principal, `借出·${name}`, txDate, accId]
+  );
+  // 以账本为准重算关联账户余额
+  const newBalance = await computeAccountBalance(db, userId, accId);
+  await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+  return txResult.insertId;
+}
+
+// 回滚创建债务时生成的台账交易（删除交易并按账本重算账户余额）
+async function rollbackDebtCreateTxn(db, userId, txId, accId) {
+  if (!txId) return;
+  await db.query('DELETE FROM transactions WHERE id = ? AND user_id = ?', [txId, userId]);
+  if (accId) {
+    const newBalance = await computeAccountBalance(db, userId, accId);
+    await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+  }
+}
+
 // 计算月供（等额本息 / 等额本金 / 先息后本）
 function calcMonthlyPayment(principal, annualRate, termMonths, method) {
     const P = parseFloat(principal) || 0;
@@ -184,7 +216,14 @@ router.post('/', async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
             [req.userId, accId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
         );
-        res.json(success({ id: result.insertId }, directionV === 'receivable' ? '借出已记录' : '债务已添加'));
+        const newId = result.insertId;
+        // 应收（借出）且关联账户：同步生成支出交易，扣减关联账户余额
+        let createTxnId = null;
+        if (directionV === 'receivable') {
+          createTxnId = await createDebtCreateTxn(db, req.userId, accId, P, b.name.trim(), b.start_date);
+          if (createTxnId) await db.query('UPDATE debts SET create_transaction_id = ? WHERE id = ?', [createTxnId, newId]);
+        }
+        res.json(success({ id: newId }, directionV === 'receivable' ? '借出已记录' : '债务已添加'));
     } catch (err) { handleServerError(res, err); }
 });
 
@@ -212,17 +251,32 @@ router.put('/:id', async (req, res) => {
                 : parseFloat(debt.remaining));
         const accId = b.account_id !== undefined && b.account_id !== '' && b.account_id !== null ? parseInt(b.account_id) : (debt.account_id || null);
         const newStatus = b.status || (rem <= 0 ? 'paid_off' : 'active');
+        // 回滚旧的创建交易（避免账本残留）
+        if (debt.create_transaction_id) {
+          await rollbackDebtCreateTxn(db, req.userId, debt.create_transaction_id, debt.account_id);
+        }
+        // 重算后若仍符合"应收+关联账户+本金>0"，重建创建交易
+        let newCreateTxnId = null;
+        if (directionV === 'receivable') {
+          newCreateTxnId = await createDebtCreateTxn(db, req.userId, accId, newPrincipal, b.name.trim(), b.start_date);
+        }
         await db.query(
-            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=? WHERE id=? AND user_id=?`,
-            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, req.params.id, req.userId]
+            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=?, create_transaction_id=? WHERE id=? AND user_id=?`,
+            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, newCreateTxnId, req.params.id, req.userId]
         );
         res.json(success(null, '债务已更新'));
     } catch (err) { handleServerError(res, err); }
 });
 
-// 删除债务（级联删除还款流水）
+// 删除债务（级联删除还款流水 + 创建时生成的台账交易）
 router.delete('/:id', async (req, res) => {
     try {
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        if (!debt) return res.status(404).json(fail('债务不存在'));
+        // 回滚创建应收借出时生成的台账交易（恢复账户余额）
+        if (debt.create_transaction_id) {
+          await rollbackDebtCreateTxn(db, req.userId, debt.create_transaction_id, debt.account_id);
+        }
         // 清理关联的入账交易（还款出账记录）
         const txs = await db.query('SELECT transaction_id FROM debt_repayments WHERE debt_id = ? AND user_id = ? AND transaction_id IS NOT NULL', [req.params.id, req.userId]);
         for (const t of txs) {
