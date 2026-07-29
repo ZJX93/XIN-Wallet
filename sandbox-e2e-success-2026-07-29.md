@@ -1,15 +1,7 @@
-# 鑫钱包 · 沙箱 E2E 验证成功报告
-
-**验证日期：** 2026-07-29 22:14  
-**验证人：** 吴八哥 💎  
-**环境：** NAS (192.168.9.3:15432, PostgreSQL 16.14, test 库) + Node 22.22.2
-
----
-
 ## 一、整体流程跑通
 
 ```
-[user 提供 root/k8F5&jUm7&/test 凭据]
+[user 提供 postgres 凭据（运行时 env，未写入文件/记忆）]
    ↓
 [沙箱 psql/Node pg 探测 — TCP 15432 可达，SCRAM 认证]
    ↓
@@ -108,7 +100,7 @@ node scripts/sandbox-e2e.js
 
 ## 六、密钥/凭据使用承诺
 
-- 数据库 root 密码 `k8F5&jUm7&`、ENCRYPTION_KEY、JWT_SECRET **仅在进程环境变量中**，未写入任何文件、未写入记忆
+- 数据库密码、ENCRYPTION_KEY、JWT_SECRET **仅在进程环境变量中**，未写入任何文件、未写入记忆
 - 进程退出后销毁（不留 ghost process）
 - `.env` 中的真实 ENCRYPTION_KEY 不会被读到（脚本用独立变量覆盖）
 

@@ -3,23 +3,34 @@
    启动真实 server，模拟 LAN NAS 上的 PG，跑一组 HTTP 测试。
    设计：使用与 server/index.js 一致的环境变量，调用同一份代码。
    用途：CI 自动化 + 沙箱环境验证（无 Docker 时）。
+
+   使用方式（绝不硬编码密钥）：
+     export DB_HOST=... DB_USER=... DB_PASSWORD=... DB_NAME=...
+     export ENCRYPTION_KEY=$(openssl rand -hex 32)
+     export JWT_SECRET=$(openssl rand -hex 32)
+     node scripts/sandbox-e2e.js
    ============================================ */
 
 'use strict';
 
 process.chdir(__dirname + '/..');
 
-// 测试用环境变量。密钥从不写入文件。
-process.env.DB_HOST = '192.168.9.3';
-process.env.DB_PORT = '15432';
-process.env.DB_USER = 'root';
-process.env.DB_PASSWORD = 'k8F5&jUm7&';
-process.env.DB_NAME = 'test';
-process.env.ENCRYPTION_KEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
-process.env.JWT_SECRET = 'sandbox-e2e-jwt-secret-not-default-32-chars';
-process.env.PORT = '18889'; // 避开主端口 18888
-process.env.NODE_ENV = 'development';
-process.env.AUTH_RATE_LIMIT_MAX = '9999'; // 测试时放宽，避免限流误伤
+// 测试用环境变量（运行前必须 export，脚本不设默认值）
+const required = ['DB_HOST', 'DB_USER', 'DB_NAME'];
+for (const key of required) {
+    if (!process.env[key]) {
+        console.error(`ERROR: 环境变量 ${key} 未设置。请先 export 或 . ~/.env`);
+        process.exit(1);
+    }
+}
+if (!process.env.DB_PASSWORD && !process.env.PG_USE_TRUST) {
+    console.error('ERROR: DB_PASSWORD 未设置。安全起见脚本拒绝空密码。');
+    process.exit(1);
+}
+
+process.env.PORT = process.env.PORT || '18889'; // 避开主端口 18888
+process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+process.env.AUTH_RATE_LIMIT_MAX = process.env.AUTH_RATE_LIMIT_MAX || '9999'; // 测试时放宽
 
 const PORT = parseInt(process.env.PORT, 10);
 
