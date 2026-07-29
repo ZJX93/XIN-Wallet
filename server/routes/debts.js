@@ -4,21 +4,30 @@ const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance } = require('./_helpers');
 
-// 创建债务时同步生成台账交易（仅"应收/借出"从关联账户流出资金）
+// 创建债务时同步生成台账交易，保持账本一致：
+// - 应收/借出：资金从关联账户流出（支出），扣减余额
+// - 应付/借款：资金进入关联账户（收入），增加余额
 // 返回生成的交易 id；不满足条件时返回 null
-async function createDebtCreateTxn(db, userId, accId, principal, name, dateStr) {
+async function createDebtCreateTxn(db, userId, accId, direction, principal, name, dateStr) {
   if (!accId || !(principal > 0)) return null;
-  // 借出分类（无则创建）
-  const catName = '借出', catType = 'expense', catIcon = '🤝';
+  const isRecv = direction === 'receivable';
+  const catName = isRecv ? '借出' : '借入';
+  const catType = isRecv ? 'expense' : 'income';
+  const catIcon = isRecv ? '🤝' : '🏦';
+  const txType  = isRecv ? 'expense' : 'income';
+  const txNote  = isRecv ? `借出·${name}` : `借入·${name}`;
   let cat = await db.queryOne('SELECT id FROM categories WHERE name=? AND type=?', [catName, catType]);
   if (!cat) {
     const catResult = await db.query('INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)', [catName, catType, catIcon, '#f59e0b']);
     cat = { id: catResult.insertId };
   }
   const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
+  // 复式记账方向：借出=资金从账户流出(source)，借入=资金流入账户(destination)
+  const srcAcc = isRecv ? accId : null;
+  const dstAcc = isRecv ? null : accId;
   const txResult = await db.query(
-    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)',
-    [userId, accId, cat.id, 'expense', principal, `借出·${name}`, txDate, accId]
+    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [userId, accId, cat.id, txType, principal, txNote, txDate, srcAcc, dstAcc]
   );
   // 以账本为准重算关联账户余额
   const newBalance = await computeAccountBalance(db, userId, accId);
@@ -217,13 +226,11 @@ router.post('/', async (req, res) => {
             [req.userId, accId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
         );
         const newId = result.insertId;
-        // 应收（借出）且关联账户：同步生成支出交易，扣减关联账户余额
+        // 关联账户：借出扣减 / 借入增加关联账户余额，保持账本一致
         let createTxnId = null;
-        if (directionV === 'receivable') {
-          createTxnId = await createDebtCreateTxn(db, req.userId, accId, P, b.name.trim(), b.start_date);
-          if (createTxnId) await db.query('UPDATE debts SET create_transaction_id = ? WHERE id = ?', [createTxnId, newId]);
-        }
-        res.json(success({ id: newId }, directionV === 'receivable' ? '借出已记录' : '债务已添加'));
+        createTxnId = await createDebtCreateTxn(db, req.userId, accId, directionV, P, b.name.trim(), b.start_date);
+        if (createTxnId) await db.query('UPDATE debts SET create_transaction_id = ? WHERE id = ?', [createTxnId, newId]);
+        res.json(success({ id: newId }, directionV === 'receivable' ? '借出已记录' : '借款已记录'));
     } catch (err) { handleServerError(res, err); }
 });
 
@@ -255,11 +262,9 @@ router.put('/:id', async (req, res) => {
         if (debt.create_transaction_id) {
           await rollbackDebtCreateTxn(db, req.userId, debt.create_transaction_id, debt.account_id);
         }
-        // 重算后若仍符合"应收+关联账户+本金>0"，重建创建交易
+        // 重算后若符合"关联账户+本金>0"，按方向重建创建交易（借出支出/借入收入）
         let newCreateTxnId = null;
-        if (directionV === 'receivable') {
-          newCreateTxnId = await createDebtCreateTxn(db, req.userId, accId, newPrincipal, b.name.trim(), b.start_date);
-        }
+        newCreateTxnId = await createDebtCreateTxn(db, req.userId, accId, directionV, newPrincipal, b.name.trim(), b.start_date);
         await db.query(
             `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=?, create_transaction_id=? WHERE id=? AND user_id=?`,
             [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, newCreateTxnId, req.params.id, req.userId]
