@@ -140,7 +140,7 @@ const DebtManager = {
             <div class="goal-amounts"><span>${leftLabel} ${fmt(leftVal)}</span><span>${rightLabel} ${fmt(rightVal)}</span></div>
             <div class="goal-progress"><div class="goal-progress-fill ${d.status === 'overdue' ? 'danger' : ''}" style="width:${Math.min(pct, 100)}%"></div></div>
             <div class="goal-amounts"><span class="goal-pct">${metaLeft}</span><span>${metaRight}</span></div>
-            <div class="goal-actions debt-actions">
+            <div class="goal-actions">
                 ${actBtn}
                 <button class="btn btn-ghost btn-sm" data-action="repay-history" data-id="${d.id}" title="查看明细">📜 明细</button>
                 <button class="btn btn-ghost btn-sm" data-action="edit-debt" data-id="${d.id}" title="编辑">✏️ 编辑</button>
