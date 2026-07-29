@@ -408,7 +408,7 @@ DROP TRIGGER IF EXISTS trg_ocr_updated ON ai_ocr_config;
 CREATE TRIGGER trg_ocr_updated BEFORE UPDATE ON ai_ocr_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 债务台账（应付 + 应收双向）
--- direction: payable = 我欠别人（默认，旧数据保持）; receivable = 别人欠我
+-- direction: payable = 我欠别人（默认，旧数据保持）；receivable = 别人欠我
 -- creditor: 对方名称（银行/机构/个人，语义通用：应付时是债权人，应收时是债务人）
 CREATE TABLE IF NOT EXISTS debts (
   id SERIAL PRIMARY KEY,

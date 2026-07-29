@@ -1,0 +1,286 @@
+/* ==========================================================================
+   智财 — Design Token System
+   暖棕品牌色 · OKLCH 色彩空间 · Geist 字体
+   基于 Nexus 设计系统
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. FONT FAMILIES
+   -------------------------------------------------------------------------- */
+:root {
+  --font-sans: 'Geist', 'Geist Fallback', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+}
+
+/* --------------------------------------------------------------------------
+   2. PRIMITIVE COLOR TOKENS (OKLCH)
+   暖棕色主调 + 冷调中性色
+   -------------------------------------------------------------------------- */
+:root {
+  /* --- Neutral Scale (warm-tinted for finance feel) --- */
+  --gray-0: oklch(99% 0.003 60);
+  --gray-50: oklch(97% 0.005 60);
+  --gray-100: oklch(93% 0.007 60);
+  --gray-200: oklch(87% 0.008 60);
+  --gray-300: oklch(77% 0.01 60);
+  --gray-400: oklch(64% 0.012 60);
+  --gray-500: oklch(52% 0.012 60);
+  --gray-600: oklch(41% 0.012 60);
+  --gray-700: oklch(31% 0.012 60);
+  --gray-800: oklch(22% 0.014 60);
+  --gray-900: oklch(16% 0.014 60);
+  --gray-950: oklch(11% 0.012 60);
+  --gray-1000: oklch(6% 0.01 60);
+
+  /* --- Primary Accent: Warm Brown (智财品牌色) --- */
+  --accent-50: oklch(96% 0.02 60);
+  --accent-100: oklch(90% 0.05 60);
+  --accent-200: oklch(82% 0.08 60);
+  --accent-300: oklch(72% 0.10 60);
+  --accent-400: oklch(62% 0.11 60);
+  --accent-500: oklch(54% 0.10 60);
+  --accent-600: oklch(46% 0.09 60);
+  --accent-700: oklch(38% 0.08 60);
+  --accent-800: oklch(30% 0.07 60);
+  --accent-900: oklch(22% 0.06 60);
+
+  /* --- Semantic Colors --- */
+  --success-400: oklch(68% 0.18 160);
+  --success-500: oklch(58% 0.16 160);
+  --success-600: oklch(48% 0.13 160);
+  --success-700: oklch(38% 0.10 160);
+
+  --warning-400: oklch(72% 0.16 85);
+  --warning-500: oklch(64% 0.15 85);
+  --warning-600: oklch(54% 0.13 85);
+  --warning-700: oklch(44% 0.10 85);
+
+  --error-400: oklch(62% 0.22 20);
+  --error-500: oklch(52% 0.20 20);
+  --error-600: oklch(42% 0.16 20);
+  --error-700: oklch(32% 0.12 20);
+
+  --info-400: oklch(72% 0.14 240);
+  --info-500: oklch(62% 0.13 240);
+  --info-600: oklch(52% 0.11 240);
+  --info-700: oklch(42% 0.09 240);
+}
+
+/* --------------------------------------------------------------------------
+   3. SEMANTIC TOKENS — LIGHT THEME
+   -------------------------------------------------------------------------- */
+:root {
+  --surface-page: var(--gray-0);
+  --surface-card: white;
+  --surface-elevated: white;
+  --surface-overlay: white;
+  --surface-hover: var(--gray-50);
+  --surface-active: var(--gray-100);
+  --surface-subtle: var(--gray-50);
+
+  --text-primary: var(--gray-900);
+  --text-secondary: var(--gray-600);
+  --text-tertiary: var(--gray-500);
+  --text-placeholder: var(--gray-500);
+  --text-on-accent: white;
+  --text-inverse: var(--gray-50);
+
+  --border-subtle: var(--gray-200);
+  --border-default: var(--gray-300);
+  --border-strong: var(--gray-400);
+  --border-accent: var(--accent-300);
+
+  --interactive-default: var(--accent-500);
+  --interactive-hover: var(--accent-600);
+  --interactive-active: var(--accent-700);
+  --interactive-disabled: var(--gray-300);
+  --interactive-focus-ring: oklch(54% 0.10 60 / 0.35);
+
+  --income: var(--error-500);
+  --income-soft: oklch(52% 0.20 20 / 0.08);
+  --expense: var(--success-500);
+  --expense-soft: oklch(58% 0.16 160 / 0.1);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.06);
+  --shadow-lg: 0 8px 30px oklch(0% 0 0 / 0.08);
+  --shadow-xl: 0 20px 60px oklch(0% 0 0 / 0.10);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  --ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --duration-150: 150ms;
+  --duration-300: 300ms;
+  --duration-500: 500ms;
+  --duration-700: 700ms;
+
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+
+  /* 兼容旧变量 */
+  --primary: var(--interactive-default);
+  --primary-hover: var(--interactive-hover);
+  --primary-soft: oklch(54% 0.10 60 / 0.08);
+  --primary-contrast: white;
+  --bg: var(--surface-page);
+  --bg-subtle: var(--surface-hover);
+  --surface: var(--surface-card);
+  --surface-2: var(--surface-hover);
+  --border: var(--border-subtle);
+  --border-strong: var(--border-default);
+  --text: var(--text-primary);
+  --text-muted: var(--text-tertiary);
+  --ring: 0 0 0 3px var(--interactive-focus-ring);
+  --sidebar-w: 240px;
+  --accent-primary: var(--interactive-default);
+  --accent-income: var(--income);
+  --accent-expense: var(--expense);
+  --text-primary-alias: var(--text-primary);
+  --bg-input: var(--surface-hover);
+  --border-input: var(--border-default);
+  --shadow-glow: var(--shadow-md);
+}
+
+/* --------------------------------------------------------------------------
+   4. SEMANTIC TOKENS — DARK THEME
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --surface-page: var(--gray-1000);
+  --surface-card: var(--gray-950);
+  --surface-elevated: var(--gray-900);
+  --surface-overlay: var(--gray-800);
+  --surface-hover: oklch(20% 0.008 60);
+  --surface-active: oklch(26% 0.008 60);
+  --surface-subtle: oklch(16% 0.008 60);
+
+  --text-primary: var(--gray-100);
+  --text-secondary: var(--gray-300);
+  --text-tertiary: var(--gray-400);
+  --text-placeholder: var(--gray-400);
+  --text-on-accent: var(--gray-1000);
+  --text-inverse: var(--gray-900);
+
+  --border-subtle: oklch(28% 0.008 60);
+  --border-default: oklch(34% 0.008 60);
+  --border-strong: oklch(42% 0.008 60);
+  --border-accent: var(--accent-600);
+
+  --interactive-default: var(--accent-400);
+  --interactive-hover: var(--accent-300);
+  --interactive-active: var(--accent-200);
+  --interactive-disabled: var(--gray-700);
+  --interactive-focus-ring: oklch(62% 0.11 60 / 0.4);
+
+  --income: var(--error-400);
+  --income-soft: oklch(52% 0.20 20 / 0.1);
+  --expense: var(--success-400);
+  --expense-soft: oklch(58% 0.16 160 / 0.12);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.2);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.3);
+  --shadow-lg: 0 8px 30px oklch(0% 0 0 / 0.4);
+  --shadow-xl: 0 20px 60px oklch(0% 0 0 / 0.5);
+
+  --primary: var(--interactive-default);
+  --primary-hover: var(--interactive-hover);
+  --primary-soft: oklch(62% 0.11 60 / 0.1);
+  --primary-contrast: var(--gray-1000);
+  --bg: var(--surface-page);
+  --bg-subtle: var(--surface-hover);
+  --surface: var(--surface-card);
+  --surface-2: var(--surface-hover);
+  --border: var(--border-subtle);
+  --border-strong: var(--border-default);
+  --text: var(--text-primary);
+  --text-muted: var(--text-tertiary);
+  --ring: 0 0 0 3px var(--interactive-focus-ring);
+  --accent-primary: var(--interactive-default);
+  --accent-income: var(--income);
+  --accent-expense: var(--expense);
+  --text-primary-alias: var(--text-primary);
+  --bg-input: var(--surface-hover);
+  --border-input: var(--border-default);
+  --shadow-glow: var(--shadow-md);
+}
+
+/* --------------------------------------------------------------------------
+   5. TYPOGRAPHY TOKENS
+   -------------------------------------------------------------------------- */
+:root {
+  --text-display-xl: clamp(2.25rem, 4vw + 0.5rem, 3.5rem);
+  --text-display-lg: clamp(1.75rem, 3vw + 0.5rem, 2.5rem);
+  --text-heading-xl: 2rem;
+  --text-heading-lg: 1.5rem;
+  --text-heading-md: 1.25rem;
+  --text-heading-sm: 1.125rem;
+  --text-body: 0.9375rem;
+  --text-body-sm: 0.875rem;
+  --text-caption: 0.8125rem;
+  --text-label: 0.75rem;
+
+  --leading-heading: 1.25;
+  --leading-body: 1.55;
+  --leading-tight: 1.15;
+
+  --tracking-tighter: -0.04em;
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.06em;
+}
+
+/* --------------------------------------------------------------------------
+   6. SPACING TOKENS (4pt base)
+   -------------------------------------------------------------------------- */
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  --gap-section: var(--space-8);
+  --gap-component: var(--space-6);
+  --gap-element: var(--space-3);
+
+  --container-max: 1400px;
+  --header-height: 60px;
+}
+
+/* --------------------------------------------------------------------------
+   7. REDUCED MOTION
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-150: 0ms;
+    --duration-300: 0ms;
+    --duration-500: 0ms;
+    --duration-700: 0ms;
+  }
+}

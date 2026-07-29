@@ -11,7 +11,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const bcrypt = require('bcryptjs');
 const multer = require('multer');
 
 const db = require('./db');
@@ -52,17 +51,16 @@ app.use(cors({
 
 // 登录/注册接口限流，防止暴力破解与凭据爆破
 // 默认：15 分钟内最多 5 次尝试（可通过 AUTH_RATE_LIMIT_MAX 调整）
+// 修复（P2 降级点）：原实现依赖 req.body.username，但 limiter 早于 express.json 挂载，
+// username 永远为空导致 keyGenerator 退化为纯 IP。改用纯 IP 限流 + 数据库层 per-account
+// 锁定（users.fail_count + locked_until）作为第二道防线，效果更强也更可靠。
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '5', 10),
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: '操作过于频繁，请 15 分钟后再试' },
-    keyGenerator: (req) => {
-        // 按用户名 + IP 组合限流，防止攻击者更换 IP 对同一账号暴力破解
-        const username = (req.body && req.body.username) || '';
-        return `${req.ip}_${username}`;
-    }
+    keyGenerator: (req) => req.ip
 });
 app.use('/api/auth', authLimiter);
 
@@ -96,9 +94,12 @@ app.use(compression({
 }));
 
 // 中间件
-app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 修复（P1/P2）：生产环境使用 combined 日志格式（无色彩，含完整 URL 与响应时间，更适合采集）
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// 修复（P1）：显式 body limit，防止 DoS。Express 4.x 默认 100kb 对 /import/full 等导入接口可能不足，
+// 但过大会放大单请求攻击面；选 1mb 与 csv 单笔最大 5mb 之间留出余量，超出请客户端分批。
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // API 路由（含公开 /auth 与受保护业务路由）
 // OCR 上传路由需在 body parser 之后、API 路由之前，使用 multer 局部中间件
@@ -131,17 +132,10 @@ app.use((err, req, res, next) => {
     });
 });
 
-// 静态文件（前端）：仅暴露前端必要文件，屏蔽源码与配置文件泄露
-const BLOCKED_PATHS = /^\/(server|node_modules|\.env|docker-compose[^/]*\.yml|Dockerfile|\.dockerignore|README\.md|package\.json|package-lock\.json|server\/)/i;
-app.use((req, res, next) => {
-    if (BLOCKED_PATHS.test(req.path)) return res.status(404).end();
-    next();
-});
-// 静态文件（前端）：按文件类型区分缓存策略
-// - HTML/CSS/JS 入口文件：no-cache（每次验证 ETag，未改动返回 304 不传输内容）
-// - 图片/字体：缓存 1 小时
-// - vendor 第三方库（chart.js 等）：缓存 7 天（极少变动）
-app.use(express.static(path.join(__dirname, '..'), {
+// 静态文件（前端）：白名单只暴露 public/ 目录，根目录的源码与配置文件不会被列出
+// 这彻底避免了黑名单遗漏导致的敏感文件暴露（新加 .env/secrets.json 等无需改 server 代码）
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+app.use(express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {
         if (filePath.includes('vendor')) {
             // 第三方库：长期缓存（先于 .js 匹配）
@@ -160,17 +154,23 @@ app.use(express.static(path.join(__dirname, '..'), {
 
 // 登录页干净路由：/login 映射到 login.html（/login.html 仍保留以兼容旧书签）
 app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'login.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
 });
 
 // 健康检查：Docker / k8s 探测
 app.get('/healthz', (req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
-// OpenAPI 规范 + Swagger UI
+// OpenAPI 规范 + Swagger UI（本地资源，离线可用，遵循 CSP 的 scriptSrc 'self'）
 const openapiSpec = require('./openapi');
-app.get('/openapi.json', (req, res) => res.json(openapiSpec));
+const swaggerUiDist = require('swagger-ui-dist');
+const swaggerAssetPath = swaggerUiDist.getAbsoluteFSPath();
 
-// Swagger UI（CDN 加载，避免引入新 npm 依赖）
+// 将 swagger-ui-dist 包内静态资源暴露在 /swagger-static/ 下（同源）
+app.use('/swagger-static', express.static(swaggerAssetPath, {
+    setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=86400'), // 1 天
+}));
+
+// Swagger UI 页面（自定义 HTML，引用 /swagger-static 下的本地资源）
 app.get('/docs', (req, res) => {
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.send(`<!DOCTYPE html>
@@ -178,11 +178,12 @@ app.get('/docs', (req, res) => {
 <head>
 <meta charset="UTF-8">
 <title>鑫钱包 API 文档</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<link rel="stylesheet" href="/swagger-static/swagger-ui.css">
+<link rel="icon" type="image/png" href="/swagger-static/favicon-32x32.png" sizes="32x32">
 </head>
 <body>
 <div id="swagger-ui"></div>
-<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script src="/swagger-static/swagger-ui-bundle.js" charset="UTF-8"></script>
 <script>
 SwaggerUIBundle({
   url: '/openapi.json',
@@ -206,7 +207,9 @@ app.get('/readyz', async (req, res) => {
     }
 });
 
-// 深度健康检查：DB + 内存 + 磁盘 + 运行时长（运维/监控系统用）
+// 深度健康检查：DB + 内存 + 运行时长（运维/监控系统用）
+// 修复（P1）：移除 config / runtime 字段（暴露密钥配置状态、Node 版本、内存指纹等敏感信息），
+// 数据库 + 内存 + 运行时长足够支持常规运维排查。
 app.get('/health/deep', async (req, res) => {
     const checks = {};
 
@@ -219,7 +222,7 @@ app.get('/health/deep', async (req, res) => {
         checks.database = { ok: false, error: err.message };
     }
 
-    // 2. 进程内存
+    // 2. 进程内存（运维可用，不含敏感信息）
     const mem = process.memoryUsage();
     checks.memory = {
         heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
@@ -234,21 +237,8 @@ app.get('/health/deep', async (req, res) => {
         startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
     };
 
-    // 4. 关键配置存在性
-    checks.config = {
-        encryptionKey: !!process.env.ENCRYPTION_KEY,
-        jwtSecret: !!process.env.JWT_SECRET,
-        dbHost: !!process.env.DB_HOST,
-    };
-
-    // 5. Node 版本（用于运维追踪）
-    checks.runtime = {
-        node: process.version,
-        platform: process.platform,
-        arch: process.arch,
-    };
-
-    const allOk = checks.database.ok && checks.config.encryptionKey && checks.config.jwtSecret;
+    // 与数据库可联通即视为健康；密钥存在性已挪到启动时的"密钥配置就绪"日志，不暴露在监控端点中
+    const allOk = checks.database.ok;
     res.status(allOk ? 200 : 503).json({
         success: allOk,
         data: checks,
@@ -260,7 +250,7 @@ app.get('/health/deep', async (req, res) => {
 // 以支持 /transactions 这类干净路由（History API）。需放在静态文件之后。
 app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // 等待数据库就绪并初始化（容器/NAS 环境下 PostgreSQL 可能尚未接受连接，避免启动竞态）

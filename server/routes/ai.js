@@ -107,7 +107,13 @@ router.post('/providers/:id/test', async (req, res) => {
     try {
         const provider = await db.queryOne('SELECT * FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!provider) return res.status(404).json(fail('服务商不存在'));
-        if (provider.api_key) provider.api_key = decrypt(provider.api_key);
+        if (provider.api_key) {
+            const decrypted = decrypt(provider.api_key);
+            if (decrypted === null) {
+                return res.status(400).json(fail('API Key 解密失败：服务端 ENCRYPTION_KEY 与历史凭证不匹配，请重新输入 Key 保存'));
+            }
+            provider.api_key = decrypted;
+        }
         if (!provider.api_key) return res.status(400).json(fail('服务商未设置 API Key'));
 
         const result = await callProvider(provider, [{ role: 'user', content: '回复"OK"' }]);
@@ -710,8 +716,15 @@ router.post('/ocr', async (req, res) => {
             return res.status(400).json(fail('请先前往「AI配置」页面设置腾讯云 OCR 密钥'));
         }
 
+        const secretId = decrypt(cfg.secret_id);
+        const secretKey = decrypt(cfg.secret_key);
+        // 任一解密失败 → 静默回退已被去除，须让用户重新保存凭证
+        if (!secretId || !secretKey) {
+            return res.status(400).json(fail('OCR 密钥解密失败，请前往「AI配置」页面重新保存腾讯云 OCR 密钥'));
+        }
+
         const client = new OcrClient({
-            credential: { secretId: decrypt(cfg.secret_id), secretKey: decrypt(cfg.secret_key) },
+            credential: { secretId, secretKey },
             region: cfg.region || 'ap-guangzhou'
         });
         const ocrResult = await client.GeneralAccurateOCR({ ImageBase64: imageBase64 });

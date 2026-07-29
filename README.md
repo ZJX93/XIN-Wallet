@@ -29,8 +29,9 @@
 | 层 | 选型 |
 |---|---|
 | 后端 | Node.js · Express 4 · PostgreSQL (pg 驱动) |
-| 安全 | helmet(CSP) · cors · bcryptjs · jsonwebtoken |
-| 前端 | 原生 HTML/CSS/JS · Chart.js 4 |
+| 安全 | helmet(CSP) · cors · bcryptjs · jsonwebtoken · SSRF guard (url-guard) |
+| 前端 | 原生 HTML/CSS/JS · Chart.js 4 · 前端文件统一在 `public/` |
+| 文档 | Swagger UI 内嵌（同源，无 CDN 依赖） |
 | 设计 | Premium 毛玻璃(glassmorphism) |
 
 ## 📁 目录结构
@@ -168,7 +169,7 @@ npm start
 ## 🔐 鉴权说明
 
 - 注册 `POST /api/auth/register`、登录 `POST /api/auth/login` 为公开接口。
-- 登录成功后返回 JWT（有效期 **7 天**），前端自动存入 `localStorage` 并通过拦截 `fetch` 附加到 `Authorization` 头。
+- 登录成功后返回 JWT（access token 有效期 **1 小时**，refresh token 7 天；可通过 `JWT_EXPIRES` 覆盖），前端自动存入 `localStorage` 并通过拦截 `fetch` 附加到 `Authorization` 头。
 - 除 `/api/auth/*` 外，所有业务接口均需携带有效 JWT，否则返回 `401` 并触发前端登录层。
 - 数据按 `user_id` 隔离，各用户仅可见自己的账户 / 交易 / 理财数据。
 - 登录 / 注册接口启用频率限制（默认 15 分钟最多 5 次，可通过 `AUTH_RATE_LIMIT_MAX` 调整），防暴力破解。

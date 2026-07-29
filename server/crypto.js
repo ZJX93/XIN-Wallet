@@ -97,16 +97,29 @@ function encrypt(plaintext) {
 }
 
 /**
- * 解密密文，返回原始明文。若解密失败返回 null（兼容明文回退）。
+ * 解密密文，返回原始明文。
+ *
+ * 返回值语义（2026-07-29 安全修复）：
+ *   - null  ：输入为空 / 真实解密失败（tag 校验未通过：密钥不匹配、数据损坏）
+ *   - str   ：成功解密的明文；或在过渡期内、长度异常（疑似旧版明文存储）的原值
+ *
+ * 旧版本会"静默回退"——解密失败时返回 ciphertext 原文，导致 API Key
+ * 等敏感字段变成被误用的"伪值"。本次拆分为两种语义：
+ *   1. 长度不足 → 视为旧版明文，输出警告日志后过渡期返回原值（一次性迁移机会）
+ *   2. tag 不通过 → 严格返回 null，强制调用方处理
+ *
+ * 调用方应当把 decrypt 结果视为"不可信的明文候选"，使用 tryDecrypt() 辅助函数
+ * 区分 success / failure（routes/_helpers.js 已封装）。
  */
 function decrypt(ciphertext) {
     if (!ciphertext) return null;
+    const buf = Buffer.from(ciphertext, 'hex');
+    if (buf.length < IV_LENGTH + TAG_LENGTH) {
+        // 长度不足：疑似旧版明文（非密文格式）。过渡期保留回退以避免历史数据失效。
+        console.warn(`[crypto] 疑似明文数据（旧字段或手填值），建议在「AI/OCR 配置」页重新保存以迁移为加密格式：prefix=${ciphertext.slice(0, 6)}...`);
+        return ciphertext;
+    }
     try {
-        const buf = Buffer.from(ciphertext, 'hex');
-        if (buf.length < IV_LENGTH + TAG_LENGTH) {
-            // 长度不足，可能是旧版明文存储，直接返回原值
-            return ciphertext;
-        }
         const iv = buf.subarray(0, IV_LENGTH);
         const tag = buf.subarray(IV_LENGTH, TAG_POSITION + TAG_LENGTH);
         const encrypted = buf.subarray(TAG_POSITION + TAG_LENGTH);
@@ -115,9 +128,10 @@ function decrypt(ciphertext) {
         let decrypted = decipher.update(encrypted, undefined, 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted;
-    } catch {
-        // 解密失败（密钥变更或旧数据），返回原值（可能是明文）
-        return ciphertext;
+    } catch (err) {
+        // tag 校验失败 = 密钥变更或数据已损坏。明确返回 null，不再静默回退。
+        console.error('[crypto] 解密失败（tag 校验未通过）：', err.message, `prefix=${ciphertext.slice(0, 6)}...`);
+        return null;
     }
 }
 

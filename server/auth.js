@@ -7,8 +7,14 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // 安全检查：生产环境下不允许使用默认 JWT 密钥
+// 修复（P2）：检查列表加入 docker-compose.yml 中使用的默认值 'please-change-this-secret'
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET || JWT_SECRET === 'zhicai-dev-secret-change-me' || JWT_SECRET === 'please-change-this-to-a-long-random-secret-string') {
+const DEFAULT_SECRETS = new Set([
+    'zhicai-dev-secret-change-me',
+    'please-change-this-to-a-long-random-secret-string',
+    'please-change-this-secret', // docker-compose.yml default
+]);
+if (!JWT_SECRET || DEFAULT_SECRETS.has(JWT_SECRET)) {
     if (process.env.NODE_ENV === 'production') {
         console.error('❌ 安全错误：生产环境必须设置 JWT_SECRET 环境变量（不得使用默认值）');
         console.error('   请运行: openssl rand -hex 32  生成一个随机密钥，并写入 .env 文件的 JWT_SECRET');
@@ -36,14 +42,8 @@ async function verifyPassword(plain, hash) {
     }
 }
 
-// 同步校验密码（向后兼容 —— 部分路由 sync 调用，现已迁移到 async 但保留导出避免破坏）
-function verifyPasswordSync(plain, hash) {
-    try {
-        return bcrypt.compareSync(plain, hash);
-    } catch {
-        return false;
-    }
-}
+// 修复（P4）：删除 verifyPasswordSync 死代码（无任何调用方，且 bcrypt.compareSync 阻塞事件循环，
+// 与设计意图"避免阻塞"相悖）。已确认项目内仅 export 和 require 中出现。
 
 // 签发 JWT：显式声明算法，避免未来库默认值变更
 function signToken(user) {
@@ -83,4 +83,4 @@ function authMiddleware(req, res, next) {
     }
 }
 
-module.exports = { hashPassword, verifyPassword, verifyPasswordSync, signToken, signRefreshToken, authMiddleware };
+module.exports = { hashPassword, verifyPassword, signToken, signRefreshToken, authMiddleware };

@@ -7,9 +7,12 @@ const https = require('https');
 const http = require('http');
 const db = require('../db');
 const { decrypt } = require('../crypto');
+const { assertPublicUrl } = require('./url-guard');
 
-// HTTP POST JSON 请求（通用）
-function httpsPostJson(url, headers, body) {
+// HTTP POST JSON 请求（通用）。
+// ⚠️ 调用前必须经 assertPublicUrl() 校验（SSRF 防护）。Node http.request 默认不跟随重定向。
+async function httpsPostJson(url, headers, body) {
+    await assertPublicUrl(url);
     return new Promise((resolve, reject) => {
         const u = new URL(url);
         const mod = u.protocol === 'https:' ? https : http;
@@ -32,11 +35,17 @@ function httpsPostJson(url, headers, body) {
     });
 }
 
-// 获取当前激活的 AI 服务商（含解密 api_key）
+// 获取当前激活的 AI 服务商（含解密 api_key）。
+// api_key 解密失败（密钥变更/数据损坏）→ 返回 null，让路由层提示用户重新配置。
 async function getActiveProvider(userId) {
     const provider = await db.queryOne('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE LIMIT 1', [userId]);
-    if (provider && provider.api_key) {
+    if (!provider) return null;
+    if (provider.api_key) {
         provider.api_key = decrypt(provider.api_key);
+        if (!provider.api_key) {
+            console.error(`[AI] 用户 ${userId} 的活跃服务商 API Key 解密失败（密钥不匹配或数据损坏）`);
+            return null;
+        }
     }
     return provider;
 }

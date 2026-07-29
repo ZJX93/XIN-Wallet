@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { hashPassword, verifyPassword, verifyPasswordSync, signToken, signRefreshToken } = require('../auth');
+const { hashPassword, verifyPassword, signToken, signRefreshToken } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
@@ -108,9 +108,9 @@ router.post('/login', validate({
 // 演示账号登录（无密码，仅开发/演示环境使用）
 router.post('/demo', async (req, res) => {
     try {
-        // 仅在非生产环境或显式开启时允许
-        if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO !== 'true') {
-            return res.status(403).json(fail('演示登录在生产环境已禁用'));
+        // 修复（P2）：所有环境统一要求 ALLOW_DEMO=true，避免 NAS 内网转发暴露时成为后门
+        if (process.env.ALLOW_DEMO !== 'true') {
+            return res.status(403).json(fail('演示登录未启用，请设置环境变量 ALLOW_DEMO=true'));
         }
 
         let user = await db.queryOne('SELECT * FROM users WHERE username = ?', ['demo']);
@@ -152,9 +152,13 @@ router.post('/demo', async (req, res) => {
 });
 
 // POST /api/auth/refresh — 使用 refresh token 换取新的 access token
-router.post('/refresh', validate([
-    { field: 'refreshToken', type: 'string', min: 10, max: 1024, required: true, label: 'RefreshToken' }
-]), (req, res) => {
+// 修复（P2 降级点 #4）：原 validate() 传入数组而非对象，导致校验被完全跳过。
+// 这里 jwt.verify 仍是真实的安全保障（签名 + type 检查 + 用户存在性），被绕过的仅是 body 长度约束。
+router.post('/refresh', validate({
+    body: {
+        refreshToken: { type: 'string', required: true, min: 10, max: 1024, label: 'RefreshToken' }
+    }
+}), (req, res) => {
     const { refreshToken } = req.body;
     if (!refreshToken) {
         return res.status(400).json(fail('缺少 refreshToken'));

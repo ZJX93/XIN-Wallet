@@ -1,0 +1,30 @@
+<section class="page" id="page-reports">
+    <div class="report-controls">
+        <div class="report-control-group">
+            <label>报表类型</label>
+            <select id="reportType" class="filter-select">
+                <option value="monthly">月度报表</option>
+                <option value="quarterly">季度报表</option>
+                <option value="annual">年度报表</option>
+            </select>
+        </div>
+        <div class="report-control-group">
+            <label>报表周期</label>
+            <select id="reportPeriod" class="filter-select"></select>
+        </div>
+        <button class="btn btn-primary" id="generateReportBtn">生成报表</button>
+        <div class="report-export-group">
+            <button class="btn btn-ghost" id="printReportBtn">🖨️ 打印 / PDF</button>
+            <button class="btn btn-primary" id="exportFullBtn">📦 导出完整账本</button>
+            <button class="btn btn-ghost" id="importFullBtn">📤 导入完整账本</button>
+            <input type="file" id="importFullInput" accept=".json" style="display:none">
+        </div>
+    </div>
+    <div class="report-content" id="reportContent">
+        <div class="empty-hint">
+            <div class="empty-icon">📊</div>
+            <p>选择报表类型与周期，点击「生成报表」查看多维度财务分析</p>
+        </div>
+    </div>
+</section>
+

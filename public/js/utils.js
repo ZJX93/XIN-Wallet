@@ -1,0 +1,75 @@
+/* ============================================
+   鑫钱包 · 前端通用工具（纯函数，可在 Node 中单元测试）
+   ============================================ */
+
+// HTML 转义：防止用户可控字段（账户名、备注、标签名等）在 innerHTML 中造成存储型 XSS
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+// 货币格式化（统一：使用 Intl.NumberFormat，兼容大量数字）
+const _moneyFmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmt(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return '¥0.00';
+    return '¥' + _moneyFmt.format(v);
+}
+
+// CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
+function csvCell(v) {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// ==========================================
+// 统一 API 调用（auth.js + app.js 共用）
+// 支持 token 自动注入、401 触发登录层、silent 模式不弹 toast
+// ==========================================
+async function api(path, method = 'GET', body = null, opts = {}) {
+    const { silent = false } = opts;
+    const headers = { 'Content-Type': 'application/json' };
+    const token = (typeof localStorage !== 'undefined') ? localStorage.getItem('zhicai_token') : null;
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+
+    const reqOpts = { method, headers };
+    if (body) reqOpts.body = JSON.stringify(body);
+
+    try {
+        const res = await fetch(`${(typeof window !== 'undefined' ? (window.XIN_API_BASE || '/api') : '/api')}${path}`, reqOpts);
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = { success: res.ok, message: res.statusText || `HTTP ${res.status}` }; }
+
+        if (res.status === 401) {
+            // 未授权：通知登录层弹出
+            if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+            if (!silent && typeof showToast === 'function') showToast(data.message || '登录已过期', 'error');
+            const err = new Error(data.message || '未授权');
+            err.payload = data;
+            throw err;
+        }
+        if (!data.success) {
+            if (!silent && typeof showToast === 'function') showToast(data.message || '请求失败', 'error');
+            const err = new Error(data.message || `HTTP ${res.status}`);
+            err.payload = data;
+            throw err;
+        }
+        return data.data;
+    } catch (err) {
+        if (!silent && typeof showToast === 'function' && !err.payload) showToast(err.message || '网络错误', 'error');
+        throw err;
+    }
+}
+
+// 暴露到全局：浏览器中挂 window.api，Node 测试中挂 module.exports
+if (typeof window !== 'undefined') {
+    window.api = api;
+    window.escapeHtml = escapeHtml;
+    window.fmt = fmt;
+    window.csvCell = csvCell;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { escapeHtml, fmt, csvCell, api };
+}

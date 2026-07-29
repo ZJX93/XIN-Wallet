@@ -1,0 +1,141 @@
+/* ==========================================================================
+   智财 — Standalone Login Page
+   基于 Nexus 设计系统
+   ========================================================================== */
+
+@import './tokens.css';
+@import './fonts.css';
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-6);
+  transition: background var(--duration-300) var(--ease-out-quart),
+    color var(--duration-300) var(--ease-out-quart);
+}
+
+.login-page {
+  width: 100%; max-width: 420px;
+}
+
+.login-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-10) var(--space-8);
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+}
+
+.login-brand {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--space-3); margin-bottom: var(--space-2);
+}
+
+.login-brand .logo-icon {
+  width: 40px; height: 40px; border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  background: url('../images/logo.png') center/cover no-repeat;
+  color: transparent;
+}
+
+.login-brand .logo-text {
+  font-size: var(--text-heading-xl); font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight); color: var(--text-primary);
+}
+
+.login-sub {
+  text-align: center; font-size: var(--text-body-sm);
+  color: var(--text-tertiary); margin: 0 0 var(--space-8);
+}
+
+/* Tabs */
+.auth-tabs {
+  display: flex; gap: 4px; padding: 4px;
+  background: var(--surface-hover);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+}
+
+.auth-tab {
+  flex: 1; padding: var(--space-2); border: none;
+  background: transparent; border-radius: var(--radius-md);
+  cursor: pointer; font-size: var(--text-body-sm);
+  font-weight: var(--fw-semibold); color: var(--text-secondary);
+  transition: all var(--duration-150) var(--ease-out-quart);
+  font-family: var(--font-sans);
+}
+
+.auth-tab.active {
+  background: var(--interactive-default);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-md);
+}
+
+/* Form */
+.auth-form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.form-group {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  text-align: left;
+}
+
+.form-group label {
+  font-size: var(--text-body-sm); font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.form-group input {
+  width: 100%; height: 44px; padding: 0 var(--space-4);
+  font-size: var(--text-body-sm); font-family: var(--font-sans);
+  color: var(--text-primary); background: var(--surface-hover);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  transition: border-color var(--duration-150) var(--ease-out-quart),
+    box-shadow var(--duration-150) var(--ease-out-quart);
+  outline: none;
+}
+
+.form-group input:focus {
+  border-color: var(--interactive-default);
+  box-shadow: 0 0 0 3px var(--interactive-focus-ring);
+}
+
+.auth-hint {
+  font-size: var(--text-body-sm); min-height: 18px;
+  color: var(--text-tertiary); text-align: center;
+}
+
+.auth-hint.error { color: var(--expense); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--space-2); height: 44px; padding: 0 var(--space-6);
+  font-size: var(--text-body-sm); font-weight: var(--fw-semibold);
+  border-radius: var(--radius-md); cursor: pointer;
+  border: 1px solid transparent; transition: all var(--duration-150) var(--ease-out-quart);
+  font-family: var(--font-sans);
+}
+
+.btn-primary {
+  background: var(--interactive-default); color: var(--text-on-accent);
+}
+.btn-primary:hover { background: var(--interactive-hover); }
+.btn-primary:active { transform: scale(0.98); }
+
+.btn-block { width: 100%; }
+
+.btn-ghost {
+  background: transparent; color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+.btn-ghost:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+/* Demo hint */
+.demo-hint { margin-top: var(--space-6); text-align: center; }
+.demo-hint p { font-size: var(--text-caption); color: var(--text-tertiary); margin: 0 0 var(--space-2); }

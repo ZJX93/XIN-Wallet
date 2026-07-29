@@ -27,7 +27,6 @@ router.get('/export/csv', async (req, res) => {
             const data = await db.query('SELECT i.*, it.name as type FROM investments i JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = ?', [req.userId]);
             rows = data.map(i => [i.id, i.name, i.type, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value]);
         } else {
-            const t = 'transactions';
             header = ['date', 'type', 'amount', 'account', 'category', 'note'];
             const data = await db.query(
                 `SELECT t.date, t.type, t.amount, a.name as acc, c.name as cat, t.note
@@ -36,7 +35,6 @@ router.get('/export/csv', async (req, res) => {
                 [req.userId]
             );
             rows = data.map(x => [x.date, x.type, x.amount, x.acc, x.cat, x.note]);
-            var exportType = t;
         }
         const csv = [header.join(',')].concat(rows.map(r => r.map(toCsvCell).join(','))).join('\n');
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -76,7 +74,11 @@ router.post('/import/csv', async (req, res) => {
                 const typeVal = (row['type'] === '收入' || row['type'] === 'income') ? 'income' : 'expense';
                 const acc = await db.queryOne('SELECT id FROM accounts WHERE user_id = ? AND name = ?', [req.userId, row['account'] || '']);
                 if (!acc) { errors.push(`第 ${i} 行：账户 "${row['account']}" 不存在`); continue; }
-                const cat = await db.queryOne('SELECT id FROM categories WHERE name = ?', [row['category'] || '']);
+                // 修复（P1）：分类查询添加 user_id 隔离，避免泄露其他用户的私有分类
+                const cat = await db.queryOne(
+                    'SELECT id FROM categories WHERE name = ? AND (user_id IS NULL OR user_id = ?) LIMIT 1',
+                    [row['category'] || '', req.userId]
+                );
                 const categoryId = cat ? cat.id : (typeVal === 'income' ? 21 : 14);
                 await db.transaction(async (conn) => {
                     const r = await conn.query(
@@ -105,7 +107,8 @@ router.get('/export/full', async (req, res) => {
         const userId = req.userId;
         const [accounts, cats, transactions, transfers, budgets, goals, investments, tags] = await Promise.all([
             db.query('SELECT name, type, icon, balance, opening_balance, credit_limit FROM accounts WHERE user_id = ? AND status = \'active\'', [userId]),
-            db.query('SELECT name, type, icon, parent_id FROM categories'),
+            // 修复（P1）：分类导出加 user_id 隔离，避免在多用户部署时泄露其他用户的私有分类
+            db.query('SELECT name, type, icon, parent_id FROM categories WHERE user_id IS NULL OR user_id = ?', [userId]),
             db.query('SELECT t.date::text AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ?', [userId]),
             db.query('SELECT t.date::text AS date, t.amount, t.note, a1.name AS from_account, a2.name AS to_account FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id WHERE t.user_id = ?', [userId]),
             db.query('SELECT name, period_type, amount, start_date::text AS start_date, end_date::text AS end_date FROM budgets WHERE user_id = ?', [userId]),
@@ -142,51 +145,123 @@ router.post('/import/full', async (req, res) => {
 
         let imported = { accounts: 0, transactions: 0, budgets: 0, goals: 0, investments: 0, transfers: 0 };
 
-        if (data.tags) for (const tag of data.tags) {
-            const e = await db.queryOne('SELECT id FROM tags WHERE user_id = ? AND name = ?', [userId, tag.name]);
-            if (!e) { await db.query('INSERT INTO tags (user_id, name, color, icon) VALUES (?,?,?,?)', [userId, tag.name, tag.color || '#6366f1', tag.icon || '🏷️']); imported.tags = (imported.tags || 0) + 1; }
-        }
+        // 修复（P1）：完全事务包裹 + 字段校验 + user_id 隔离
+        await db.transaction(async (conn) => {
+            if (data.tags) for (const tag of data.tags) {
+                if (!tag || typeof tag.name !== 'string' || !tag.name.trim()) continue;
+                const e = await conn.query('SELECT id FROM tags WHERE user_id = ? AND name = ?', [userId, tag.name]);
+                if (!e || e.length === 0) {
+                    await conn.query(
+                        'INSERT INTO tags (user_id, name, color, icon) VALUES (?, ?, ?, ?)',
+                        [userId, tag.name, typeof tag.color === 'string' ? tag.color : '#6366f1', typeof tag.icon === 'string' ? tag.icon : '🏷️']
+                    );
+                    imported.tags = (imported.tags || 0) + 1;
+                }
+            }
 
-        const acMap = {};
-        for (const a of (data.accounts || [])) {
-            const e = await db.queryOne('SELECT id FROM accounts WHERE user_id = ? AND name = ?', [userId, a.name]);
-            if (e) { acMap[a.name] = e.id; continue; }
-            const r = await db.query('INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?,?,?,?,?,?,?)', [userId, a.name, a.type || 'bank', a.icon || '🏦', a.balance || 0, a.opening_balance || 0, a.credit_limit || 0]);
-            acMap[a.name] = r.insertId; imported.accounts++;
-        }
+            const acMap = {};
+            for (const a of (data.accounts || [])) {
+                if (!a || typeof a.name !== 'string' || !a.name.trim()) continue;
+                const e = await conn.query('SELECT id FROM accounts WHERE user_id = ? AND name = ?', [userId, a.name]);
+                if (e && e.length) { acMap[a.name] = e[0].id; continue; }
+                const balance = Number(a.balance);
+                const opening = Number(a.opening_balance);
+                const limit = Number(a.credit_limit);
+                const r = await conn.query(
+                    'INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [
+                        userId, a.name,
+                        typeof a.type === 'string' ? a.type : 'bank',
+                        typeof a.icon === 'string' ? a.icon : '🏦',
+                        Number.isFinite(balance) ? balance : 0,
+                        Number.isFinite(opening) ? opening : 0,
+                        Number.isFinite(limit) ? limit : 0
+                    ]
+                );
+                acMap[a.name] = r.insertId;
+                imported.accounts++;
+            }
 
-        for (const t of (data.transactions || [])) {
-            const aid = acMap[t.account]; if (!aid) continue;
-            const c = await db.queryOne('SELECT id FROM categories WHERE name = ?', [t.category || '其他支出']);
-            const date = t.date; // 导出时已规范为 YYYY-MM-DD
-            await db.query('INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES (?,?,?,?,?,?,?)', [userId, aid, c ? c.id : 14, t.type || 'expense', t.amount, t.note || '', date]);
-            imported.transactions++;
-        }
+            for (const t of (data.transactions || [])) {
+                if (!t || typeof t.amount === 'undefined') continue;
+                const aid = acMap[t.account]; if (!aid) continue;
+                // 修复（P1）：分类查询加 user_id 隔离
+                const c = await conn.query(
+                    'SELECT id FROM categories WHERE name = ? AND (user_id IS NULL OR user_id = ?) LIMIT 1',
+                    [t.category || '其他支出', userId]
+                );
+                const validTypes = ['income', 'expense', 'transfer_in', 'transfer_out'];
+                const typeVal = validTypes.includes(t.type) ? t.type : 'expense';
+                const amount = Number(t.amount);
+                if (!Number.isFinite(amount) || amount <= 0) continue;
+                await conn.query(
+                    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [userId, aid, c && c.length ? c[0].id : 14, typeVal, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
+                );
+                imported.transactions++;
+            }
 
-        for (const t of (data.transfers || [])) {
-            const fa = acMap[t.from_account], ta = acMap[t.to_account];
-            if (!fa || !ta) continue;
-            await db.query('INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?,?,?,?,?,?,"completed")', [userId, fa, ta, t.amount, t.note || '', t.date || new Date().toISOString().slice(0, 10)]);
-            imported.transfers++;
-        }
+            for (const t of (data.transfers || [])) {
+                if (!t) continue;
+                const fa = acMap[t.from_account], ta = acMap[t.to_account];
+                if (!fa || !ta) continue;
+                const amount = Number(t.amount);
+                if (!Number.isFinite(amount) || amount <= 0) continue;
+                await conn.query(
+                    'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, \'completed\')',
+                    [userId, fa, ta, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
+                );
+                imported.transfers++;
+            }
 
-        for (const b of (data.budgets || [])) {
-            await db.query('INSERT INTO budgets (user_id, name, period_type, amount, start_date, end_date) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, b.name, b.period_type || 'month', b.amount, b.start_date, b.end_date || b.start_date]);
-            imported.budgets++;
-        }
+            for (const b of (data.budgets || [])) {
+                if (!b || typeof b.name !== 'string' || !b.name.trim()) continue;
+                await conn.query(
+                    'INSERT INTO budgets (user_id, name, period_type, amount, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+                    [userId, b.name, ['month', 'week', 'year'].includes(b.period_type) ? b.period_type : 'month', Number(b.amount) || 0, b.start_date, b.end_date || b.start_date]
+                );
+                imported.budgets++;
+            }
 
-        for (const g of (data.savings_goals || [])) {
-            const aid = g.account ? acMap[g.account] : null;
-            await db.query('INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, g.name, g.target_amount, g.current_amount || 0, g.icon || '🎯', g.note || '', g.status || 'active', aid]);
-            imported.goals++;
-        }
+            for (const g of (data.savings_goals || [])) {
+                if (!g || typeof g.name !== 'string' || !g.name.trim()) continue;
+                const aid = g.account ? acMap[g.account] : null;
+                await conn.query(
+                    'INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+                    [
+                        userId, g.name,
+                        Number(g.target_amount) || 0,
+                        Number(g.current_amount) || 0,
+                        typeof g.icon === 'string' ? g.icon : '🎯',
+                        String(g.note || ''),
+                        typeof g.status === 'string' ? g.status : 'active',
+                        aid
+                    ]
+                );
+                imported.goals++;
+            }
 
-        for (const i of (data.investments || [])) {
-            const aid = i.account ? acMap[i.account] : null;
-            const it = await db.queryOne('SELECT id FROM investment_types WHERE name = ?', [i.type_name || '其他']);
-            await db.query('INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, aid, it ? it.id : 1, i.name, i.code || '', i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee || 0, i.buy_date, i.expected_rate || 0, i.status || 'holding', i.note || '']);
-            imported.investments++;
-        }
+            for (const i of (data.investments || [])) {
+                if (!i || typeof i.name !== 'string' || !i.name.trim()) continue;
+                const aid = i.account ? acMap[i.account] : null;
+                const it = await conn.query('SELECT id FROM investment_types WHERE name = ?', [String(i.type_name || '其他')]);
+                await conn.query(
+                    'INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+                    [
+                        userId, aid, it && it.length ? it[0].id : 1,
+                        i.name, String(i.code || ''),
+                        Number(i.buy_price) || 0, Number(i.current_price) || 0, Number(i.quantity) || 0,
+                        Number(i.total_cost) || 0, Number(i.current_value) || 0,
+                        Number(i.fee) || 0,
+                        i.buy_date,
+                        Number(i.expected_rate) || 0,
+                        typeof i.status === 'string' ? i.status : 'holding',
+                        String(i.note || '')
+                    ]
+                );
+                imported.investments++;
+            }
+        });
 
         res.json(success({ imported }, '账本导入完成'));
     } catch (err) { handleServerError(res, err, '账本导入'); }
