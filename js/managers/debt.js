@@ -313,18 +313,19 @@ const DebtManager = {
         const d = res.debt || {};
         const list = res.repayments || [];
         const isRecv = d.direction === 'receivable';
+        // 防 U+FFFD（数据库里历史脏数据）—— 整字段全是替换字符视为空
+        const isGarbled = (s) => typeof s === 'string' && s.length > 0 && /^\uFFFD+$/.test(s);
+        const safe = (s, fallback = '<空>') => (!s || isGarbled(s)) ? fallback : s;
+        const safeNote = (s) => (!s || isGarbled(s)) ? '' : s;
         const head = `<div class="rh-head">
-            <div class="rh-debt">${isRecv ? '📤' : '📥'} ${escapeHtml(d.name || '')} · ${isRecv ? '应收账款' : '应付账款'}</div>
-            <div class="rh-sub">${isRecv ? '待收' : '剩余'}本金 ${fmt(d.remaining || 0)} · 累计${isRecv ? '已收' : '已偿'} ${fmt(d.paid_total || 0)} · 共 ${list.length} 笔</div>
+            <div class="rh-debt">${isRecv ? '📤' : '📥'} ${escapeHtml(safe(d.name))} · ${isRecv ? '应收账款' : '应付账款'}</div>
+            <div class="rh-sub">对方：${escapeHtml(safe(d.creditor, '—'))} · ${isRecv ? '待收' : '剩余'}本金 ${fmt(d.remaining || 0)} · 累计${isRecv ? '已收' : '已偿'} ${fmt(d.paid_total || 0)} · 共 ${list.length} 笔</div>
         </div>`;
         if (!list.length) {
             body.innerHTML = head + `<div class="empty-state">📭 暂无${isRecv ? '收款' : '还款'}记录</div>`;
             return;
         }
-        const rows = list.map(r => {
-            // 防乱码：只显示可打印字符；空 / 全 U+FFFD 视为空
-            const safeNote = (r.note && !/^\uFFFD+$/.test(r.note)) ? r.note : '';
-            return `
+        const rows = list.map(r => `
             <div class="rh-item">
                 <div class="rh-row1">
                     <span class="rh-amount">${fmt(r.amount)}</span>
@@ -334,9 +335,8 @@ const DebtManager = {
                     <span class="rh-tag">本金 ${fmt(r.principal_part)} / 利息 ${fmt(r.interest_part)}</span>
                     ${r.account_name ? `<span class="rh-acc">${escapeHtml(r.account_icon || '')} ${escapeHtml(r.account_name)}</span>` : ''}
                 </div>
-                ${safeNote ? `<div class="rh-note">📝 ${escapeHtml(safeNote)}</div>` : ''}
-            </div>`;
-        }).join('');
+                ${safeNote(r.note) ? `<div class="rh-note">📝 ${escapeHtml(safeNote(r.note))}</div>` : ''}
+            </div>`).join('');
         body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
     },
 
