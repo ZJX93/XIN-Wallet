@@ -32,10 +32,6 @@ const SavingsGoalManager = {
             const d = e.target.closest('[data-del]'); if (d) { this.remove(parseInt(d.dataset.del)); }
         });
     },
-    populateAccounts() {
-        const sel = document.getElementById('goalAccount');
-        sel.innerHTML = '<option value="">不关联账户</option>' + cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)}</option>`).join('');
-    },
     openModal() {
         document.getElementById('goalEditId').value = '';
         document.getElementById('goalModalTitle').textContent = '新建储蓄目标';
@@ -45,6 +41,10 @@ const SavingsGoalManager = {
         document.getElementById('goalNote').value = '';
         this.populateAccounts();
         document.getElementById('goalModal').classList.add('show');
+    },
+    populateAccounts() {
+        const sel = document.getElementById('goalAccount');
+        sel.innerHTML = '<option value="">请选择储蓄账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
     },
     edit(id) {
         const g = (this.goals || []).find(x => x.id === id);
@@ -71,6 +71,7 @@ const SavingsGoalManager = {
         };
         if (!body.name) { showToast('请输入目标名称', 'error'); return; }
         if (!body.target_amount || body.target_amount <= 0) { showToast('请输入有效目标金额', 'error'); return; }
+        if (!body.account_id) { showToast('请选择储蓄账户', 'error'); return; }
         if (editId) {
             try {
                 await api(`/savings-goals/${editId}`, 'PUT', body);
@@ -94,6 +95,7 @@ const SavingsGoalManager = {
     openAmountModal(id, type) {
         const g = (this.goals || []).find(x => x.id === id);
         if (!g) return;
+        if (!g.account_id) { showToast('该目标未关联储蓄账户，请先在编辑中选择储蓄账户', 'error'); return; }
         this.pending = { id, type };
         const cur = parseFloat(g.current_amount) || 0;
         const target = parseFloat(g.target_amount) || 0;
@@ -112,10 +114,10 @@ const SavingsGoalManager = {
         errEl.textContent = '';
         document.getElementById('goalAmountConfirm').disabled = false;
         input.oninput = () => this.validateAmount(cur, isAlloc);
-        // 填充账户下拉
+        // 填充账户下拉（排除目标自身关联的储蓄账户，避免存入/取回时选到它自己）
         const accSel = document.getElementById('goalAmountAccount');
         accSel.innerHTML = '<option value="">-- 请选择账户 * --</option>' +
-            (cache.accounts || []).map(a => `<option value="${a.id}" ${Number(g.account_id) === Number(a.id) ? 'selected' : ''}>${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+            (cache.accounts || []).filter(a => Number(a.id) !== Number(g.account_id)).map(a => `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
         const quick = document.getElementById('goalQuickAmounts');
         const presets = isAlloc
             ? [100, 500, 1000, { label: '填满缺口', value: remaining }]
@@ -208,7 +210,7 @@ const SavingsGoalManager = {
         this.pending = null;
     },
     async remove(id) {
-        if (!confirm('确定删除该储蓄目标？已存金额不会自动退回账户。')) return;
+        if (!confirm('确定删除该储蓄目标？关联账户中的资金不会被清空，仍保留在该账户内。')) return;
         try {
             await api(`/savings-goals/${id}`, 'DELETE');
             showToast('目标已删除', 'warning');

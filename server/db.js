@@ -104,6 +104,8 @@ async function queryOne(sql, params = []) {
 async function transaction(fn) {
   const client = await pool.connect();
   const origQuery = client.query.bind(client);
+  // 仅在本事务内覆盖 query，提供 ? -> $N 转换；事务结束后必须还原，
+  // 否则被污染的 client 回到池中会被 pool.query 以回调式调用，导致请求永久挂起。
   client.query = async (sql, params = []) => {
     const text = convertPlaceholders(autoReturning(sql));
     const res = await origQuery(text, params);
@@ -118,6 +120,7 @@ async function transaction(fn) {
     await origQuery('ROLLBACK');
     throw err;
   } finally {
+    client.query = origQuery; // 还原原生 query，避免污染连接池
     client.release();
   }
 }

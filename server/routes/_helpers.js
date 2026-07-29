@@ -142,12 +142,9 @@ async function computeAccountBalance(conn, userId, accountId) {
     const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
     const opening = acc[0] ? parseFloat(acc[0].opening_balance || 0) : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
-    const goal = await conn.query(
-        'SELECT COALESCE(SUM(current_amount), 0) AS alloc FROM savings_goals WHERE account_id = ? AND user_id = ? AND status != \'archived\'',
-        [accountId, userId]
-    );
-    const allocated = parseFloat(goal[0] && goal[0].alloc != null ? goal[0].alloc : 0);
-    return opening + effects - allocated;
+    // 储蓄目标现已镜像关联账户的余额（current_amount = 账户余额），
+    // 不再从账户可用余额中扣减 allocated，避免"账户余额 = 自身 - 自身"的循环抵消。
+    return opening + effects;
 }
 
 // 理财净值快照
