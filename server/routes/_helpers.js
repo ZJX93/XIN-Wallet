@@ -143,7 +143,7 @@ async function computeAccountBalance(conn, userId, accountId) {
     const opening = acc[0] ? parseFloat(acc[0].opening_balance || 0) : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
     const goal = await conn.query(
-        'SELECT COALESCE(SUM(current_amount), 0) AS alloc FROM savings_goals WHERE account_id = ? AND user_id = ? AND status != "archived"',
+        'SELECT COALESCE(SUM(current_amount), 0) AS alloc FROM savings_goals WHERE account_id = ? AND user_id = ? AND status != \'archived\'',
         [accountId, userId]
     );
     const allocated = parseFloat(goal[0] && goal[0].alloc != null ? goal[0].alloc : 0);
@@ -165,7 +165,7 @@ async function ensureWeeklySnapshots(userId, investments) {
         );
         if (!existing) {
             await db.query(
-                'INSERT IGNORE INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?)',
+                'INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING',
                 [userId, inv.id, parseFloat(inv.current_value), parseFloat(inv.total_cost), lastSundayStr]
             );
         }
@@ -183,7 +183,7 @@ async function ensureWeeklySnapshots(userId, investments) {
             while (start <= end) {
                 const snapDate = start.toISOString().slice(0, 10);
                 await db.query(
-                    'INSERT IGNORE INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?)',
+                    'INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING',
                     [userId, inv.id, parseFloat(inv.current_value), parseFloat(inv.total_cost), snapDate]
                 );
                 start.setDate(start.getDate() + 7);

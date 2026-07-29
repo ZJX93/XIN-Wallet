@@ -1,6 +1,6 @@
 # ============================================
 # 鑫钱包 · Docker Compose
-# 应用容器 + MariaDB 容器，数据持久化于命名卷
+# 应用容器 + PostgreSQL 容器，数据持久化于命名卷
 # 所有敏感变量均来自同目录 .env（已被 .gitignore 忽略，不会入库）
 #
 # 用法：
@@ -9,20 +9,20 @@
 
 services:
   db:
-    image: mariadb:11
+    image: postgres:16-alpine
     container_name: xinwallet-db
     restart: unless-stopped
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
-      MARIADB_DATABASE: ${DB_NAME:-xinwallet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
+      POSTGRES_DB: ${DB_NAME:-xinwallet}
     volumes:
-      - xinwallet-db-data:/var/lib/mysql
+      - xinwallet-db-data:/var/lib/postgresql/data
     ports:
-      - "3306:3306"
+      - "5432:5432"
     # NAS 上若想固定数据存放路径，可改为绑定挂载，例如：
-    #   - /volume1/docker/xinwallet/db:/var/lib/mysql
+    #   - /volume1/docker/xinwallet/db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -44,8 +44,8 @@ services:
       NODE_ENV: production
       PORT: 18888
       DB_HOST: db
-      DB_PORT: 3306
-      DB_USER: root
+      DB_PORT: 5432
+      DB_USER: postgres
       DB_PASSWORD: ${DB_PASSWORD:-xinwallet_changeme}
       DB_NAME: ${DB_NAME:-xinwallet}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
@@ -57,7 +57,6 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
     volumes:
       # 加密密钥持久化：与数据库同卷管理，docker-compose down -v 才会清除
-      # 这样 docker-compose restart / pull 新镜像重启时，密钥和 DB 数据一起保留
       - xinwallet-app-data:/app/data
     ports:
       - "${APP_PORT:-18888}:18888"
@@ -74,14 +73,11 @@ networks:
 
 # ============================================
 # NAS / 群晖覆盖示例（默认不生效，按需取消注释）
-# 1) 固定数据库数据路径，便于 Hyper Backup / 群晖快照备份
-# 2) 自定义宿主机访问端口（如 8080，容器内端口仍为 18888）
-# 3) 资源上限，避免占用整台 NAS
 # ============================================
 # services:
 #   db:
 #     volumes:
-#       - /volume1/docker/xinwallet/db:/var/lib/mysql
+#       - /volume1/docker/xinwallet/db:/var/lib/postgresql/data
 #     deploy:
 #       resources:
 #         limits:

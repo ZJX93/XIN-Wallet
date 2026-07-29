@@ -263,14 +263,14 @@ app.get('*', (req, res, next) => {
     res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
-// 等待数据库就绪并初始化（容器/NAS 环境下 MariaDB 可能尚未接受连接，避免启动竞态）
-// 直接调用 initDatabase()：该函数幂等（自动 CREATE DATABASE IF NOT EXISTS + 建表，已存在则跳过），
-// 因此无论是「自带 MariaDB 容器」还是「连接外部已有 MariaDB」都能正确建库建表 / 复用既有数据。
+// 等待数据库就绪并初始化（容器/NAS 环境下 PostgreSQL 可能尚未接受连接，避免启动竞态）
+// 直接调用 initDatabase()：该函数幂等（自动 CREATE DATABASE + 建表，已存在则跳过），
+// 因此无论是「自带 PostgreSQL 容器」还是「连接外部已有 PostgreSQL」都能正确建库建表 / 复用既有数据。
 // 最多重试 30 次（约 60s），兼容 NAS 慢启动与外部库尚未就绪的场景。
 async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
     // 首次启动：打印连接配置（密码脱敏）
     if (process.env.NODE_ENV !== 'production' || process.env.DB_DEBUG === '1') {
-        console.log(`📡 数据库连接: ${process.env.DB_USER}@${process.env.DB_HOST}:${process.env.DB_PORT || 3306}/${process.env.DB_NAME}`);
+        console.log(`📡 数据库连接: ${process.env.DB_USER}@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/${process.env.DB_NAME}`);
     }
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -283,14 +283,13 @@ async function waitForDatabaseAndInit(maxAttempts = 30, intervalMs = 2000) {
             // 详细打印最后一次连接错误（帮助诊断）
             if (attempt === 1 || attempt % 5 === 0) {
                 console.error(`❌ 数据库初始化失败 (尝试 ${attempt}/${maxAttempts}): ${err.message}`);
-                if (err.code) console.error(`   错误代码: ${err.code}, SQLState: ${err.sqlState}`);
-                if (err.errno) console.error(`   errno: ${err.errno}`);
+                if (err.code) console.error(`   错误代码: ${err.code}`);
                 // 输出排查建议
                 console.error('   排查方向:');
-                console.error('   1) 确认 NAS 上 MariaDB 已启动并监听 0.0.0.0:3306 (非 127.0.0.1)');
-                console.error('   2) 确认用户 XINWallet 有建表/建库权限，且允许从任意 host 连接 (host=\'%\')');
-                console.error('   3) 确认 NAS 防火墙放行 3306 端口');
-                console.error('   4) 在 NAS 终端执行: mariadb -u XINWallet -p -h 192.168.9.3 验证能登录');
+                console.error('   1) 确认 PostgreSQL 已启动并监听 0.0.0.0:5432 (非仅 127.0.0.1)');
+                console.error('   2) 确认用户有建表/建库权限 (CREATEDB, CREATE TABLE, ALTER, INDEX)');
+                console.error('   3) 确认防火墙放行 5432 端口');
+                console.error('   4) 在终端执行: psql -U postgres -h <HOST> 验证能登录');
             }
         }
         console.log(`⏳ 等待数据库就绪并初始化 (${attempt}/${maxAttempts})...`);
@@ -306,7 +305,7 @@ async function start() {
     // 等待数据库就绪并初始化（幂等建库建表，复用既有数据）
     const ready = await waitForDatabaseAndInit();
     if (!ready) {
-        console.error('❌ 数据库在限定重试次数内未就绪，请检查 MariaDB 容器状态或 .env 数据库连接配置');
+        console.error('❌ 数据库在限定重试次数内未就绪，请检查 PostgreSQL 容器状态或 .env 数据库连接配置');
         process.exit(1);
     }
 

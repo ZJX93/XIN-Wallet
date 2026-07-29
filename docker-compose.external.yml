@@ -1,6 +1,6 @@
 # ============================================
-# 鑫钱包 · 复用已有 MariaDB 的部署（模式 B）
-# 仅启动应用容器，连接你 NAS / 服务器上「已经存在的 MariaDB」
+# 鑫钱包 · 复用已有 PostgreSQL 的部署（模式 B）
+# 仅启动应用容器，连接你 NAS / 服务器上「已经存在的 PostgreSQL」
 # （复用既有数据，不另起库实例）
 #
 # 用法：
@@ -22,8 +22,8 @@ services:
       NODE_ENV: production
       PORT: 18888
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT:-3306}
-      DB_USER: ${DB_USER:-root}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME:-xinwallet}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-secret}
@@ -32,3 +32,5 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
     ports:
       - "${APP_PORT:-18888}:18888"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

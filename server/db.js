@@ -1,37 +1,92 @@
 /* ============================================
-   鑫钱包 · Database Connection Pool
+   鑫钱包 · Database Connection Pool (PostgreSQL)
    ============================================ */
 
-const mariadb = require('mariadb');
+const { Pool } = require('pg');
 
-const pool = mariadb.createPool({
+const pool = new Pool({
   host: process.env.DB_HOST || '127.0.0.1',
-  port: parseInt(process.env.DB_PORT || '3306'),
-  user: process.env.DB_USER || 'root',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'xinwallet',
-  connectionLimit: 10,
-  charset: 'utf8mb4',
-  collation: 'utf8mb4_unicode_ci',
-  supportBigNumbers: true,
-  bigNumberStrings: true,
-  trace: process.env.NODE_ENV !== 'production',
-  initSql: ["SET NAMES utf8mb4", "SET time_zone = '+08:00'"]
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
 });
 
-async function getConn() {
-  return pool.getConnection();
+/**
+ * 将 ? 占位符转换为 PostgreSQL 的 $1, $2, $3... 格式。
+ * 跳过引号内的 ?（避免误替换字符串字面量中的问号）。
+ */
+function convertPlaceholders(sql) {
+  let idx = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let result = '';
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'" && !inDouble) { inSingle = !inSingle; result += ch; continue; }
+    if (ch === '"' && !inSingle) { inDouble = !inDouble; result += ch; continue; }
+    if (ch === '?' && !inSingle && !inDouble) { result += '$' + (++idx); continue; }
+    result += ch;
+  }
+  return result;
+}
+
+/**
+ * 检测是否为 INSERT 语句且未包含 RETURNING，自动补全 RETURNING id。
+ * 返回的 rows 数组上挂载 insertId 属性（兼容 MariaDB 风格代码）。
+ */
+/**
+ * 按分号分割 SQL 脚本，但跳过 $$ ... $$ 美元引号块内的分号。
+ * 用于执行含 PL/pgSQL 函数的 schema.sql。
+ */
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let inDollarQuote = false;
+  for (let i = 0; i < sql.length; i++) {
+    // 检测 $$ 边界
+    if (sql[i] === '$' && sql[i + 1] === '$') {
+      inDollarQuote = !inDollarQuote;
+      current += '$$';
+      i++; // 跳过第二个 $
+      continue;
+    }
+    if (sql[i] === ';' && !inDollarQuote) {
+      const trimmed = current.trim();
+      if (trimmed) statements.push(trimmed);
+      current = '';
+      continue;
+    }
+    current += sql[i];
+  }
+  const tail = current.trim();
+  if (tail) statements.push(tail);
+  return statements;
+}
+
+function autoReturning(sql) {
+  const trimmed = sql.trim();
+  if (!/^INSERT\s/i.test(trimmed)) return sql;
+  if (/RETURNING/i.test(trimmed)) return sql;
+  // ON CONFLICT DO NOTHING 是 fire-and-forget，不需要 RETURNING
+  if (/ON\s+CONFLICT[\s\S]*DO\s+NOTHING/i.test(trimmed)) return sql;
+  return sql + ' RETURNING id';
+}
+
+function attachInsertId(rows) {
+  if (rows.length > 0 && rows[0].id !== undefined) {
+    rows.insertId = rows[0].id;
+  }
+  return rows;
 }
 
 async function query(sql, params = []) {
-  let conn;
-  try {
-    conn = await getConn();
-    const result = await conn.query(sql, params);
-    return result;
-  } finally {
-    if (conn) conn.release();
-  }
+  const text = convertPlaceholders(autoReturning(sql));
+  const res = await pool.query(text, params);
+  return attachInsertId(res.rows);
 }
 
 async function queryOne(sql, params = []) {
@@ -39,125 +94,117 @@ async function queryOne(sql, params = []) {
   return rows[0] || null;
 }
 
+/**
+ * 事务封装：传入的 fn 接收一个 client，内部执行 SQL。
+ * client.query 同样自动转换 ? → $N + RETURNING id。
+ */
 async function transaction(fn) {
-  let conn;
+  const client = await pool.connect();
+  const origQuery = client.query.bind(client);
+  client.query = async (sql, params = []) => {
+    const text = convertPlaceholders(autoReturning(sql));
+    const res = await origQuery(text, params);
+    return attachInsertId(res.rows);
+  };
   try {
-    conn = await getConn();
-    await conn.beginTransaction();
-    const result = await fn(conn);
-    await conn.commit();
+    await origQuery('BEGIN');
+    const result = await fn(client);
+    await origQuery('COMMIT');
     return result;
   } catch (err) {
-    if (conn) await conn.rollback();
+    await origQuery('ROLLBACK');
     throw err;
   } finally {
-    if (conn) conn.release();
+    client.release();
   }
 }
 
-// 初始化数据库（执行 schema.sql）
+/**
+ * 初始化数据库（幂等：自动建库 + 执行 schema.sql + 迁移）
+ */
 async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
-    // 先尝试创建数据库
-    const rootPool = mariadb.createPool({
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: parseInt(process.env.DB_PORT || '3306'),
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      connectionLimit: 5,
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_unicode_ci',
-      initSql: ["SET NAMES utf8mb4", "SET time_zone = '+08:00'"]
-    });
+    const dbName = process.env.DB_NAME || 'xinwallet';
 
-    let rootConn;
+    // 1) 连接到默认 postgres 库，确保目标数据库存在
+    const adminPool = new Pool({
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || '',
+      database: 'postgres',
+      max: 2,
+    });
     try {
-      rootConn = await rootPool.getConnection();
-      const dbName = process.env.DB_NAME || 'xinwallet';
-      await rootConn.query(`CREATE DATABASE IF NOT EXISTS ${dbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-      console.log(`✅ 数据库 ${dbName} 已创建`);
+      const check = await adminPool.query(
+        'SELECT 1 FROM pg_database WHERE datname = $1', [dbName]
+      );
+      if (check.rowCount === 0) {
+        // 数据库名不能用参数化，但来自环境变量，做基本校验
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(dbName)) {
+          throw new Error(`非法数据库名: ${dbName}`);
+        }
+        await adminPool.query(`CREATE DATABASE "${dbName}" ENCODING 'UTF8'`);
+        console.log(`✅ 数据库 ${dbName} 已创建`);
+      }
     } finally {
-      if (rootConn) rootConn.release();
-      await rootPool.end();
+      await adminPool.end();
     }
 
-    // 读取并执行 schema.sql
+    // 2) 读取并执行 schema.sql
     const fs = require('fs');
     const path = require('path');
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
 
-    // 分割并逐条执行。排除 USE 语句与纯注释行（多行语句第一行可能是注释，
-    // 因此仅当整段以 "--" 开头且不含 SQL 关键字时才跳过）。
-    const statements = schemaSql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s && !s.startsWith('USE'))
-      .filter(s => !/^\s*--\s/.test(s) || /\b(CREATE|INSERT|ALTER|DROP|SELECT|UPDATE|DELETE|SET)\b/i.test(s));
+    // 按分号分割语句，但跳过 $$ ... $$ 美元引号块内的分号（PL/pgSQL 函数体）
+    const statements = splitSqlStatements(schemaSql);
 
     for (const stmt of statements) {
+      // 跳过纯注释段
+      const meaningful = stmt.split('\n').filter(l => l.trim() && !l.trim().startsWith('--'));
+      if (meaningful.length === 0) continue;
       try {
-        await query(stmt);
+        await pool.query(stmt);
       } catch (err) {
-        if (!err.message.includes('already exists') && !err.message.includes('Duplicate')) {
+        if (!/already exists|duplicate key/i.test(err.message)) {
           console.warn('⚠️ Schema 执行警告:', err.message);
         }
       }
     }
 
-    // 迁移：给已存在的 users 表补充 fail_count/locked_until/last_fail_at 列
-    const userCols = ['fail_count INT NOT NULL DEFAULT 0',
-                       'locked_until DATETIME NULL',
-                       'last_fail_at DATETIME NULL'];
-    for (const colDef of userCols) {
-      const colName = colDef.split(' ')[0];
-      try {
-        await query(`ALTER TABLE users ADD COLUMN ${colDef}`);
-      } catch (err) {
-        if (!/already exists|duplicate/i.test(err.message)) {
-          console.warn(`⚠️ users.${colName} 迁移警告:`, err.message);
-        }
+    // 3) 幂等迁移：users 表补充列
+    const userCols = [
+      ['fail_count', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS fail_count INT NOT NULL DEFAULT 0'],
+      ['locked_until', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL'],
+      ['last_fail_at', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_fail_at TIMESTAMP NULL'],
+    ];
+    for (const [col, ddl] of userCols) {
+      try { await pool.query(ddl); } catch (err) {
+        if (!/already exists|duplicate/i.test(err.message)) console.warn(`⚠️ users.${col} 迁移警告:`, err.message);
       }
     }
 
-    // 迁移：给已存在的 categories 表补充 user_id 列（兼容首次未含此列的旧库）
+    // 4) 幂等迁移：categories.user_id
     try {
-      const colExists = await queryOne(
-        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categories' AND COLUMN_NAME = 'user_id'"
-      );
-      if (colExists && parseInt(colExists.cnt) === 0) {
-        await query("ALTER TABLE categories ADD COLUMN user_id INT DEFAULT NULL COMMENT '所属用户ID（NULL=系统预设全局分类）' AFTER parent_id");
-        console.log('✅ categories.user_id 列已添加');
-      }
+      await pool.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS user_id INT DEFAULT NULL`);
     } catch (err) {
-      console.warn('⚠️ categories.user_id 迁移警告:', err.message);
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.user_id 迁移警告:', err.message);
     }
 
-    // 迁移：给 investments 表补充 nav_date 列（行情刷新时记录净值日期）
+    // 5) 幂等迁移：investments.nav_date
     try {
-      const colExists = await queryOne(
-        "SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'investments' AND COLUMN_NAME = 'nav_date'"
-      );
-      if (colExists && parseInt(colExists.cnt) === 0) {
-        await query("ALTER TABLE investments ADD COLUMN nav_date DATE DEFAULT NULL COMMENT '净值日期' AFTER actual_rate");
-        console.log('✅ investments.nav_date 列已添加');
-      }
+      await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS nav_date DATE DEFAULT NULL`);
     } catch (err) {
-      console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
     }
 
-    // 迁移：给 transactions 表补充 account_id + date 复合索引，优化按账户/时间筛选
+    // 6) 幂等迁移：transactions 复合索引
     try {
-      const idxExists = await queryOne(
-        "SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions' AND INDEX_NAME = 'idx_account_date'"
-      );
-      if (idxExists && parseInt(idxExists.cnt) === 0) {
-        await query('ALTER TABLE transactions ADD INDEX idx_account_date (account_id, date)');
-        console.log('✅ transactions.idx_account_date 索引已添加');
-      }
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_account_date ON transactions (account_id, date)`);
     } catch (err) {
-      console.warn('⚠️ transactions.idx_account_date 迁移警告:', err.message);
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ transactions.idx_account_date 迁移警告:', err.message);
     }
 
     console.log('✅ 数据库表结构已初始化');
@@ -168,4 +215,4 @@ async function initDatabase() {
   }
 }
 
-module.exports = { pool, query, queryOne, transaction, initDatabase };
+module.exports = { pool, query, queryOne, transaction, initDatabase, convertPlaceholders };

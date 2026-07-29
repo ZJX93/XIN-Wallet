@@ -670,7 +670,7 @@ router.post('/refresh-all', async (req, res) => {
         const investments = await db.query(
             `SELECT i.*, it.category as type_category
              FROM investments i JOIN investment_types it ON i.investment_type_id = it.id
-             WHERE i.user_id = ? AND i.status = "holding" AND i.code IS NOT NULL AND i.code != ""`,
+             WHERE i.user_id = ? AND i.status = 'holding' AND i.code IS NOT NULL AND i.code != ''`,
             [req.userId]
         );
         if (investments.length === 0) return res.json(success({ updated: 0, results: [] }, '无需要刷新的持仓'));

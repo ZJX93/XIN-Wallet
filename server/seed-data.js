@@ -53,7 +53,7 @@ async function seedUserData(userId, conn) {
     // ===========================================
     // 1. 账户（覆盖现金/银行卡/微信/支付宝/信用卡）
     // ===========================================
-    // 先检查该用户是否已有账户（schema.sql 中的 INSERT IGNORE 会为新用户预先创建 6 个默认账户）
+    // 先检查该用户是否已有账户（schema.sql 中的 ON CONFLICT DO NOTHING 会为新用户预先创建 6 个默认账户）
     const existingAccounts = await conn.query(
         'SELECT id, name FROM accounts WHERE user_id = ? ORDER BY id', [userId]
     );
@@ -350,8 +350,8 @@ async function seedUserData(userId, conn) {
             const snapValue = Math.round(baseValue * randomFactor * 100) / 100;
             const snapCost = Math.round(cost * (0.95 + Math.random() * 0.1) * 100) / 100;
             await conn.query(
-                `INSERT IGNORE INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
-                 VALUES (?, ?, ?, ?, ?)`,
+                `INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
+                 VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING`,
                 [userId, inv.id, snapValue, snapCost, snapDate]
             );
         }

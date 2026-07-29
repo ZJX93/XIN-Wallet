@@ -129,12 +129,12 @@ router.post('/advice', async (req, res) => {
             db.query(
                 `SELECT c.name AS category, t.type, SUM(t.amount) AS total, COUNT(*) AS cnt
                  FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND DATE_FORMAT(t.date, '%Y-%m') = ?
+                 WHERE t.user_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
                  GROUP BY c.name, t.type ORDER BY total DESC`,
                 [req.userId, currentMonth]
             ),
             db.query(
-                'SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURDATE() AND end_date >= CURDATE()',
+                'SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
                 [req.userId]
             ),
             db.query(
@@ -160,7 +160,7 @@ router.post('/advice', async (req, res) => {
         const prevSummary = await db.query(
             `SELECT c.name AS category, t.type, SUM(t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND DATE_FORMAT(t.date, '%Y-%m') = ?
+             WHERE t.user_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
              GROUP BY c.name, t.type ORDER BY total DESC`,
             [req.userId, prevMonth]
         );
@@ -234,9 +234,9 @@ router.post('/insight', async (req, res) => {
 
         const month = (req.body && req.body.month) || new Date().toISOString().slice(0, 7);
         const [summary, prevSummary, budgets, goals, accounts, debts] = await Promise.all([
-            db.query(`SELECT c.name, SUM(t.amount) as total, COUNT(*) as cnt FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.type = 'expense' AND DATE_FORMAT(t.date, '%Y-%m') = ? GROUP BY c.name ORDER BY total DESC`, [req.userId, month]),
-            db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.type = 'expense' AND DATE_FORMAT(t.date, '%Y-%m') = DATE_FORMAT(DATE_SUB(?, INTERVAL 1 MONTH), '%Y-%m')`, [req.userId, month + '-01']),
-            db.query('SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURDATE() AND end_date >= CURDATE()', [req.userId]),
+            db.query(`SELECT c.name, SUM(t.amount) as total, COUNT(*) as cnt FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = ? GROUP BY c.name ORDER BY total DESC`, [req.userId, month]),
+            db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = TO_CHAR(CAST(? AS DATE) - INTERVAL '1 month', 'YYYY-MM')`, [req.userId, month + '-01']),
+            db.query('SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId]),
             db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = ? AND status = 'active'", [req.userId]),
             db.query('SELECT name, balance, type FROM accounts WHERE user_id = ? ORDER BY balance DESC', [req.userId]),
             db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = ? AND status != 'paid_off'", [req.userId])
@@ -342,10 +342,10 @@ router.post('/ocr-config', async (req, res) => {
         await db.query(
             `INSERT INTO ai_ocr_config (user_id, provider, secret_id, secret_key, region)
              VALUES (?, 'tencent', ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-             secret_id = VALUES(secret_id),
-             secret_key = VALUES(secret_key),
-             region = VALUES(region)`,
+             ON CONFLICT (user_id) DO UPDATE SET
+             secret_id = EXCLUDED.secret_id,
+             secret_key = EXCLUDED.secret_key,
+             region = EXCLUDED.region`,
             [req.userId, finalId, finalKey, finalRegion]
         );
         res.json(success({ saved: true }, 'OCR 配置已保存'));

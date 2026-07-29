@@ -48,7 +48,7 @@ router.get('/dashboard', async (req, res) => {
             `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date LIKE ?`,
+       FROM transactions WHERE user_id = ? AND date::text LIKE ?`,
             [req.userId, currentMonth + '%']
         );
 
@@ -57,13 +57,13 @@ router.get('/dashboard', async (req, res) => {
             `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date LIKE ?`,
+       FROM transactions WHERE user_id = ? AND date::text LIKE ?`,
             [req.userId, currentYear + '%']
         );
 
         // 最近6月趋势
         const months = await db.query(
-            `SELECT DATE_FORMAT(date, '%Y-%m') as month,
+            `SELECT TO_CHAR(date, 'YYYY-MM') as month,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
        FROM transactions WHERE user_id = ?
@@ -98,7 +98,7 @@ router.get('/dashboard', async (req, res) => {
 
         // 账户总览
         const accounts = await db.query(
-            'SELECT * FROM accounts WHERE user_id = ? AND status = "active" ORDER BY sort_order',
+            'SELECT * FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY sort_order',
             [req.userId]
         );
         const totalAssets = accounts.reduce((s, a) => s + parseFloat(a.balance), 0);
@@ -219,7 +219,7 @@ router.get('/dashboard', async (req, res) => {
         const totalIncome = parseFloat(lifetimeTotals.total_income || 0);
         const totalExpense = parseFloat(lifetimeTotals.total_expense || 0);
         const activeDebts = await db.query(
-            'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND status = "active"',
+            'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND status = \'active\'',
             [req.userId]
         );
         const allReps = await db.query(
@@ -244,7 +244,7 @@ router.get('/dashboard', async (req, res) => {
         try {
             const savingsData = await db.queryOne(
                 `SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) as net_savings
-                 FROM savings_transactions WHERE user_id = ? AND date LIKE ?`,
+                 FROM savings_transactions WHERE user_id = ? AND date::text LIKE ?`,
                 [req.userId, currentMonth + '%']
             );
             monthNetSavings = parseFloat(savingsData.net_savings || 0);
@@ -335,11 +335,11 @@ router.get('/dashboard/detail', async (req, res) => {
                 dateParams = [weekStart, today];
                 break;
             case 'month':
-                dateCondition = 't.date LIKE ?';
+                dateCondition = 't.date::text LIKE ?';
                 dateParams = [currentMonth + '%'];
                 break;
             case 'year':
-                dateCondition = 't.date LIKE ?';
+                dateCondition = 't.date::text LIKE ?';
                 dateParams = [currentYear + '%'];
                 break;
             case 'assets':

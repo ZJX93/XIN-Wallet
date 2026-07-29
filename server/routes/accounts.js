@@ -11,7 +11,7 @@ const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalanc
 router.get('/', async (req, res) => {
     try {
         const accounts = await db.query(
-            'SELECT * FROM accounts WHERE user_id = ? AND status = "active" ORDER BY sort_order',
+            'SELECT * FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY sort_order',
             [req.userId]
         );
         const total = accounts.reduce((s, a) => s + parseFloat(a.balance || 0), 0);
@@ -58,7 +58,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         await db.query(
-            'UPDATE accounts SET status = "closed" WHERE id = ? AND user_id = ?',
+            'UPDATE accounts SET status = \'closed\' WHERE id = ? AND user_id = ?',
             [req.params.id, req.userId]
         );
         res.json(success(null, '账户已关闭'));

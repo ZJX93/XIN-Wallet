@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
         const params = [req.userId];
 
         if (month && month !== 'all') {
-            sql += ' AND t.date LIKE ?';
+            sql += ' AND t.date::text LIKE ?';
             params.push(month + '%');
         }
         if (type && type !== 'all') {
@@ -176,7 +176,7 @@ router.get('/ledger', async (req, res) => {
             WHERE t.user_id = ?`;
         const params = [req.userId];
         if (month && month !== 'all') {
-            sql += ' AND t.date LIKE ?';
+            sql += ' AND t.date::text LIKE ?';
             params.push(month + '%');
         }
         sql += ' ORDER BY t.date DESC, t.id DESC';
@@ -232,7 +232,7 @@ router.post('/', async (req, res) => {
             // 写入交易标签
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [insertResult.insertId, tid]);
+                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [insertResult.insertId, tid]);
             }
 
             return insertResult.insertId;
@@ -273,7 +273,7 @@ router.put('/:id', async (req, res) => {
             await conn.query('DELETE FROM transaction_tags WHERE transaction_id = ?', [id]);
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)', [id, tid]);
+                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [id, tid]);
             }
 
             // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移
@@ -334,7 +334,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/months', async (req, res) => {
     try {
         const months = await db.query(
-            `SELECT DISTINCT DATE_FORMAT(date, '%Y-%m') as month
+            `SELECT DISTINCT TO_CHAR(date, 'YYYY-MM') as month
        FROM transactions WHERE user_id = ? ORDER BY month DESC`,
             [req.userId]
         );
@@ -352,12 +352,12 @@ router.get('/summary', async (req, res) => {
 
         const incomeRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'income' AND date LIKE ?`,
+       WHERE user_id = ? AND type = 'income' AND date::text LIKE ?`,
             [req.userId, month + '%']
         );
         const expenseRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'expense' AND date LIKE ?`,
+       WHERE user_id = ? AND type = 'expense' AND date::text LIKE ?`,
             [req.userId, month + '%']
         );
 
@@ -365,7 +365,7 @@ router.get('/summary', async (req, res) => {
         const expByCat = await db.query(
             `SELECT c.id, c.name, c.icon, SUM(t.amount) as total
        FROM transactions t JOIN categories c ON t.category_id = c.id
-       WHERE t.user_id = ? AND t.type = 'expense' AND t.date LIKE ?
+       WHERE t.user_id = ? AND t.type = 'expense' AND t.date::text LIKE ?
        GROUP BY c.id ORDER BY total DESC`,
             [req.userId, month + '%']
         );
@@ -373,7 +373,7 @@ router.get('/summary', async (req, res) => {
         const incByCat = await db.query(
             `SELECT c.id, c.name, c.icon, SUM(t.amount) as total
        FROM transactions t JOIN categories c ON t.category_id = c.id
-       WHERE t.user_id = ? AND t.type = 'income' AND t.date LIKE ?
+       WHERE t.user_id = ? AND t.type = 'income' AND t.date::text LIKE ?
        GROUP BY c.id ORDER BY total DESC`,
             [req.userId, month + '%']
         );

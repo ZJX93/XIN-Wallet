@@ -54,7 +54,7 @@ async function syncCreditCardDebt(conn, userId, accountId) {
         const minPmt = Math.max(Math.round(owes * 0.1), 500);
         if (debt) {
             await conn.query(
-                'UPDATE debts SET remaining = ?, monthly_payment = 0, min_payment = ?, interest_rate = 18.25, method = "minimum", status = "active" WHERE id = ?',
+                'UPDATE debts SET remaining = ?, monthly_payment = 0, min_payment = ?, interest_rate = 18.25, method = \'minimum\', status = \'active\' WHERE id = ?',
                 [owes, minPmt, debt.id]
             );
         } else {

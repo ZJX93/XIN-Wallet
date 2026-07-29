@@ -20,7 +20,7 @@ router.get('/export/csv', async (req, res) => {
         let rows = [], header = [];
         if (type === 'accounts') {
             header = ['id', 'name', 'type', 'balance', 'credit_limit', 'icon'];
-            const data = await db.query('SELECT * FROM accounts WHERE user_id = ? AND status = "active"', [req.userId]);
+            const data = await db.query('SELECT * FROM accounts WHERE user_id = ? AND status = \'active\'', [req.userId]);
             rows = data.map(a => [a.id, a.name, a.type, a.balance, a.credit_limit, a.icon]);
         } else if (type === 'investments') {
             header = ['id', 'name', 'code', 'type', 'buy_price', 'current_price', 'quantity', 'total_cost', 'current_value'];
@@ -104,13 +104,13 @@ router.get('/export/full', async (req, res) => {
     try {
         const userId = req.userId;
         const [accounts, cats, transactions, transfers, budgets, goals, investments, tags] = await Promise.all([
-            db.query('SELECT name, type, icon, balance, opening_balance, credit_limit FROM accounts WHERE user_id = ? AND status = "active"', [userId]),
+            db.query('SELECT name, type, icon, balance, opening_balance, credit_limit FROM accounts WHERE user_id = ? AND status = \'active\'', [userId]),
             db.query('SELECT name, type, icon, parent_id FROM categories'),
-            db.query('SELECT CAST(t.date AS CHAR) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ?', [userId]),
-            db.query('SELECT CAST(t.date AS CHAR) AS date, t.amount, t.note, a1.name AS from_account, a2.name AS to_account FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id WHERE t.user_id = ?', [userId]),
-            db.query('SELECT name, period_type, amount, CAST(start_date AS CHAR) AS start_date, CAST(end_date AS CHAR) AS end_date FROM budgets WHERE user_id = ?', [userId]),
+            db.query('SELECT t.date::text AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ?', [userId]),
+            db.query('SELECT t.date::text AS date, t.amount, t.note, a1.name AS from_account, a2.name AS to_account FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id WHERE t.user_id = ?', [userId]),
+            db.query('SELECT name, period_type, amount, start_date::text AS start_date, end_date::text AS end_date FROM budgets WHERE user_id = ?', [userId]),
             db.query('SELECT name, target_amount, current_amount, icon, note, status FROM savings_goals WHERE user_id = ?', [userId]),
-            db.query('SELECT i.name, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee, CAST(i.buy_date AS CHAR) AS buy_date, i.expected_rate, i.note, i.status, a.name AS account, it.name AS type_name FROM investments i LEFT JOIN accounts a ON i.account_id = a.id LEFT JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = ?', [userId]),
+            db.query('SELECT i.name, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee, i.buy_date::text AS buy_date, i.expected_rate, i.note, i.status, a.name AS account, it.name AS type_name FROM investments i LEFT JOIN accounts a ON i.account_id = a.id LEFT JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = ?', [userId]),
             db.query('SELECT name, color, icon FROM tags WHERE user_id = ?', [userId])
         ]);
 
@@ -171,20 +171,20 @@ router.post('/import/full', async (req, res) => {
         }
 
         for (const b of (data.budgets || [])) {
-            await db.query('INSERT IGNORE INTO budgets (user_id, name, period_type, amount, start_date, end_date) VALUES (?,?,?,?,?,?)', [userId, b.name, b.period_type || 'month', b.amount, b.start_date, b.end_date || b.start_date]);
+            await db.query('INSERT INTO budgets (user_id, name, period_type, amount, start_date, end_date) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, b.name, b.period_type || 'month', b.amount, b.start_date, b.end_date || b.start_date]);
             imported.budgets++;
         }
 
         for (const g of (data.savings_goals || [])) {
             const aid = g.account ? acMap[g.account] : null;
-            await db.query('INSERT IGNORE INTO savings_goals (user_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES (?,?,?,?,?,?,?,?)', [userId, g.name, g.target_amount, g.current_amount || 0, g.icon || '🎯', g.note || '', g.status || 'active', aid]);
+            await db.query('INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, g.name, g.target_amount, g.current_amount || 0, g.icon || '🎯', g.note || '', g.status || 'active', aid]);
             imported.goals++;
         }
 
         for (const i of (data.investments || [])) {
             const aid = i.account ? acMap[i.account] : null;
             const it = await db.queryOne('SELECT id FROM investment_types WHERE name = ?', [i.type_name || '其他']);
-            await db.query('INSERT IGNORE INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [userId, aid, it ? it.id : 1, i.name, i.code || '', i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee || 0, i.buy_date, i.expected_rate || 0, i.status || 'holding', i.note || '']);
+            await db.query('INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING', [userId, aid, it ? it.id : 1, i.name, i.code || '', i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee || 0, i.buy_date, i.expected_rate || 0, i.status || 'holding', i.note || '']);
             imported.investments++;
         }
 

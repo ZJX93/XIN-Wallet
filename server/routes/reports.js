@@ -108,12 +108,12 @@ async function buildReport(userId, type, period) {
 
     // 每日趋势
     const dailyRows = await db.query(
-        `SELECT DATE_FORMAT(date, '%Y-%m-%d') as date,
+        `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date,
             COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
             COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
          FROM transactions
          WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
-         GROUP BY DATE_FORMAT(date, '%Y-%m-%d') ORDER BY date`,
+         GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
         [userId, start, end]
     );
     // 补齐无交易日期
@@ -172,7 +172,7 @@ async function buildReport(userId, type, period) {
             `SELECT b.id, b.name, b.amount as budget_amount, b.period_type,
                     c.id as cat_id, c.icon
              FROM budgets b
-             LEFT JOIN categories c ON c.name COLLATE utf8mb4_unicode_ci = b.name AND c.type = 'expense'
+             LEFT JOIN categories c ON c.name = b.name AND c.type = 'expense'
              WHERE b.user_id = ? AND b.start_date <= ? AND b.end_date >= ?
              ORDER BY b.amount DESC`,
             [userId, end, start]
@@ -210,11 +210,11 @@ async function buildReport(userId, type, period) {
 
     // 资产快照
     const accountAssets = await db.query(
-        'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND status = "active"',
+        'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND status = \'active\'',
         [userId]
     );
     const invAssets = await db.queryOne(
-        'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND status = "holding"',
+        'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND status = \'holding\'',
         [userId]
     );
     const totalAssets = parseFloat(accountAssets[0].total) + parseFloat(invAssets.total);
@@ -349,7 +349,7 @@ async function buildReport(userId, type, period) {
 async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAssets) {
     // 资产明细
     const accounts = await db.query(
-        'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND status = "active" ORDER BY balance DESC',
+        'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY balance DESC',
         [userId]
     );
     const investments = await db.query(

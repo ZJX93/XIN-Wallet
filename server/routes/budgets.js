@@ -90,8 +90,8 @@ router.post('/', async (req, res) => {
         const nameStr = name.trim();
         await db.query(
             `INSERT INTO budgets (user_id, name, period_type, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE amount = ?`,
-            [req.userId, nameStr, pType, range.start, range.end, amountNum, amountNum]
+       ON CONFLICT (user_id, name, start_date, end_date) DO UPDATE SET amount = EXCLUDED.amount`,
+            [req.userId, nameStr, pType, range.start, range.end, amountNum]
         );
         res.json(success(null, '预算已设置'));
     } catch (err) {

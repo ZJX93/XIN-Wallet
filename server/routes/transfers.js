@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
         const params = [req.userId];
 
         if (month) {
-            sql += ' AND t.date LIKE ?';
+            sql += ' AND t.date::text LIKE ?';
             params.push(month + '%');
         }
 

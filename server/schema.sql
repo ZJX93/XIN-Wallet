@@ -1,208 +1,218 @@
 -- ============================================
--- 鑫钱包 · MariaDB 数据库 Schema
--- 注意：本文件由 server/db.js 在 initDatabase() 中调用，数据库创建与 USE 由 db.js 负责。
--- 如需手动执行，请先 CREATE DATABASE <DB_NAME> 并 USE <DB_NAME>。
+-- 鑫钱包 · PostgreSQL 数据库 Schema
+-- 注意：本文件由 server/db.js 在 initDatabase() 中调用，数据库创建由 db.js 负责。
+-- 所有 ENUM 已替换为 VARCHAR + CHECK；AUTO_INCREMENT 替换为 SERIAL；
+-- INSERT IGNORE 替换为 ON CONFLICT DO NOTHING。
 -- ============================================
+
+-- updated_at 自动更新触发器函数
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- 用户表
 CREATE TABLE IF NOT EXISTS users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   nickname VARCHAR(100),
-  -- 登录失败计数 + 账号锁定（持久化，重启不丢）
   fail_count INT NOT NULL DEFAULT 0,
-  locked_until DATETIME NULL,
-  last_fail_at DATETIME NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+  locked_until TIMESTAMP NULL,
+  last_fail_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+DROP TRIGGER IF EXISTS trg_users_updated ON users;
+CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 账户表 (现金/银行卡/微信/支付宝/信用卡等)
+-- 账户表
 CREATE TABLE IF NOT EXISTS accounts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  name VARCHAR(50) NOT NULL COMMENT '账户名称',
-  type ENUM('cash','bank_card','credit_card','electronic_payment','financial_account','digital','other') NOT NULL COMMENT '账户类型',
-  icon VARCHAR(10) DEFAULT '💰' COMMENT '图标',
-  balance DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '当前余额',
-  -- 期初余额（复式记账：当前余额 = 期初余额 + 账本流水净额）。
-  -- 对应 Firefly III 的“期初余额交易”，使账本成为唯一真相且可随时重算/对账。
-  opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '期初余额',
-  credit_limit DECIMAL(15,2) DEFAULT 0 COMMENT '信用额度(信用卡)',
-  is_default BOOLEAN DEFAULT FALSE COMMENT '是否默认账户',
+  name VARCHAR(50) NOT NULL,                          -- 账户名称
+  type VARCHAR(30) NOT NULL CHECK (type IN ('cash','bank_card','credit_card','electronic_payment','financial_account','digital','other')),
+  icon VARCHAR(10) DEFAULT '💰',                      -- 图标
+  balance DECIMAL(15,2) NOT NULL DEFAULT 0,           -- 当前余额
+  opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,   -- 期初余额（复式记账）
+  credit_limit DECIMAL(15,2) DEFAULT 0,               -- 信用额度(信用卡)
+  is_default BOOLEAN DEFAULT FALSE,                   -- 是否默认账户
   sort_order INT DEFAULT 0,
-  status ENUM('active','closed') DEFAULT 'active',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB;
+  status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','closed')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id);
+DROP TRIGGER IF EXISTS trg_accounts_updated ON accounts;
+CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 交易类别表
 CREATE TABLE IF NOT EXISTS categories (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  parent_id INT DEFAULT NULL COMMENT '父分类ID，NULL为一级分类',
-  user_id INT DEFAULT NULL COMMENT '所属用户ID（NULL=系统预设全局分类）',
-  name VARCHAR(50) NOT NULL COMMENT '类别名称',
-  type ENUM('expense','income','transfer') NOT NULL,
-  icon VARCHAR(10) CHARACTER SET utf8mb4 DEFAULT '📌' COMMENT '图标',
-  color VARCHAR(10) DEFAULT '#6366f1' COMMENT '颜色',
+  id SERIAL PRIMARY KEY,
+  parent_id INT DEFAULT NULL,                         -- 父分类ID，NULL为一级分类
+  user_id INT DEFAULT NULL,                           -- 所属用户ID（NULL=系统预设全局分类）
+  name VARCHAR(50) NOT NULL,                          -- 类别名称
+  type VARCHAR(10) NOT NULL CHECK (type IN ('expense','income','transfer')),
+  icon VARCHAR(10) DEFAULT '📌',                      -- 图标
+  color VARCHAR(10) DEFAULT '#6366f1',                -- 颜色
   sort_order INT DEFAULT 0,
-  is_system BOOLEAN DEFAULT TRUE COMMENT '是否系统预设',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_parent (parent_id),
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 幂等迁移：兼容已有未带 user_id 的表
--- 注意：MariaDB 不支持完整的 IF NOT EXISTS for ADD COLUMN，db.js 会捕获 "Duplicate column" 异常忽略
--- 已弃用 PREPARE/EXECUTE（连接池环境兼容性差），改用 db.js JavaScript 层面的迁移检测
+  is_system BOOLEAN DEFAULT TRUE,                     -- 是否系统预设
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
+CREATE INDEX IF NOT EXISTS idx_categories_user ON categories (user_id);
 
 -- 交易记录表
 CREATE TABLE IF NOT EXISTS transactions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  account_id INT NOT NULL COMMENT '关联账户',
-  category_id INT NOT NULL COMMENT '关联类别',
-  budget_id INT DEFAULT NULL COMMENT '关联预算（可选）',
-  type ENUM('expense','income','transfer_in','transfer_out') NOT NULL COMMENT '交易类型',
-  amount DECIMAL(15,2) NOT NULL COMMENT '金额',
-  note VARCHAR(200) DEFAULT '' COMMENT '备注',
-  date DATETIME NOT NULL COMMENT '交易时间（精确到秒）',
-  transfer_id INT DEFAULT NULL COMMENT '关联转账ID',
-  -- 复式记账（参考 Firefly III）：每笔资金流动记录“来源账户”与“目标账户”，
-  -- 构成借贷配对。单笔支出：source=扣款账户，destination=NULL；
-  -- 单笔收入：source=NULL，destination=入账账户；
-  -- 转账：transfer_out 行(source=from,dest=NULL) 与 transfer_in 行(source=NULL,dest=to) 通过 transfer_id 配对。
-  -- 账户余额由账本推导（见 routes.js computeAccountBalance），本列为空的历史数据按 type 回退。
-  source_account_id INT DEFAULT NULL COMMENT '复式记账-资金源账户',
-  destination_account_id INT DEFAULT NULL COMMENT '复式记账-资金目标账户',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user_date (user_id, date),
-  INDEX idx_account (account_id),
-  INDEX idx_account_date (account_id, date),
-  INDEX idx_category (category_id),
-  INDEX idx_type (type),
-  INDEX idx_budget (budget_id),
-  INDEX idx_tx_source (source_account_id),
-  INDEX idx_tx_dest (destination_account_id)
-) ENGINE=InnoDB;
+  account_id INT NOT NULL,                            -- 关联账户
+  category_id INT NOT NULL,                           -- 关联类别
+  budget_id INT DEFAULT NULL,                         -- 关联预算（可选）
+  type VARCHAR(15) NOT NULL CHECK (type IN ('expense','income','transfer_in','transfer_out')),
+  amount DECIMAL(15,2) NOT NULL,                      -- 金额
+  note VARCHAR(200) DEFAULT '',                       -- 备注
+  date TIMESTAMP NOT NULL,                            -- 交易时间（精确到秒）
+  transfer_id INT DEFAULT NULL,                       -- 关联转账ID
+  source_account_id INT DEFAULT NULL,                 -- 复式记账-资金源账户
+  destination_account_id INT DEFAULT NULL,            -- 复式记账-资金目标账户
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions (user_id, date);
+CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions (account_id);
+CREATE INDEX IF NOT EXISTS idx_account_date ON transactions (account_id, date);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions (category_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
+CREATE INDEX IF NOT EXISTS idx_transactions_budget ON transactions (budget_id);
+CREATE INDEX IF NOT EXISTS idx_tx_source ON transactions (source_account_id);
+CREATE INDEX IF NOT EXISTS idx_tx_dest ON transactions (destination_account_id);
+DROP TRIGGER IF EXISTS trg_transactions_updated ON transactions;
+CREATE TRIGGER trg_transactions_updated BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 内部转账记录表
 CREATE TABLE IF NOT EXISTS transfers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  from_account_id INT NOT NULL COMMENT '转出账户',
-  to_account_id INT NOT NULL COMMENT '转入账户',
-  amount DECIMAL(15,2) NOT NULL COMMENT '转账金额',
-  note VARCHAR(200) DEFAULT '' COMMENT '转账备注',
-  date DATETIME NOT NULL COMMENT '转账时间（精确到秒）',
-  status ENUM('completed','pending','cancelled') DEFAULT 'completed',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_from (from_account_id),
-  INDEX idx_to (to_account_id)
-) ENGINE=InnoDB;
+  from_account_id INT NOT NULL,                       -- 转出账户
+  to_account_id INT NOT NULL,                         -- 转入账户
+  amount DECIMAL(15,2) NOT NULL,                      -- 转账金额
+  note VARCHAR(200) DEFAULT '',                       -- 转账备注
+  date TIMESTAMP NOT NULL,                            -- 转账时间
+  status VARCHAR(10) DEFAULT 'completed' CHECK (status IN ('completed','pending','cancelled')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_transfers_user ON transfers (user_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_from ON transfers (from_account_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_to ON transfers (to_account_id);
+DROP TRIGGER IF EXISTS trg_transfers_updated ON transfers;
+CREATE TRIGGER trg_transfers_updated BEFORE UPDATE ON transfers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 预算表
 CREATE TABLE IF NOT EXISTS budgets (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  name VARCHAR(100) NOT NULL COMMENT '预算名称（自由命名）',
-  period_type ENUM('month','quarter','half','year') NOT NULL DEFAULT 'month' COMMENT '周期类型：月度/季度/半年/年度',
-  start_date DATE NOT NULL COMMENT '预算开始日期',
-  end_date DATE NOT NULL COMMENT '预算结束日期',
-  amount DECIMAL(15,2) NOT NULL COMMENT '预算金额',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_user_name_period (user_id, name, start_date, end_date)
-) ENGINE=InnoDB;
+  name VARCHAR(100) NOT NULL,                         -- 预算名称
+  period_type VARCHAR(10) NOT NULL DEFAULT 'month' CHECK (period_type IN ('month','quarter','half','year')),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, name, start_date, end_date)
+);
+DROP TRIGGER IF EXISTS trg_budgets_updated ON budgets;
+CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 理财产品类型表
 CREATE TABLE IF NOT EXISTS investment_types (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(50) NOT NULL COMMENT '产品类型名称',
-  icon VARCHAR(10) DEFAULT '📈' COMMENT '图标',
-  risk_level ENUM('low','medium','high','very_high') DEFAULT 'medium' COMMENT '风险等级',
-  category ENUM('fund','stock','deposit','other') NOT NULL DEFAULT 'fund' COMMENT '行情品类',
-  description VARCHAR(200) DEFAULT '' COMMENT '描述',
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  icon VARCHAR(10) DEFAULT '📈',
+  risk_level VARCHAR(10) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high','very_high')),
+  category VARCHAR(10) NOT NULL DEFAULT 'fund' CHECK (category IN ('fund','stock','deposit','other')),
+  description VARCHAR(200) DEFAULT '',
   sort_order INT DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- 理财持仓表
 CREATE TABLE IF NOT EXISTS investments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  account_id INT DEFAULT NULL COMMENT '关联账户',
-  investment_type_id INT NOT NULL COMMENT '理财产品类型',
-  name VARCHAR(100) NOT NULL COMMENT '产品名称',
-  code VARCHAR(50) DEFAULT '' COMMENT '产品代码(基金代码/股票代码)',
-  buy_price DECIMAL(15,4) NOT NULL DEFAULT 0 COMMENT '买入单价',
-  current_price DECIMAL(15,4) NOT NULL DEFAULT 0 COMMENT '当前单价',
-  quantity DECIMAL(15,4) NOT NULL DEFAULT 0 COMMENT '持有数量/份额',
-  total_cost DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '总投入成本（含手续费）',
-  current_value DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '当前市值',
-  fee DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '手续费',
-  buy_date DATE NOT NULL COMMENT '买入日期',
-  expected_rate DECIMAL(8,4) DEFAULT 0 COMMENT '预期年化收益率',
-  actual_rate DECIMAL(8,4) DEFAULT 0 COMMENT '实际年化收益率',
-  nav_date DATE DEFAULT NULL COMMENT '净值日期（行情刷新时更新）',
-  status ENUM('holding','sold','expired') DEFAULT 'holding' COMMENT '状态',
-  note VARCHAR(200) DEFAULT '' COMMENT '备注',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_type (investment_type_id),
-  INDEX idx_status (status)
-) ENGINE=InnoDB;
-
--- 理财交易记录(买入/卖出/分红)
-CREATE TABLE IF NOT EXISTS investment_transactions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL DEFAULT 1,
-  investment_id INT NOT NULL COMMENT '关联持仓',
-  type ENUM('buy','sell','dividend','interest','fee') NOT NULL COMMENT '操作类型',
-  amount DECIMAL(15,2) NOT NULL COMMENT '金额',
-  price DECIMAL(15,4) DEFAULT 0 COMMENT '单价',
-  quantity DECIMAL(15,4) DEFAULT 0 COMMENT '数量',
-  date DATE NOT NULL COMMENT '日期',
+  account_id INT DEFAULT NULL,                        -- 关联账户
+  investment_type_id INT NOT NULL,                    -- 理财产品类型
+  name VARCHAR(100) NOT NULL,
+  code VARCHAR(50) DEFAULT '',                        -- 产品代码
+  buy_price DECIMAL(15,4) NOT NULL DEFAULT 0,
+  current_price DECIMAL(15,4) NOT NULL DEFAULT 0,
+  quantity DECIMAL(15,4) NOT NULL DEFAULT 0,
+  total_cost DECIMAL(15,2) NOT NULL DEFAULT 0,
+  current_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+  fee DECIMAL(15,2) NOT NULL DEFAULT 0,
+  buy_date DATE NOT NULL,
+  expected_rate DECIMAL(8,4) DEFAULT 0,
+  actual_rate DECIMAL(8,4) DEFAULT 0,
+  nav_date DATE DEFAULT NULL,                         -- 净值日期
+  status VARCHAR(10) DEFAULT 'holding' CHECK (status IN ('holding','sold','expired')),
   note VARCHAR(200) DEFAULT '',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_investment (investment_id)
-) ENGINE=InnoDB;
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_investments_user ON investments (user_id);
+CREATE INDEX IF NOT EXISTS idx_investments_type ON investments (investment_type_id);
+CREATE INDEX IF NOT EXISTS idx_investments_status ON investments (status);
+DROP TRIGGER IF EXISTS trg_investments_updated ON investments;
+CREATE TRIGGER trg_investments_updated BEFORE UPDATE ON investments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 理财净值快照（每周日自动记录，用于市值趋势图）
-CREATE TABLE IF NOT EXISTS investment_snapshots (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+-- 理财交易记录
+CREATE TABLE IF NOT EXISTS investment_transactions (
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
-  investment_id INT NOT NULL COMMENT '关联持仓',
-  total_value DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '当日总市值',
-  total_cost DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '当日累计成本',
-  nav_date DATE NOT NULL COMMENT '净值日期（周日）',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_inv_date (investment_id, nav_date),
-  INDEX idx_user_date (user_id, nav_date)
-) ENGINE=InnoDB;
+  investment_id INT NOT NULL,
+  type VARCHAR(10) NOT NULL CHECK (type IN ('buy','sell','dividend','interest','fee')),
+  amount DECIMAL(15,2) NOT NULL,
+  price DECIMAL(15,4) DEFAULT 0,
+  quantity DECIMAL(15,4) DEFAULT 0,
+  date DATE NOT NULL,
+  note VARCHAR(200) DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inv_tx_investment ON investment_transactions (investment_id);
+
+-- 理财净值快照
+CREATE TABLE IF NOT EXISTS investment_snapshots (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL DEFAULT 1,
+  investment_id INT NOT NULL,
+  total_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+  total_cost DECIMAL(15,2) NOT NULL DEFAULT 0,
+  nav_date DATE NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (investment_id, nav_date)
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON investment_snapshots (user_id, nav_date);
 
 -- ============================================
--- 插入默认数据（演示用户由服务端按环境变量种子，见 index.js）
+-- 插入默认数据
 -- ============================================
 
 -- 默认账户
-INSERT IGNORE INTO accounts (id, user_id, name, type, icon, balance, is_default, sort_order) VALUES
+INSERT INTO accounts (id, user_id, name, type, icon, balance, is_default, sort_order) VALUES
 (1, 1, '现金', 'cash', '💵', 500.00, FALSE, 1),
 (2, 1, '工商银行', 'bank_card', '🏦', 25000.00, TRUE, 2),
 (3, 1, '招商银行', 'bank_card', '🏦', 18000.00, FALSE, 3),
 (4, 1, '微信支付', 'electronic_payment', '💚', 3200.00, FALSE, 4),
 (5, 1, '支付宝', 'electronic_payment', '🔵', 5000.00, FALSE, 5),
-(6, 1, '信用卡', 'credit_card', '💳', 0.00, FALSE, 6);
+(6, 1, '信用卡', 'credit_card', '💳', 0.00, FALSE, 6)
+ON CONFLICT (id) DO NOTHING;
 
--- 支出类别
--- 一级支出类别
-INSERT IGNORE INTO categories (id, name, type, icon, sort_order, is_system) VALUES
+-- 支出类别（一级）
+INSERT INTO categories (id, name, type, icon, sort_order, is_system) VALUES
 (1,  '餐饮',     'expense', '🍜', 1,  TRUE),
 (2,  '交通',     'expense', '🚗', 2,  TRUE),
 (3,  '购物',     'expense', '🛒', 3,  TRUE),
@@ -217,11 +227,11 @@ INSERT IGNORE INTO categories (id, name, type, icon, sort_order, is_system) VALU
 (12, '宠物',     'expense', '🐱', 12, TRUE),
 (13, '保险',     'expense', '🛡️', 13, TRUE),
 (23, '爱车',     'expense', '🚗', 15, TRUE),
-(14, '其他支出', 'expense', '📌', 99, TRUE);
+(14, '其他支出', 'expense', '📌', 99, TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 支出二级分类
-INSERT IGNORE INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
--- 餐饮(1)
+INSERT INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
 (30, 1, '早餐',     'expense', '🥐', 1, TRUE),
 (31, 1, '午餐',     'expense', '🍱', 2, TRUE),
 (32, 1, '晚餐',     'expense', '🍽️', 3, TRUE),
@@ -230,64 +240,53 @@ INSERT IGNORE INTO categories (id, parent_id, name, type, icon, sort_order, is_s
 (35, 1, '外卖',     'expense', '🛵', 6, TRUE),
 (100, 1, '饮料',    'expense', '🧃', 7, TRUE),
 (101, 1, '生鲜',    'expense', '🥬', 8, TRUE),
--- 交通(2)
 (36, 2, '公交地铁', 'expense', '🚇', 1, TRUE),
 (37, 2, '打车',     'expense', '🚕', 2, TRUE),
 (40, 2, '火车飞机', 'expense', '🚄', 3, TRUE),
--- 购物(3)
 (41, 3, '日用百货', 'expense', '🧴', 1, TRUE),
 (42, 3, '服装鞋包', 'expense', '👗', 2, TRUE),
 (43, 3, '数码产品', 'expense', '📱', 3, TRUE),
 (44, 3, '家居家具', 'expense', '🛋️', 4, TRUE),
--- 住房(4)
 (45, 4, '房租',     'expense', '🏠', 1, TRUE),
 (46, 4, '水电燃气', 'expense', '💡', 2, TRUE),
 (47, 4, '物业费',   'expense', '🏢', 3, TRUE),
 (48, 4, '维修',     'expense', '🔧', 4, TRUE),
 (49, 4, '家居用品', 'expense', '🧹', 5, TRUE),
--- 娱乐(5)
 (50, 5, '电影演出', 'expense', '🎬', 1, TRUE),
 (51, 5, '游戏',     'expense', '🎮', 2, TRUE),
 (52, 5, '运动健身', 'expense', '🏃', 3, TRUE),
 (53, 5, '旅游度假', 'expense', '🏖️', 4, TRUE),
 (54, 5, 'KTV酒吧',  'expense', '🎤', 5, TRUE),
--- 医疗(6)
 (55, 6, '门诊',     'expense', '🏥', 1, TRUE),
 (56, 6, '药品',     'expense', '💊', 2, TRUE),
 (57, 6, '体检',     'expense', '🩺', 3, TRUE),
 (58, 6, '住院',     'expense', '🛌', 4, TRUE),
--- 教育(7)
 (59, 7, '培训课程', 'expense', '📖', 1, TRUE),
 (60, 7, '书籍',     'expense', '📚', 2, TRUE),
 (61, 7, '考试报名', 'expense', '📝', 3, TRUE),
--- 通讯(8)
 (62, 8, '话费',     'expense', '📞', 1, TRUE),
 (63, 8, '宽带',     'expense', '🌐', 2, TRUE),
 (64, 8, '快递',     'expense', '📦', 3, TRUE),
--- 人情(9)
 (65, 9, '孝敬父母', 'expense', '👴', 1, TRUE),
 (66, 9, '送礼红包', 'expense', '🧧', 2, TRUE),
 (67, 9, '请客',     'expense', '🍻', 3, TRUE),
--- 宠物(12)
 (68, 12, '主粮零食', 'expense', '🦴', 1, TRUE),
 (69, 12, '医疗保健', 'expense', '💉', 2, TRUE),
 (70, 12, '玩具用品', 'expense', '🧸', 3, TRUE),
--- 美容(10)
 (71, 10, '护肤',     'expense', '🧴', 1, TRUE),
 (72, 10, '美发',     'expense', '💇', 2, TRUE),
--- 保险(13)
 (73, 13, '社保',     'expense', '🏛️', 1, TRUE),
 (74, 13, '商业保险', 'expense', '🛡️', 2, TRUE),
--- 爱车(23)
 (90, 23, '加油',     'expense', '⛽', 1, TRUE),
 (91, 23, '充电',     'expense', '🔋', 2, TRUE),
 (92, 23, '停车费',   'expense', '🅿️', 3, TRUE),
 (93, 23, '过路费',   'expense', '🛣️', 4, TRUE),
 (94, 23, '维保费',   'expense', '🔧', 5, TRUE),
-(95, 23, '车险',     'expense', '🛡️', 6, TRUE);
+(95, 23, '车险',     'expense', '🛡️', 6, TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 一级收入类别
-INSERT IGNORE INTO categories (id, name, type, icon, sort_order, is_system) VALUES
+INSERT INTO categories (id, name, type, icon, sort_order, is_system) VALUES
 (15, '工资',     'income', '💰', 1,  TRUE),
 (16, '奖金',     'income', '🎯', 2,  TRUE),
 (17, '投资收益', 'income', '📈', 3,  TRUE),
@@ -295,24 +294,23 @@ INSERT IGNORE INTO categories (id, name, type, icon, sort_order, is_system) VALU
 (19, '租金收入', 'income', '🔑', 5,  TRUE),
 (20, '退款',     'income', '🔄', 6,  TRUE),
 (21, '其他收入', 'income', '📌', 99, TRUE),
-(22, '转账',   'transfer', '↔️', 1,  TRUE);
+(22, '转账',   'transfer', '↔️', 1,  TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 收入二级分类
-INSERT IGNORE INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
--- 工资(15)
+INSERT INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
 (80, 15, '基本工资', 'income', '💼', 1, TRUE),
 (81, 15, '奖金',     'income', '🎯', 2, TRUE),
 (82, 15, '补贴报销', 'income', '📋', 3, TRUE),
--- 投资收益(17)
 (83, 17, '理财收益', 'income', '📈', 1, TRUE),
 (84, 17, '房租收入', 'income', '🔑', 2, TRUE),
 (85, 17, '分红',     'income', '💎', 3, TRUE),
--- 兼职(18)
 (86, 18, '副业',     'income', '💻', 1, TRUE),
-(87, 18, '咨询',     'income', '🗣️', 2, TRUE);
+(87, 18, '咨询',     'income', '🗣️', 2, TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 理财产品类型
-INSERT IGNORE INTO investment_types (id, name, icon, risk_level, description, sort_order, category) VALUES
+INSERT INTO investment_types (id, name, icon, risk_level, description, sort_order, category) VALUES
 (1, '银行存款', '🏦', 'low', '银行定期/活期存款', 1, 'deposit'),
 (2, '货币基金', '💰', 'low', '余额宝等货币市场基金', 2, 'fund'),
 (3, '债券基金', '📊', 'low', '纯债/混合债基金', 3, 'fund'),
@@ -323,138 +321,155 @@ INSERT IGNORE INTO investment_types (id, name, icon, risk_level, description, so
 (8, '理财产品', '💎', 'medium', '银行/券商理财产品', 8, 'other'),
 (9, '国债', '🏛️', 'low', '国债/地方债', 9, 'deposit'),
 (10, '黄金', '🥇', 'medium', '实物黄金/纸黄金/黄金ETF', 10, 'other'),
-(11, '其他理财', '📌', 'medium', '其他投资品种', 99, 'other');
+(11, '其他理财', '📌', 'medium', '其他投资品种', 99, 'other')
+ON CONFLICT (id) DO NOTHING;
 
 -- ============================================
--- 交易标签表（参考 Firefly III 的 tags）
+-- 交易标签表
 -- ============================================
 CREATE TABLE IF NOT EXISTS tags (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
-  name VARCHAR(50) NOT NULL COMMENT '标签名称',
-  color VARCHAR(20) DEFAULT '#3b82f6' COMMENT '标签颜色',
-  icon VARCHAR(10) DEFAULT '🏷️' COMMENT '图标',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB;
+  name VARCHAR(50) NOT NULL,
+  color VARCHAR(20) DEFAULT '#3b82f6',
+  icon VARCHAR(10) DEFAULT '🏷️',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tags_user ON tags (user_id);
 
 -- 交易-标签关联表
 CREATE TABLE IF NOT EXISTS transaction_tags (
   transaction_id INT NOT NULL,
   tag_id INT NOT NULL,
-  PRIMARY KEY (transaction_id, tag_id),
-  INDEX idx_tag (tag_id)
-) ENGINE=InnoDB;
+  PRIMARY KEY (transaction_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tt_tag ON transaction_tags (tag_id);
 
--- 储蓄目标表（参考 Firefly III 的 piggy banks，整合进理财模块）
+-- 储蓄目标表
 CREATE TABLE IF NOT EXISTS savings_goals (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL COMMENT '目标名称',
-  target_amount DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '目标金额',
-  current_amount DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '已攒金额',
-  account_id INT DEFAULT NULL COMMENT '资金关联账户',
-  icon VARCHAR(10) DEFAULT '🎯' COMMENT '图标',
-  note VARCHAR(200) DEFAULT '' COMMENT '备注',
-  status ENUM('active','completed','archived') DEFAULT 'active',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB;
+  name VARCHAR(100) NOT NULL,
+  target_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  account_id INT DEFAULT NULL,
+  icon VARCHAR(10) DEFAULT '🎯',
+  note VARCHAR(200) DEFAULT '',
+  status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','completed','archived')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_savings_user ON savings_goals (user_id);
+DROP TRIGGER IF EXISTS trg_savings_updated ON savings_goals;
+CREATE TRIGGER trg_savings_updated BEFORE UPDATE ON savings_goals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- AI 服务商配置表：支持添加多个服务商（OpenAI兼容 / Anthropic），并指定一个当前启用。
--- key 只保存在后端数据库，不返回给前端，前端通过后端代理调用大模型。
+-- AI 服务商配置表
 CREATE TABLE IF NOT EXISTS ai_providers (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL COMMENT '自定义服务商名称，如 DeepSeek官方、本地Ollama',
-  api_type ENUM('openai','anthropic') NOT NULL DEFAULT 'openai' COMMENT '接口类型：openai=OpenAI兼容 / anthropic=Anthropic Messages',
-  base_url VARCHAR(255) NOT NULL COMMENT '接口基础地址，如 https://api.deepseek.com/v1',
-  api_key TEXT DEFAULT NULL COMMENT 'API Key（AES-256-GCM 加密存储，hex 格式）',
-  model VARCHAR(100) NOT NULL COMMENT '模型名，如 deepseek-chat',
-  is_active BOOLEAN DEFAULT FALSE COMMENT '是否当前启用（同一用户下只有一个 true）',
+  name VARCHAR(100) NOT NULL,
+  api_type VARCHAR(10) NOT NULL DEFAULT 'openai' CHECK (api_type IN ('openai','anthropic')),
+  base_url VARCHAR(255) NOT NULL,
+  api_key TEXT DEFAULT NULL,                          -- AES-256-GCM 加密存储
+  model VARCHAR(100) NOT NULL,
+  is_active BOOLEAN DEFAULT FALSE,
   sort_order INT DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_user_active (user_id, is_active)
-) ENGINE=InnoDB;
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_user ON ai_providers (user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_user_active ON ai_providers (user_id, is_active);
+DROP TRIGGER IF EXISTS trg_ai_updated ON ai_providers;
+CREATE TRIGGER trg_ai_updated BEFORE UPDATE ON ai_providers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 默认标签种子（显式 id 1-5，确保 initDatabase 每次启动幂等，不会重复累积）
-INSERT IGNORE INTO tags (id, user_id, name, color, icon) VALUES
+-- 默认标签种子
+INSERT INTO tags (id, user_id, name, color, icon) VALUES
 (1, 1, '餐饮', '#f59e0b', '🍜'),
 (2, 1, '必需', '#ef4444', '⭐'),
 (3, 1, '可省', '#10b981', '💡'),
 (4, 1, '大额', '#8b5cf6', '💎'),
-(5, 1, '订阅', '#3b82f6', '🔁');
+(5, 1, '订阅', '#3b82f6', '🔁')
+ON CONFLICT (id) DO NOTHING;
 
--- OCR 配置表：腾讯云 OCR 密钥（仅服务端存储，不返回给前端）
+-- OCR 配置表
 CREATE TABLE IF NOT EXISTS ai_ocr_config (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
-  provider VARCHAR(50) NOT NULL DEFAULT 'tencent' COMMENT 'OCR 服务商',
-  secret_id TEXT NOT NULL COMMENT '腾讯云 SecretId（AES-256-GCM 加密存储，hex 格式）',
-  secret_key TEXT NOT NULL COMMENT '腾讯云 SecretKey（AES-256-GCM 加密存储，hex 格式）',
-  region VARCHAR(50) DEFAULT 'ap-guangzhou' COMMENT '腾讯云地域',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_user (user_id)
-) ENGINE=InnoDB;
+  provider VARCHAR(50) NOT NULL DEFAULT 'tencent',
+  secret_id TEXT NOT NULL,                            -- AES-256-GCM 加密存储
+  secret_key TEXT NOT NULL,                           -- AES-256-GCM 加密存储
+  region VARCHAR(50) DEFAULT 'ap-guangzhou',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id)
+);
+DROP TRIGGER IF EXISTS trg_ocr_updated ON ai_ocr_config;
+CREATE TRIGGER trg_ocr_updated BEFORE UPDATE ON ai_ocr_config FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 债务管理：债务台账（信用卡/贷款/个人借贷/其他应付）
+-- 债务台账
 CREATE TABLE IF NOT EXISTS debts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
-  name VARCHAR(100) NOT NULL COMMENT '债务名称',
-  type ENUM('credit_card','loan','personal','other') NOT NULL DEFAULT 'loan' COMMENT '类型',
-  creditor VARCHAR(100) DEFAULT '' COMMENT '债权人/机构/个人',
-  principal DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '本金/初始总额',
-  remaining DECIMAL(15,2) NOT NULL DEFAULT 0 COMMENT '剩余本金',
-  interest_rate DECIMAL(6,3) DEFAULT 0 COMMENT '年利率%',
-  term_months INT DEFAULT 0 COMMENT '期限月数',
-  method ENUM('equal_installment','equal_principal','interest_only','minimum','lump_sum','manual') DEFAULT 'equal_installment' COMMENT '还款方式',
-  monthly_payment DECIMAL(15,2) DEFAULT 0 COMMENT '月供/每期还款',
-  start_date DATE DEFAULT NULL COMMENT '起始日',
-  due_date DATE DEFAULT NULL COMMENT '到期日/下次还款日',
-  billing_day TINYINT DEFAULT NULL COMMENT '信用卡账单日(1-28)',
-  payment_day TINYINT DEFAULT NULL COMMENT '信用卡还款日(1-28)',
-  min_payment DECIMAL(15,2) DEFAULT 0 COMMENT '信用卡最低还款额',
-  status ENUM('active','paid_off','overdue') DEFAULT 'active' COMMENT '状态',
-  note VARCHAR(200) DEFAULT '' COMMENT '备注',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id)
-) ENGINE=InnoDB;
+  name VARCHAR(100) NOT NULL,
+  type VARCHAR(15) NOT NULL DEFAULT 'loan' CHECK (type IN ('credit_card','loan','personal','other')),
+  creditor VARCHAR(100) DEFAULT '',
+  principal DECIMAL(15,2) NOT NULL DEFAULT 0,
+  remaining DECIMAL(15,2) NOT NULL DEFAULT 0,
+  interest_rate DECIMAL(6,3) DEFAULT 0,
+  term_months INT DEFAULT 0,
+  method VARCHAR(20) DEFAULT 'equal_installment' CHECK (method IN ('equal_installment','equal_principal','interest_only','minimum','lump_sum','manual')),
+  monthly_payment DECIMAL(15,2) DEFAULT 0,
+  start_date DATE DEFAULT NULL,
+  due_date DATE DEFAULT NULL,
+  billing_day SMALLINT DEFAULT NULL,
+  payment_day SMALLINT DEFAULT NULL,
+  min_payment DECIMAL(15,2) DEFAULT 0,
+  status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','paid_off','overdue')),
+  note VARCHAR(200) DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_debts_user ON debts (user_id);
+DROP TRIGGER IF EXISTS trg_debts_updated ON debts;
+CREATE TRIGGER trg_debts_updated BEFORE UPDATE ON debts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 债务管理：还款流水
+-- 债务还款流水
 CREATE TABLE IF NOT EXISTS debt_repayments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
   debt_id INT NOT NULL,
-  account_id INT DEFAULT NULL COMMENT '关联还款账户',
-  amount DECIMAL(15,2) NOT NULL COMMENT '还款金额',
-  principal_part DECIMAL(15,2) DEFAULT 0 COMMENT '本金部分',
-  interest_part DECIMAL(15,2) DEFAULT 0 COMMENT '利息部分',
-  paid_at DATE NOT NULL COMMENT '还款日期',
-  note VARCHAR(200) DEFAULT '' COMMENT '备注',
-  transaction_id INT DEFAULT NULL COMMENT '关联账本交易ID（还款出账）',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_debt (debt_id)
-) ENGINE=InnoDB;
+  account_id INT DEFAULT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  principal_part DECIMAL(15,2) DEFAULT 0,
+  interest_part DECIMAL(15,2) DEFAULT 0,
+  paid_at DATE NOT NULL,
+  note VARCHAR(200) DEFAULT '',
+  transaction_id INT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_repay_user ON debt_repayments (user_id);
+CREATE INDEX IF NOT EXISTS idx_repay_debt ON debt_repayments (debt_id);
 
--- 储蓄流水（追踪每月存取，用于计算真实储蓄率）
+-- 储蓄流水
 CREATE TABLE IF NOT EXISTS savings_transactions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   user_id INT NOT NULL,
   goal_id INT DEFAULT NULL,
   account_id INT DEFAULT NULL,
-  type ENUM('deposit','withdraw') NOT NULL,
+  type VARCHAR(10) NOT NULL CHECK (type IN ('deposit','withdraw')),
   amount DECIMAL(15,2) NOT NULL,
   date DATE NOT NULL,
   note VARCHAR(200) DEFAULT '',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_user (user_id),
-  INDEX idx_goal (goal_id),
-  INDEX idx_date (date)
-) ENGINE=InnoDB;
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sav_tx_user ON savings_transactions (user_id);
+CREATE INDEX IF NOT EXISTS idx_sav_tx_goal ON savings_transactions (goal_id);
+CREATE INDEX IF NOT EXISTS idx_sav_tx_date ON savings_transactions (date);
+
+-- ============================================
+-- 修复 SERIAL 序列（种子数据使用了显式 ID，需要重置序列到最大值之后）
+-- ============================================
+SELECT setval(pg_get_serial_sequence('accounts', 'id'), COALESCE((SELECT MAX(id) FROM accounts), 0) + 1, false);
+SELECT setval(pg_get_serial_sequence('categories', 'id'), COALESCE((SELECT MAX(id) FROM categories), 0) + 1, false);
+SELECT setval(pg_get_serial_sequence('investment_types', 'id'), COALESCE((SELECT MAX(id) FROM investment_types), 0) + 1, false);
+SELECT setval(pg_get_serial_sequence('tags', 'id'), COALESCE((SELECT MAX(id) FROM tags), 0) + 1, false);

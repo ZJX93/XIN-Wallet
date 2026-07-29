@@ -65,11 +65,11 @@ router.get('/', async (req, res) => {
     try {
         // 自动清理已还清超过7天的债务（仅删债务记录，保留还款流水和交易不变）
         await db.query(
-            "DELETE FROM debts WHERE user_id = ? AND status = 'paid_off' AND updated_at < DATE_SUB(NOW(), INTERVAL 7 DAY)",
+            "DELETE FROM debts WHERE user_id = ? AND status = 'paid_off' AND updated_at < NOW() - INTERVAL '7 days'",
             [req.userId]
         );
         const debts = await db.query(
-            'SELECT * FROM debts WHERE user_id = ? ORDER BY status = "paid_off", status = "overdue", due_date IS NULL, due_date ASC, id DESC',
+            'SELECT * FROM debts WHERE user_id = ? ORDER BY status = \'paid_off\', status = \'overdue\', due_date IS NULL, due_date ASC, id DESC',
             [req.userId]
         );
         const repayTotals = await db.query('SELECT debt_id, COALESCE(SUM(amount),0) as paid FROM debt_repayments WHERE user_id = ? GROUP BY debt_id', [req.userId]);

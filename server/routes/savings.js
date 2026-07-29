@@ -64,11 +64,11 @@ router.post('/:id/allocate', async (req, res) => {
             // 创建账本交易
             const catId = await ensureCategory(conn, req.userId, '储蓄存入', 'expense', '🏦');
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id) VALUES (?, ?, ?, 'expense', ?, ?, CURDATE(), ?)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id) VALUES (?, ?, ?, 'expense', ?, ?, CURRENT_DATE, ?)",
                 [req.userId, accountId, catId, amount, `存入「${goal.name}」`, accountId]
             );
             await conn.query('UPDATE savings_goals SET current_amount = current_amount + ? WHERE id = ?', [amount, id]);
-            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, "deposit", ?, CURDATE(), ?)',
+            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'deposit\', ?, CURRENT_DATE, ?)',
                 [req.userId, id, accountId, amount, `存入「${goal.name}」`]);
         });
         res.json(success(null, '已存入目标'));
@@ -92,10 +92,10 @@ router.post('/:id/withdraw', async (req, res) => {
             // 创建账本交易
             const catId = await ensureCategory(conn, req.userId, '储蓄取出', 'income', '🏦');
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, destination_account_id) VALUES (?, ?, ?, 'income', ?, ?, CURDATE(), ?)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, destination_account_id) VALUES (?, ?, ?, 'income', ?, ?, CURRENT_DATE, ?)",
                 [req.userId, accountId, catId, amount, `取回「${goal.name}」`, accountId]
             );
-            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, "withdraw", ?, CURDATE(), ?)',
+            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'withdraw\', ?, CURRENT_DATE, ?)',
                 [req.userId, id, accountId, amount, `取出「${goal.name}」`]);
         });
         res.json(success(null, '已取回'));
