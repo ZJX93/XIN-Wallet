@@ -1333,27 +1333,33 @@
 .dtt-label { font-weight: 600; }
 .dtt-meta { font-size: 11px; color: var(--muted, #999); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em; }
 
-/* 双面板 summary */
-.debt-summary-grid {
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 12px; margin-bottom: 16px;
+/* 债权/债务构成汇总：与顶部 KPI 互补，只展示应付/应收余额与占比，不重复净额/月供/到期/逾期 */
+.debt-composition { margin-bottom: 16px; }
+.dc-card {
+  display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 18px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 18px 22px;
 }
-.debt-summary-panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px; overflow: hidden;
+.dc-col { display: flex; flex-direction: column; gap: 4px; }
+.dc-col.dc-pay { padding-right: 18px; border-right: 1px solid rgba(255,255,255,0.08); }
+.dc-col.dc-recv { padding-left: 2px; }
+.dc-label { font-size: 12px; color: var(--muted, #999); }
+.dc-val { font-size: 22px; font-weight: 700; font-feature-settings: 'tnum'; }
+.dc-pay .dc-val { color: #f87171; }
+.dc-recv .dc-val { color: #34d399; }
+.dc-sub { font-size: 11px; color: var(--muted, #777); }
+.dc-warn { color: #f59e0b; font-style: normal; }
+.dc-bar {
+  display: flex; height: 8px; border-radius: 999px; overflow: hidden;
+  margin-top: 12px; background: rgba(255,255,255,0.06);
 }
-.dsp-header { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.dsp-header.dsp-pay  { background: linear-gradient(135deg, rgba(239,68,68,0.12),  rgba(239,68,68,0.04)); }
-.dsp-header.dsp-recv { background: linear-gradient(135deg, rgba(16,185,129,0.12),  rgba(16,185,129,0.04)); }
-.dsp-title { font-size: 14px; font-weight: 600; color: var(--text); }
-.dsp-sub   { font-size: 11px; color: var(--muted, #999); margin-top: 2px; }
-.dsp-body  { padding: 12px 16px; }
-.dsp-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; color: var(--muted, #999); }
-.dsp-row strong { color: var(--text); font-weight: 600; font-feature-settings: 'tnum'; }
-.dsp-row.warn strong { color: #f59e0b; }
-.dsp-row.danger strong { color: #ef4444; }
-.dsp-foot { margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); font-size: 11px; color: var(--muted, #777); }
+.dc-bar-seg {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: #fff;
+  transition: width .3s ease;
+}
+.dc-bar-pay { background: linear-gradient(90deg, #ef4444, #f87171); }
+.dc-bar-recv { background: linear-gradient(90deg, #34d399, #10b981); }
 
 .debt-table-wrap { margin-top: 8px; }
 .debt-list { display: flex; flex-direction: column; gap: 8px; }
@@ -1368,7 +1374,9 @@
 
 @media (max-width: 720px) {
   .debt-kpi { grid-template-columns: repeat(2, 1fr); }
-  .debt-summary-grid { grid-template-columns: 1fr; }
+  .dc-card { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
+  .dc-col.dc-pay { padding-right: 0; border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px; }
+  .dc-bar-seg span { display: none; }
   .debt-type-tabs { width: 100%; overflow-x: auto; }
 }
 @media (max-width: 480px) {

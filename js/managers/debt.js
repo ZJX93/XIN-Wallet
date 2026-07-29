@@ -61,11 +61,9 @@ const DebtManager = {
         if (overdueFootEl) overdueFootEl.textContent = '共 ' + fmt((s.payable ? s.payable.overdueAmount : s.overdueAmount) || 0);
         if (countEl) countEl.textContent = `总计 ${s.count || 0} 项（活动 ${s.activeCount || 0} 项）`;
 
-        // 双面板 summary
-        const pEl = document.getElementById('debtPayablePanel');
-        const rEl = document.getElementById('debtReceivablePanel');
-        if (pEl) pEl.innerHTML = this._renderPanel(s.payable || {}, 'payable');
-        if (rEl) rEl.innerHTML = this._renderPanel(s.receivable || {}, 'receivable');
+        // 债权/债务构成汇总（避免与顶部 KPI 重复呈现同一批数字）
+        const compEl = document.getElementById('debtComposition');
+        if (compEl) compEl.innerHTML = this._renderComposition(s);
 
         // 列表
         const debts = this._listCache.filter(d => this._filter === 'all' || d.direction === this._filter);
@@ -81,26 +79,33 @@ const DebtManager = {
         container.querySelectorAll('[data-action="delete-debt"]').forEach(b => b.addEventListener('click', () => this.delete(parseInt(b.dataset.id))));
     },
 
-    // 双面板渲染：会计报表风格
-    _renderPanel(p, kind) {
-        const isPay = kind === 'payable';
-        const title = isPay ? '应付账款 · Payable' : '应收账款 · Receivable';
-        const sub = isPay ? '我方承担偿付义务' : '我方拥有收款权利';
-        const cls = isPay ? 'dsp-pay' : 'dsp-recv';
+    // 债权/债务构成汇总：只呈现"净额由哪些部分组成"，不重复 KPI 里的净额/月供/到期/逾期
+    _renderComposition(s) {
+        const p = s.payable || {}, r = s.receivable || {};
+        const pRem = p.remaining || 0, rRem = r.remaining || 0;
+        const total = pRem + rRem || 1;
+        const pPct = Math.max(2, Math.min(98, Math.round(pRem / total * 100)));
+        const rPct = 100 - pPct;
+        const pLbl = pPct >= 10 ? `<span>${pPct}%</span>` : '';
+        const rLbl = rPct >= 10 ? `<span>${rPct}%</span>` : '';
+        const pOver = p.overdue || 0, rOver = r.overdue || 0;
         return `
-            <div class="dsp-header ${cls}">
-                <div class="dsp-title">${title}</div>
-                <div class="dsp-sub">${sub}</div>
+        <div class="dc-card">
+            <div class="dc-col dc-pay">
+                <span class="dc-label">📥 应付账款余额</span>
+                <strong class="dc-val">${fmt(pRem)}</strong>
+                <span class="dc-sub">${p.count || 0} 笔${pOver ? ` · <em class="dc-warn">逾期 ${pOver}</em>` : ''}</span>
             </div>
-            <div class="dsp-body">
-                <div class="dsp-row"><span>期末余额</span><strong>${fmt(p.remaining || 0)}</strong></div>
-                <div class="dsp-row"><span>${isPay ? '每期应偿付' : '每期应收款'}</span><strong>${fmt((isPay ? p.monthly : p.expectedMonthly) || 0)}</strong></div>
-                <div class="dsp-row"><span>${isPay ? '本月到期笔数' : '本期待收笔数'}</span><strong>${p.dueThisMonth || 0} 笔</strong></div>
-                ${isPay ? `<div class="dsp-row warn"><span>本月待偿金额</span><strong>${fmt(p.dueAmount || 0)}</strong></div>` : ''}
-                <div class="dsp-row ${(p.overdue || 0) > 0 ? 'danger' : ''}"><span>${isPay ? '逾期未偿' : '逾期未收'}</span><strong>${p.overdue || 0} 笔 · ${fmt(p.overdueAmount || 0)}</strong></div>
-                <div class="dsp-foot">总项数 ${p.count || 0}（活动 ${p.activeCount || 0}）</div>
+            <div class="dc-col dc-recv">
+                <span class="dc-label">📤 应收账款余额</span>
+                <strong class="dc-val">${fmt(rRem)}</strong>
+                <span class="dc-sub">${r.count || 0} 笔${rOver ? ` · <em class="dc-warn">逾期 ${rOver}</em>` : ''}</span>
             </div>
-        `;
+        </div>
+        <div class="dc-bar" role="img" aria-label="应付与应收账款余额占比">
+            <div class="dc-bar-seg dc-bar-pay" style="width:${pPct}%">${pLbl}</div>
+            <div class="dc-bar-seg dc-bar-recv" style="width:${rPct}%">${rLbl}</div>
+        </div>`;
     },
 
     // 列表行：直接复用项目全局 goal-card 类（与预算卡片完全一致的 HTML 结构）
