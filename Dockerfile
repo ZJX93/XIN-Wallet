@@ -22,12 +22,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY server ./server
-COPY js ./js
-COPY css ./css
-COPY images ./images
-COPY pages ./pages
-COPY index.html ./
-COPY login.html ./
+# 前端静态资源统一收在 public/ 下，server 以 express.static(public/) 提供
+COPY public ./public
 
 # 容器自带健康检查：等待 /healthz 返回 200
 COPY <<'EOF' /app/docker-healthcheck.js
