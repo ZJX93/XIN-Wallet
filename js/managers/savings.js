@@ -40,11 +40,18 @@ const SavingsGoalManager = {
         document.getElementById('goalIcon').value = '🎯';
         document.getElementById('goalNote').value = '';
         this.populateAccounts();
+        this.populateSourceAccounts();
+        document.getElementById('goalAccount').value = '';
+        document.getElementById('goalSource').value = '';
         document.getElementById('goalModal').classList.add('show');
     },
     populateAccounts() {
         const sel = document.getElementById('goalAccount');
         sel.innerHTML = '<option value="">请选择储蓄账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+    },
+    populateSourceAccounts() {
+        const sel = document.getElementById('goalSource');
+        sel.innerHTML = '<option value="">请选择来源账户 *</option>' + (cache.accounts || []).map(a => `<option value="${a.id}">${escapeHtml(a.icon || "")} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
     },
     edit(id) {
         const g = (this.goals || []).find(x => x.id === id);
@@ -56,7 +63,9 @@ const SavingsGoalManager = {
         document.getElementById('goalIcon').value = g.icon || '🎯';
         document.getElementById('goalNote').value = g.note || '';
         this.populateAccounts();
+        this.populateSourceAccounts();
         document.getElementById('goalAccount').value = g.account_id || '';
+        document.getElementById('goalSource').value = g.source_account_id || '';
         document.getElementById('goalModal').classList.add('show');
     },
     closeModal() { document.getElementById('goalModal').classList.remove('show'); },
@@ -66,12 +75,15 @@ const SavingsGoalManager = {
             name: document.getElementById('goalName').value.trim(),
             target_amount: parseFloat(document.getElementById('goalTarget').value) || 0,
             account_id: document.getElementById('goalAccount').value ? parseInt(document.getElementById('goalAccount').value) : null,
+            source_account_id: document.getElementById('goalSource').value ? parseInt(document.getElementById('goalSource').value) : null,
             icon: document.getElementById('goalIcon').value || '🎯',
             note: document.getElementById('goalNote').value
         };
         if (!body.name) { showToast('请输入目标名称', 'error'); return; }
         if (!body.target_amount || body.target_amount <= 0) { showToast('请输入有效目标金额', 'error'); return; }
         if (!body.account_id) { showToast('请选择储蓄账户', 'error'); return; }
+        if (!body.source_account_id) { showToast('请选择来源账户', 'error'); return; }
+        if (body.source_account_id === body.account_id) { showToast('来源账户不能与储蓄账户相同', 'error'); return; }
         if (editId) {
             try {
                 await api(`/savings-goals/${editId}`, 'PUT', body);
@@ -118,6 +130,8 @@ const SavingsGoalManager = {
         const accSel = document.getElementById('goalAmountAccount');
         accSel.innerHTML = '<option value="">-- 请选择账户 * --</option>' +
             (cache.accounts || []).filter(a => Number(a.id) !== Number(g.account_id)).map(a => `<option value="${a.id}">${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+        // 默认带出目标的来源账户（存入时即默认来源；取回时默认回到来源账户）
+        if (g.source_account_id && Number(g.source_account_id) !== Number(g.account_id)) accSel.value = g.source_account_id;
         const quick = document.getElementById('goalQuickAmounts');
         const presets = isAlloc
             ? [100, 500, 1000, { label: '填满缺口', value: remaining }]
@@ -240,7 +254,7 @@ const SavingsGoalManager = {
                 </div>
                 <div class="goal-amounts"><span>已存 <strong>${fmt(cur)}</strong></span><span>目标 ${fmt(target)}</span></div>
                 <div class="goal-progress"><div class="goal-progress-fill" style="width:${pct}%"></div></div>
-                <div class="goal-amounts"><span class="goal-pct">${pct}%</span><span>${g.acc_name ? '关联 ' + escapeHtml(g.acc_name) : '未关联账户'}</span></div>
+                <div class="goal-amounts"><span class="goal-pct">${pct}%</span><span>${g.acc_name ? '关联 ' + escapeHtml(g.acc_name) : '未关联账户'}${g.source_acc_name ? ' · 来源 ' + escapeHtml(g.source_acc_name) : ''}</span></div>
                 ${g.note ? `<div class="goal-note">${escapeHtml(g.note)}</div>` : ''}
                 <div class="goal-actions">
                     <button class="btn btn-primary" data-alloc="${g.id}">💰 存入</button>

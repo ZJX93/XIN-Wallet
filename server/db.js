@@ -239,6 +239,14 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.create_transaction_id 迁移警告:', err.message);
     }
 
+    // 10) 幂等迁移：savings_goals.source_account_id（存入时默认来源账户，强关联）
+    try {
+      await pool.query(`ALTER TABLE savings_goals ADD COLUMN IF NOT EXISTS source_account_id INT DEFAULT NULL`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_savings_user_source ON savings_goals (user_id, source_account_id)`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ savings_goals.source_account_id 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

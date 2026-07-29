@@ -9,8 +9,11 @@ const { ensureCategory } = require('./utils');
 router.get('/', async (req, res) => {
     try {
         const goals = await db.query(
-            `SELECT g.*, a.name as acc_name, a.icon as acc_icon, a.balance as acc_balance
-             FROM savings_goals g LEFT JOIN accounts a ON g.account_id = a.id
+            `SELECT g.*, a.name as acc_name, a.icon as acc_icon, a.balance as acc_balance,
+                    sa.name as source_acc_name
+             FROM savings_goals g
+             LEFT JOIN accounts a ON g.account_id = a.id
+             LEFT JOIN accounts sa ON g.source_account_id = sa.id
              WHERE g.user_id = ? ORDER BY g.status, g.id`,
             [req.userId]
         );
@@ -18,43 +21,55 @@ router.get('/', async (req, res) => {
             ...g,
             target_amount: parseFloat(g.target_amount),
             // 关联真实账户时，current_amount 直接镜像该账户余额（single source of truth）
-            current_amount: g.account_id ? parseFloat(g.acc_balance || 0) : parseFloat(g.current_amount || 0)
+            current_amount: g.account_id ? parseFloat(g.acc_balance || 0) : parseFloat(g.current_amount || 0),
+            source_account_id: g.source_account_id || null,
+            source_acc_name: g.source_acc_name || null
         }))));
     } catch (err) { handleServerError(res, err); }
 });
 
-// 新增储蓄目标（必须关联一个真实账户作为储蓄账户）
+// 新增储蓄目标（必须关联一个真实账户作为储蓄账户，并指定默认来源账户）
 router.post('/', async (req, res) => {
     try {
-        const { name, target_amount, account_id, icon, note } = req.body;
+        const { name, target_amount, account_id, source_account_id, icon, note } = req.body;
         if (!name) return res.status(400).json(fail('目标名称必填'));
         const accId = account_id ? parseInt(account_id) : null;
         if (!accId) return res.status(400).json(fail('请选择储蓄账户'));
+        const srcId = source_account_id ? parseInt(source_account_id) : null;
+        if (!srcId) return res.status(400).json(fail('请选择来源账户'));
+        if (srcId === accId) return res.status(400).json(fail('来源账户不能与储蓄账户相同'));
         const acc = await db.queryOne('SELECT id, balance FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
         if (!acc) return res.status(400).json(fail('储蓄账户不存在'));
+        const src = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [srcId, req.userId]);
+        if (!src) return res.status(400).json(fail('来源账户不存在'));
         const result = await db.query(
-            `INSERT INTO savings_goals (user_id, name, target_amount, current_amount, account_id, icon, note) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, name, parseFloat(target_amount) || 0, parseFloat(acc.balance || 0), accId, icon || '🎯', note || '']
+            `INSERT INTO savings_goals (user_id, name, target_amount, current_amount, account_id, source_account_id, icon, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, name, parseFloat(target_amount) || 0, parseFloat(acc.balance || 0), accId, srcId, icon || '🎯', note || '']
         );
         res.json(success({ id: result.insertId }, '储蓄目标已创建'));
     } catch (err) { handleServerError(res, err); }
 });
 
-// 更新储蓄目标（储蓄账户必选）
+// 更新储蓄目标（储蓄账户、来源账户必选）
 router.put('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { name, target_amount, account_id, icon, note } = req.body;
+        const { name, target_amount, account_id, source_account_id, icon, note } = req.body;
         if (!name) return res.status(400).json(fail('目标名称必填'));
         const accId = account_id ? parseInt(account_id) : null;
         if (!accId) return res.status(400).json(fail('请选择储蓄账户'));
+        const srcId = source_account_id ? parseInt(source_account_id) : null;
+        if (!srcId) return res.status(400).json(fail('请选择来源账户'));
+        if (srcId === accId) return res.status(400).json(fail('来源账户不能与储蓄账户相同'));
         const goal = await db.queryOne('SELECT * FROM savings_goals WHERE id = ? AND user_id = ?', [id, req.userId]);
         if (!goal) return res.status(404).json(fail('储蓄目标不存在'));
         const acc = await db.queryOne('SELECT id, balance FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
         if (!acc) return res.status(400).json(fail('储蓄账户不存在'));
+        const src = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [srcId, req.userId]);
+        if (!src) return res.status(400).json(fail('来源账户不存在'));
         await db.query(
-            `UPDATE savings_goals SET name = ?, target_amount = ?, account_id = ?, current_amount = ?, icon = ?, note = ? WHERE id = ?`,
-            [name, parseFloat(target_amount) || 0, accId, parseFloat(acc.balance || 0), icon || '🎯', note || '', id]
+            `UPDATE savings_goals SET name = ?, target_amount = ?, account_id = ?, source_account_id = ?, current_amount = ?, icon = ?, note = ? WHERE id = ?`,
+            [name, parseFloat(target_amount) || 0, accId, srcId, parseFloat(acc.balance || 0), icon || '🎯', note || '', id]
         );
         res.json(success(null, '储蓄目标已更新'));
     } catch (err) { handleServerError(res, err); }

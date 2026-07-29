@@ -352,7 +352,8 @@ CREATE TABLE IF NOT EXISTS savings_goals (
   name VARCHAR(100) NOT NULL,
   target_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
   current_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-  account_id INT DEFAULT NULL,
+  account_id INT DEFAULT NULL,                       -- 储蓄账户：钱存入的目标账户（强关联）
+  source_account_id INT DEFAULT NULL,                -- 来源账户：默认从哪个账户转入（强关联，不能等于 account_id）
   icon VARCHAR(10) DEFAULT '🎯',
   note VARCHAR(200) DEFAULT '',
   status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','completed','archived')),
