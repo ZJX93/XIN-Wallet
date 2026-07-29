@@ -103,7 +103,7 @@ const DebtManager = {
         `;
     },
 
-    // 列表行：账表风格
+    // 列表行：与理财卡片对齐的"投入/市值"双金额 + 进度条 + 4 按钮节奏
     _renderRow(d) {
         const isRecv = d.direction === 'receivable';
         const cls = isRecv ? 'dtr-recv' : 'dtr-pay';
@@ -113,12 +113,21 @@ const DebtManager = {
         const statusLabel = ({ active: '正常', paid_off: '已结清', overdue: '逾期' })[d.status] || d.status;
         const statusCls = ({ active: 'dtr-status-active', paid_off: 'dtr-status-done', overdue: 'dtr-status-overdue' })[d.status] || '';
         const pct = d.principal > 0 ? Math.min(100, Math.round(d.paid_total / d.principal * 100)) : 0;
-        const balField = isRecv ? '待收本金' : '剩余本金';
-        const periodField = isRecv ? '预期月收' : '每期应偿';
+        // 对齐理财卡片的"投入/市值"行：左边金额 = 本金，右边金额 = 剩余/待收
+        const leftField = isRecv ? '投入' : '本金';
+        const rightField = isRecv ? '待收' : '剩余';
+        const rightValueClass = isRecv ? 'text-recv' : 'text-pay';
         const actBtn = isRecv
             ? `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记收款</button>`
             : `<button class="btn btn-primary btn-sm" data-action="repay-debt" data-id="${d.id}">登记还款</button>`;
-        const progCls = isRecv ? 'recv' : (d.status === 'overdue' ? 'danger' : '');
+        // 进度条颜色（与理财"红跌绿涨"同语义）
+        const progCls = d.status === 'overdue' ? 'danger' : (isRecv ? 'recv' : (pct >= 100 ? 'recv' : 'pay'));
+        // 对齐理财"年化 X%"行：左 = 利率 + 进度百分比（颜色随进度），右 = 期限/方式
+        const term = parseInt(d.term_months) || 0;
+        const paidTimes = term > 0 ? Math.round(term * pct / 100) : 0;
+        const rateLine = d.interest_rate ? `${d.interest_rate}%` : '—';
+        const termLine = term > 0 ? `${paidTimes}/${term} 期` : (isRecv ? '随时收回' : '无固定期数');
+        const pctCls = isRecv ? (pct >= 50 ? 'positive' : 'neutral') : (pct >= 50 ? 'positive' : 'negative');
         return `
         <div class="debt-row ${cls} ${d.status === 'paid_off' ? 'is-done' : ''}">
             <div class="dr-head">
@@ -136,14 +145,19 @@ const DebtManager = {
                     <button class="btn btn-ghost btn-sm" data-action="delete-debt" data-id="${d.id}" title="删除">删除</button>
                 </div>
             </div>
-            <div class="dr-grid">
-                <div class="dr-cell"><span class="dr-label">对方</span><span class="dr-value">${escapeHtml(d.creditor || '—')}</span></div>
-                <div class="dr-cell"><span class="dr-label">本金</span><span class="dr-value">${fmt(d.principal)}</span></div>
-                <div class="dr-cell"><span class="dr-label">${balField}</span><span class="dr-value ${isRecv ? 'text-recv' : 'text-pay'}">${fmt(d.remaining)}</span></div>
-                <div class="dr-cell"><span class="dr-label">年利率</span><span class="dr-value">${d.interest_rate ? d.interest_rate + '%' : '—'}</span></div>
-                <div class="dr-cell"><span class="dr-label">${periodField}</span><span class="dr-value">${fmt(d.monthly_payment)}</span></div>
-                <div class="dr-cell"><span class="dr-label">到期日</span><span class="dr-value">${d.due_date || '—'}</span></div>
-                <div class="dr-cell"><span class="dr-label">还款方式</span><span class="dr-value">${methodLabel}</span></div>
+            <div class="dr-amounts">
+                <span class="dr-amount-item"><span class="dr-amount-label">${leftField}</span><span class="dr-amount-value">${fmt(d.principal)}</span></span>
+                <span class="dr-amount-item"><span class="dr-amount-label">${rightField}</span><span class="dr-amount-value ${rightValueClass}">${fmt(d.remaining)}</span></span>
+            </div>
+            <div class="dr-meta">
+                <span class="dr-meta-left">
+                    <span class="dr-meta-pct ${pctCls}">${isRecv ? '+' : ''}${pct}%</span>
+                    <span class="dr-meta-rate">年利率 ${rateLine}</span>
+                </span>
+                <span class="dr-meta-right">
+                    <span class="dr-meta-term">${termLine}</span>
+                    <span class="dr-meta-method">${methodLabel}</span>
+                </span>
             </div>
             <div class="dr-progress">
                 <div class="dr-progress-bar ${progCls}" style="width:${pct}%"></div>
