@@ -115,7 +115,7 @@ const SavingsGoalManager = {
         // 填充账户下拉
         const accSel = document.getElementById('goalAmountAccount');
         accSel.innerHTML = '<option value="">-- 请选择账户 * --</option>' +
-            (cache.accounts || []).map(a => `<option value="${a.id}" ${g.account_id === a.id ? 'selected' : ''}>${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+            (cache.accounts || []).map(a => `<option value="${a.id}" ${Number(g.account_id) === Number(a.id) ? 'selected' : ''}>${escapeHtml(a.icon || '')} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
         const quick = document.getElementById('goalQuickAmounts');
         const presets = isAlloc
             ? [100, 500, 1000, { label: '填满缺口', value: remaining }]
