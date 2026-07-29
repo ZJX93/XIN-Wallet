@@ -249,57 +249,68 @@
 
             <!-- ========== 债务管理（应付账款 / 应收账款） ========== -->
             <section class="page" id="page-debts">
-                <!-- 顶部关键指标（4 KPI，语义化） -->
-                <div class="glass-card debt-kpi">
-                    <div class="dkpi-item">
-                        <div class="dkpi-label">期末负债净额</div>
-                        <div class="dkpi-value" id="debtTotalRemaining">¥0</div>
-                        <div class="dkpi-foot">应付 − 应收</div>
+                <!-- 顶部汇总：KPI + 应收/应付余额 + 占比条（统一收纳，避免信息分散） -->
+                <div class="glass-card debt-summary">
+                    <div class="debt-kpi">
+                        <div class="dkpi-item">
+                            <div class="dkpi-label">期末负债净额</div>
+                            <div class="dkpi-value" id="debtTotalRemaining">¥0</div>
+                            <div class="dkpi-foot">应付 − 应收</div>
+                        </div>
+                        <div class="dkpi-item">
+                            <div class="dkpi-label">本期应偿付</div>
+                            <div class="dkpi-value" id="debtTotalMonthly">¥0</div>
+                            <div class="dkpi-foot">应付账款月供合计</div>
+                        </div>
+                        <div class="dkpi-item">
+                            <div class="dkpi-label">本月到期</div>
+                            <div class="dkpi-value" id="debtDueThisMonth">0</div>
+                            <div class="dkpi-foot" id="debtDueThisMonthFoot">0 笔</div>
+                        </div>
+                        <div class="dkpi-item dkpi-danger">
+                            <div class="dkpi-label">逾期未偿</div>
+                            <div class="dkpi-value" id="debtOverdue">0</div>
+                            <div class="dkpi-foot" id="debtOverdueFoot">0 笔</div>
+                        </div>
+                        <div class="dkpi-item dkpi-pay">
+                            <div class="dkpi-label">📥 应付账款余额</div>
+                            <div class="dkpi-value" id="debtPayableRemaining">¥0</div>
+                            <div class="dkpi-foot" id="debtPayableFoot">0 笔</div>
+                        </div>
+                        <div class="dkpi-item dkpi-recv">
+                            <div class="dkpi-label">📤 应收账款余额</div>
+                            <div class="dkpi-value" id="debtReceivableRemaining">¥0</div>
+                            <div class="dkpi-foot" id="debtReceivableFoot">0 笔</div>
+                        </div>
                     </div>
-                    <div class="dkpi-item">
-                        <div class="dkpi-label">本期应偿付</div>
-                        <div class="dkpi-value" id="debtTotalMonthly">¥0</div>
-                        <div class="dkpi-foot">应付账款月供合计</div>
-                    </div>
-                    <div class="dkpi-item">
-                        <div class="dkpi-label">本月到期</div>
-                        <div class="dkpi-value" id="debtDueThisMonth">0</div>
-                        <div class="dkpi-foot" id="debtDueThisMonthFoot">0 笔</div>
-                    </div>
-                    <div class="dkpi-item dkpi-danger">
-                        <div class="dkpi-label">逾期未偿</div>
-                        <div class="dkpi-value" id="debtOverdue">0</div>
-                        <div class="dkpi-foot" id="debtOverdueFoot">0 笔</div>
-                    </div>
+                    <div class="debt-ratio" id="debtRatioBar"></div>
                 </div>
 
                 <!-- 主操作区 -->
                 <div class="glass-card">
                     <div class="page-toolbar">
-                        <h3 class="card-title" style="margin:0">📋 债权债务明细</h3>
+                        <div class="toolbar-left">
+                            <h3 class="card-title" style="margin:0">📋 债权债务明细</h3>
+                            <!-- 业务类型 Tab：与标题同一行 -->
+                            <div class="debt-type-tabs">
+                                <button class="debt-type-tab active" data-debt-dir="all">
+                                    <span class="dtt-label">全部</span>
+                                </button>
+                                <button class="debt-type-tab" data-debt-dir="payable">
+                                    <span class="dtt-icon">📥</span>
+                                    <span class="dtt-label">应付账款</span>
+                                </button>
+                                <button class="debt-type-tab" data-debt-dir="receivable">
+                                    <span class="dtt-icon">📤</span>
+                                    <span class="dtt-label">应收账款</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="page-toolbar-actions">
                             <span class="see-all" id="debtCount"></span>
                             <button class="btn btn-primary" id="addDebtBtn">＋ 新增</button>
                         </div>
                     </div>
-                    <!-- 业务类型 Tab -->
-                    <div class="debt-type-tabs">
-                        <button class="debt-type-tab active" data-debt-dir="all">
-                            <span class="dtt-label">全部</span>
-                        </button>
-                        <button class="debt-type-tab" data-debt-dir="payable">
-                            <span class="dtt-icon">📥</span>
-                            <span class="dtt-label">应付账款</span>
-                            <span class="dtt-meta">Payable</span>
-                        </button>
-                        <button class="debt-type-tab" data-debt-dir="receivable">
-                            <span class="dtt-icon">📤</span>
-                            <span class="dtt-label">应收账款</span>
-                            <span class="dtt-meta">Receivable</span>
-                        </button>
-                    </div>
-                    <!-- 债权/债务构成汇总 -->
-                    <div class="debt-composition" id="debtComposition"></div>
                     <!-- 列表（账表式） -->
                     <div class="debt-table-wrap">
                         <div class="debt-list" id="debtList"></div>

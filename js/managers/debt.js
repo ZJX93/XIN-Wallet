@@ -61,8 +61,19 @@ const DebtManager = {
         if (overdueFootEl) overdueFootEl.textContent = '共 ' + fmt((s.payable ? s.payable.overdueAmount : s.overdueAmount) || 0);
         if (countEl) countEl.textContent = `总计 ${s.count || 0} 项（活动 ${s.activeCount || 0} 项）`;
 
-        // 债权/债务构成汇总（避免与顶部 KPI 重复呈现同一批数字）
-        const compEl = document.getElementById('debtComposition');
+        // 应收/应付余额（并入顶部汇总区 KPI）
+        const p = s.payable || {}, r = s.receivable || {};
+        const payRemEl = document.getElementById('debtPayableRemaining');
+        const recvRemEl = document.getElementById('debtReceivableRemaining');
+        const payFootEl = document.getElementById('debtPayableFoot');
+        const recvFootEl = document.getElementById('debtReceivableFoot');
+        if (payRemEl) payRemEl.textContent = fmt(p.remaining || 0);
+        if (recvRemEl) recvRemEl.textContent = fmt(r.remaining || 0);
+        if (payFootEl) payFootEl.textContent = `${p.count || 0} 笔${p.overdue ? ' · 逾期 ' + p.overdue : ''}`;
+        if (recvFootEl) recvFootEl.textContent = `${r.count || 0} 笔${r.overdue ? ' · 逾期 ' + r.overdue : ''}`;
+
+        // 应收/应付余额占比条（渲染进顶部汇总区 #debtRatioBar）
+        const compEl = document.getElementById('debtRatioBar');
         if (compEl) compEl.innerHTML = this._renderComposition(s);
 
         // 列表
@@ -79,29 +90,16 @@ const DebtManager = {
         container.querySelectorAll('[data-action="delete-debt"]').forEach(b => b.addEventListener('click', () => this.delete(parseInt(b.dataset.id))));
     },
 
-    // 债权/债务构成汇总：只呈现"净额由哪些部分组成"，不重复 KPI 里的净额/月供/到期/逾期
+    // 应收/应付余额占比条（渲染进顶部汇总区 #debtRatioBar，不再重复数字）
     _renderComposition(s) {
         const p = s.payable || {}, r = s.receivable || {};
         const pRem = p.remaining || 0, rRem = r.remaining || 0;
         const total = pRem + rRem || 1;
         const pPct = Math.max(2, Math.min(98, Math.round(pRem / total * 100)));
         const rPct = 100 - pPct;
-        const pLbl = pPct >= 10 ? `<span>${pPct}%</span>` : '';
-        const rLbl = rPct >= 10 ? `<span>${rPct}%</span>` : '';
-        const pOver = p.overdue || 0, rOver = r.overdue || 0;
+        const pLbl = pPct >= 12 ? `<span>${pPct}% 应付</span>` : '';
+        const rLbl = rPct >= 12 ? `<span>${rPct}% 应收</span>` : '';
         return `
-        <div class="dc-card">
-            <div class="dc-col dc-pay">
-                <span class="dc-label">📥 应付账款余额</span>
-                <strong class="dc-val">${fmt(pRem)}</strong>
-                <span class="dc-sub">${p.count || 0} 笔${pOver ? ` · <em class="dc-warn">逾期 ${pOver}</em>` : ''}</span>
-            </div>
-            <div class="dc-col dc-recv">
-                <span class="dc-label">📤 应收账款余额</span>
-                <strong class="dc-val">${fmt(rRem)}</strong>
-                <span class="dc-sub">${r.count || 0} 笔${rOver ? ` · <em class="dc-warn">逾期 ${rOver}</em>` : ''}</span>
-            </div>
-        </div>
         <div class="dc-bar" role="img" aria-label="应付与应收账款余额占比">
             <div class="dc-bar-seg dc-bar-pay" style="width:${pPct}%">${pLbl}</div>
             <div class="dc-bar-seg dc-bar-recv" style="width:${rPct}%">${rLbl}</div>
