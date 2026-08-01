@@ -1,0 +1,67 @@
+name: PR Test Gate
+
+# M7 · CI 测试门禁
+# 在 PR / 主干 push 时自动跑：依赖安装 → 数据库 schema 初始化 → 测试套件 → 路由挂载校验。
+# 目标：让“有完整测试套件却不在 CI 跑”成为历史，PR 不能带病合并。
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Test & Route Verify
+    runs-on: ubuntu-latest
+
+    # PostgreSQL 16 服务容器，供集成测试使用（与本地 docker-compose 一致）
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: xinwallet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: xinwallet
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize database schema
+        # schema.sql 内含系统分类种子（is_system），一次性建表 + 种子
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d xinwallet -v ON_ERROR_STOP=1 -f server/schema.sql
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Verify routes mounted
+        # 静态校验：所有 routes/*.js 定义的路由都已在 routes.js 挂载，防止漏挂
+        run: npm run test:routes
