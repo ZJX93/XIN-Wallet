@@ -82,6 +82,14 @@ function validateValue(value, rule, fieldPath) {
         if (rule.required) return `${fieldPath} is required`;
         return null;
     }
+
+    // query/params 参数都是字符串，对 int/number 类型自动转换后再检查
+    if ((rule.type === 'int' || rule.type === 'number') && typeof value === 'string') {
+        const n = Number(value);
+        if (Number.isNaN(n)) return `${fieldPath} must be of type ${rule.type}`;
+        value = n;
+    }
+
     const typeCheck = TYPES[rule.type];
     if (!typeCheck) throw new Error(`Unknown type: ${rule.type}`);
     if (!typeCheck(value)) return `${fieldPath} must be of type ${rule.type}`;
@@ -122,8 +130,15 @@ function validate(schema) {
             const rules = schema[source];
             if (!rules) continue;
             for (const [field, rule] of Object.entries(rules)) {
-                const err = validateValue(req[source][field], rule, `${source}.${field}`);
-                if (err) errors.push(err);
+                const original = req[source][field];
+                const err = validateValue(original, rule, `${source}.${field}`);
+                if (err) { errors.push(err); continue; }
+                // 将 int/number 自动转换后的值写回 req，确保后续路由拿到正确类型
+                if (original !== undefined && original !== null && original !== '') {
+                    if ((rule.type === 'int' || rule.type === 'number') && typeof original === 'string') {
+                        req[source][field] = Number(original);
+                    }
+                }
             }
         }
         if (errors.length > 0) {
