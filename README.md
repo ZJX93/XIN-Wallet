@@ -1,6 +1,6 @@
 # 鑫钱包· 个人财务助手
 
-<img src="images/logo.png" alt="鑫钱包" width="25%" />
+<img src="public/images/logo.png" alt="鑫钱包" width="25%" />
 
 > 本地私有部署的个人财务管理工具：记账、多账户、内部转账、预算、理财持仓追踪、统计分析、报表导出。
 > 技术栈：Node.js + Express + PostgreSQL + 原生前端(毛玻璃 UI) + Chart.js。
