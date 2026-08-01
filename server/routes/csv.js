@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { parseCsvLine } = require('../validate');
+const { parseCsvLine, toAmount } = require('../validate');
 const { success, fail, handleServerError } = require('./_helpers');
 const { encrypt, decrypt } = require('../crypto');
 
@@ -69,8 +69,8 @@ router.post('/import/csv', async (req, res) => {
                 const row = {};
                 header.forEach((h, idx) => row[h] = (cols[idx] || '').trim());
                 const date = row['date'] || new Date().toISOString().split('T')[0];
-                const amount = parseFloat(row['amount']);
-                if (!amount || amount <= 0) continue;
+                const amount = toAmount(row['amount']);
+                if (amount === null) continue;
                 const typeVal = (row['type'] === '收入' || row['type'] === 'income') ? 'income' : 'expense';
                 const acc = await db.queryOne('SELECT id FROM accounts WHERE user_id = ? AND name = ?', [req.userId, row['account'] || '']);
                 if (!acc) { errors.push(`第 ${i} 行：账户 "${row['account']}" 不存在`); continue; }
@@ -192,8 +192,8 @@ router.post('/import/full', async (req, res) => {
                 );
                 const validTypes = ['income', 'expense', 'transfer_in', 'transfer_out'];
                 const typeVal = validTypes.includes(t.type) ? t.type : 'expense';
-                const amount = Number(t.amount);
-                if (!Number.isFinite(amount) || amount <= 0) continue;
+                const amount = toAmount(t.amount);
+                if (amount === null) continue;
                 await conn.query(
                     'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
                     [userId, aid, c && c.length ? c[0].id : 14, typeVal, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
@@ -205,8 +205,8 @@ router.post('/import/full', async (req, res) => {
                 if (!t) continue;
                 const fa = acMap[t.from_account], ta = acMap[t.to_account];
                 if (!fa || !ta) continue;
-                const amount = Number(t.amount);
-                if (!Number.isFinite(amount) || amount <= 0) continue;
+                const amount = toAmount(t.amount);
+                if (amount === null) continue;
                 await conn.query(
                     'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, \'completed\')',
                     [userId, fa, ta, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]

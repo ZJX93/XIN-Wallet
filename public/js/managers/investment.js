@@ -314,11 +314,11 @@ const InvestmentManager = {
     },
     // 进入页面自动刷新行情
     async autoRefreshQuotes() {
-        const lastRefresh = sessionStorage.getItem('inv_last_refresh');
+        const lastRefresh = localStorage.getItem('inv_last_refresh');
         const now = Date.now();
         // 5分钟内不重复刷新
         if (lastRefresh && now - parseInt(lastRefresh) < 300000) return;
-        sessionStorage.setItem('inv_last_refresh', String(now));
+        localStorage.setItem('inv_last_refresh', String(now));
         await this.refreshAllQuotes();
     },
     async refresh() {
