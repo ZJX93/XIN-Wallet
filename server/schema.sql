@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS investment_types (
   name VARCHAR(50) NOT NULL,
   icon VARCHAR(10) DEFAULT '📈',
   risk_level VARCHAR(10) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high','very_high')),
-  category VARCHAR(10) NOT NULL DEFAULT 'fund' CHECK (category IN ('fund','stock','deposit','other')),
+  category VARCHAR(10) NOT NULL DEFAULT 'fund' CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex')),
   description VARCHAR(200) DEFAULT '',
   sort_order INT DEFAULT 0,
   is_system BOOLEAN NOT NULL DEFAULT FALSE,

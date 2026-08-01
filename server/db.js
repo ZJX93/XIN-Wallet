@@ -260,7 +260,26 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.is_system 迁移警告:', err.message);
     }
 
-    // 12) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
+    // 12) 幂等迁移：扩展 investment_types.category CHECK 约束，支持新增品类
+    //     旧约束仅允许 fund/stock/deposit/other，需替换为包含 hk_stock/us_stock/commodity/crypto/forex
+    try {
+      // 删除旧约束（名称可能为 investment_types_category_check 或系统自动生成）
+      const { rows: constraints } = await pool.query(`
+        SELECT conname FROM pg_constraint
+        WHERE conrelid = 'investment_types'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%category%'
+      `);
+      for (const { conname } of constraints) {
+        await pool.query(`ALTER TABLE investment_types DROP CONSTRAINT IF EXISTS "${conname}"`);
+      }
+      // 重建更宽泛的约束
+      await pool.query(`ALTER TABLE investment_types ADD CONSTRAINT investment_types_category_check
+        CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex'))`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ category CHECK 约束更新警告:', err.message);
+    }
+
+    // 13) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
     try {
       await pool.query(`
         INSERT INTO investment_types (id, name, icon, risk_level, description, sort_order, category, is_system)
