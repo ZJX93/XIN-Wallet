@@ -1,6 +1,21 @@
 /* ============================================
    鑫钱包 · 行情数据服务
    封装外部行情 API 调用，统一错误处理和降级策略
+
+   数据源：
+   - 腾讯证券 qt.gtimg.cn（A股/港股/美股/商品）：免费、GBK、无需 API key
+   - 东方财富 fund.eastmoney.com（基金净值）
+   - 币安 Binance API（加密货币）：免费公开接口
+
+   支持的品类（category）：
+   - stock（A股）     → 腾讯 qt.gtimg.cn/q=sh/sz+代码
+   - hk_stock（港股）  → 腾讯 qt.gtimg.cn/q=hk+代码
+   - us_stock（美股）  → 腾讯 qt.gtimg.cn/q=t_us+代码
+   - fund（基金）      → 东方财富 api.fund.eastmoney.com
+   - commodity（商品） → 腾讯 qt.gtimg.cn/q=hf_+代码
+   - crypto（加密货币）→ 币安 api.binance.com
+   - forex（外汇）     → 腾讯 qt.gtimg.cn/q=fx_+代码
+   - deposit / other  → 不查行情
    ============================================ */
 
 const https = require('https');
@@ -36,7 +51,7 @@ function httpGet(url, options = {}) {
 }
 
 // ==========================================
-// 代码类型检测与行情策略
+// 代码格式化与品类识别
 // ==========================================
 
 /**
@@ -50,6 +65,48 @@ function detectCodeType(code) {
 }
 
 /**
+ * 根据品类规范化用户输入的代码
+ * - hk_stock：去除非数字，补零到5位 → hk00700
+ * - us_stock：去点、去空格、转大写 → t_usAAPL
+ * - commodity：hf_GC / hf_SI / hf_CL 直接使用
+ * - crypto：BTCUSDT / ETHUSDT 转大写
+ * - forex：fx_susdcnh 等
+ */
+function normalizeCode(category, rawCode) {
+  const c = String(rawCode || '').trim();
+  if (!c) return c;
+
+  switch (category) {
+    case 'hk_stock': {
+      // 去掉非数字字符（如 . 空格 -），确保为5位数字（不足左侧补0）
+      const num = c.replace(/[^0-9]/g, '');
+      return 'hk' + num.padStart(5, '0');
+    }
+    case 'us_stock': {
+      // 去掉点号、空格，转大写，去除交易所后缀（.OQ .N .O 等）
+      let us = c.replace(/[.\s]/g, '').toUpperCase();
+      // 如果用户已输入 t_usXXX 格式，保持不变
+      if (us.startsWith('T_US')) return us;
+      // 去掉常见的雅虎/腾讯后缀
+      us = us.replace(/\.(OQ|N|O|A|Q)$/, '');
+      return 't_us' + us;
+    }
+    case 'commodity':
+      // 如果用户输入了 hf_ 前缀则直接使用，否则补上
+      if (c.startsWith('hf_')) return c;
+      return 'hf_' + c;
+    case 'crypto':
+      // 统一转大写，去掉 / - 符号
+      return c.replace(/[/\-\s]/g, '').toUpperCase();
+    case 'forex':
+      if (c.startsWith('fx_')) return c;
+      return 'fx_' + c;
+    default:
+      return c;
+  }
+}
+
+/**
  * 根据投资品类 + 代码决定查询策略
  */
 function getQuoteStrategy(invTypeCategory, code) {
@@ -59,11 +116,36 @@ function getQuoteStrategy(invTypeCategory, code) {
   // 存款/其他品类不查行情
   if (invTypeCategory === 'deposit' || invTypeCategory === 'other') return null;
 
-  // 股票类型 → 腾讯证券
+  // A股 → 腾讯证券
   if (invTypeCategory === 'stock') {
     const prefix = /^s[hz]/i.test(c) ? c.substring(0, 2).toLowerCase() : 'sh';
     const numCode = c.replace(/^s[hz]/i, '');
     return { type: 'stock', code: prefix + numCode };
+  }
+
+  // 港股 → 腾讯证券
+  if (invTypeCategory === 'hk_stock') {
+    return { type: 'stock', code: normalizeCode('hk_stock', c) };
+  }
+
+  // 美股 → 腾讯证券
+  if (invTypeCategory === 'us_stock') {
+    return { type: 'stock', code: normalizeCode('us_stock', c) };
+  }
+
+  // 商品/黄金 → 腾讯证券
+  if (invTypeCategory === 'commodity') {
+    return { type: 'commodity', code: normalizeCode('commodity', c) };
+  }
+
+  // 外汇 → 腾讯证券
+  if (invTypeCategory === 'forex') {
+    return { type: 'stock', code: normalizeCode('forex', c) };
+  }
+
+  // 加密货币 → 币安 API
+  if (invTypeCategory === 'crypto') {
+    return { type: 'crypto', code: normalizeCode('crypto', c) };
   }
 
   // 基金类型 → 东方财富（纯数字）；带前缀的走股票
@@ -110,40 +192,129 @@ async function fetchFundQuote(code) {
 }
 
 // ==========================================
-// 股票行情（腾讯证券，GBK 编码）
+// 腾讯证券行情（A股/港股/美股/商品/外汇）
 // ==========================================
 
 /**
- * 查询股票实时行情
+ * 解码腾讯接口返回的 GBK 文本
  */
-async function fetchStockQuote(code) {
-  const url = `https://qt.gtimg.cn/q=${code}`;
-  const buf = await httpGet(url, 6000);
-
-  // 腾讯接口返回 GBK 编码
-  let raw;
+function decodeTencentResponse(buf) {
   try {
-    raw = require('iconv-lite').decode(buf, 'gbk');
+    return require('iconv-lite').decode(buf, 'gbk');
   } catch (_) {
-    raw = buf.toString('utf8');
+    return buf.toString('utf8');
   }
+}
 
-  // 格式: v_sh600519="1~贵州茅台~600519~..."
+/**
+ * 解析腾讯 A股/港股/美股 ~ 分隔格式
+ * 格式: v_sh600519="1~名称~代码~价格~..."
+ *        v_hk00700="100~名称~代码~价格~..."
+ *        v_t_usAAPL="delay~名称~代码~价格~..."
+ */
+function parseTencentTilde(raw, code) {
   const vMatch = raw.match(/="([^"]+)"/);
   if (!vMatch) throw new Error('股票数据解析失败');
 
   const parts = vMatch[1].split('~');
-  if (parts.length < 35) throw new Error('股票数据字段不足');
+  if (parts.length < 5) throw new Error('股票数据字段不足');
+
+  // 美股第一字段是 "delay" 而非数字，字段整体右移一位
+  const isUS = parts[0] === 'delay';
+  const idxName    = isUS ? 1 : 1;   // 名称始终在 parts[1]
+  const idxCode    = isUS ? 2 : 2;   // 代码在 parts[2]
+  const idxPrice   = isUS ? 3 : 3;   // 当前价
+  const idxOpen    = isUS ? 5 : 5;   // 开盘价
+  const idxChange  = isUS ? 31 : 31; // 涨跌额
+  const idxChangeP = isUS ? 32 : 32; // 涨跌幅
+  const idxHigh    = isUS ? 33 : 33; // 最高价
+  const idxLow     = isUS ? 34 : 34; // 最低价
 
   return {
-    code: parts[2] || code,
-    name: parts[1] || '',
-    price: parseFloat(parts[3]) || 0,
-    change: parseFloat(parts[31]) || 0,
-    changePercent: parseFloat(parts[32]) || 0,
-    high: parseFloat(parts[33]) || 0,
-    low: parseFloat(parts[34]) || 0,
-    open: parseFloat(parts[5]) || 0
+    code: parts[idxCode] || code,
+    name: parts[idxName] || '',
+    price: parseFloat(parts[idxPrice]) || 0,
+    change: parseFloat(parts[idxChange]) || 0,
+    changePercent: parseFloat(parts[idxChangeP]) || 0,
+    high: parseFloat(parts[idxHigh]) || 0,
+    low: parseFloat(parts[idxLow]) || 0,
+    open: parseFloat(parts[idxOpen]) || 0
+  };
+}
+
+/**
+ * 解析腾讯商品/期货 , 分隔格式
+ * 格式: v_hf_GC="4096.38,-1.54,4097.60,4098.60,..."
+ */
+function parseTencentComma(raw, code) {
+  const vMatch = raw.match(/="([^"]+)"/);
+  if (!vMatch) throw new Error('商品数据解析失败');
+
+  const parts = vMatch[1].split(',');
+  if (parts.length < 4) throw new Error('商品数据字段不足');
+
+  // parts[0]=最新价, parts[1]=涨跌额, parts[2]=昨收, parts[3]=开盘, parts[5]=最低, parts[4]=最高
+  return {
+    code,
+    name: '',
+    price: parseFloat(parts[0]) || 0,
+    change: parseFloat(parts[1]) || 0,
+    changePercent: 0, // 商品接口不直接提供涨跌幅
+    high: parseFloat(parts[4]) || 0,
+    low: parseFloat(parts[5]) || 0,
+    open: parseFloat(parts[3]) || 0
+  };
+}
+
+/**
+ * 查询腾讯证券实时行情（A股/港股/美股/商品/外汇）
+ */
+async function fetchStockQuote(code) {
+  const url = `https://qt.gtimg.cn/q=${code}`;
+  const buf = await httpGet(url, 6000);
+  const raw = decodeTencentResponse(buf);
+
+  // 判断返回格式：逗号分隔（商品/期货）还是波浪号分隔（股票）
+  const vMatch = raw.match(/="([^"]+)"/);
+  if (!vMatch) throw new Error('行情数据解析失败');
+
+  // 如果内容包含逗号且不以 ~ 分隔 → 商品格式
+  const inner = vMatch[1];
+  if (inner.includes(',') && !inner.includes('~')) {
+    return parseTencentComma(raw, code);
+  }
+
+  return parseTencentTilde(raw, code);
+}
+
+// ==========================================
+// 加密货币行情（币安 API）
+// ==========================================
+
+/**
+ * 查询加密货币实时价格
+ * 使用币安公开 ticker API，无需 API key
+ */
+async function fetchCryptoQuote(code) {
+  const symbol = String(code).toUpperCase().replace(/[/\-\s]/g, '');
+  // 币安 symbol 格式：BTCUSDT, ETHUSDT 等
+  const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`;
+  const buf = await httpGet(url, { timeout: 6000 });
+  const data = JSON.parse(buf.toString('utf8'));
+
+  if (!data || data.code) {
+    throw new Error(data.msg || '加密货币数据获取失败');
+  }
+
+  return {
+    code: symbol,
+    name: '',
+    price: parseFloat(data.lastPrice) || 0,
+    change: parseFloat(data.priceChange) || 0,
+    changePercent: parseFloat(data.priceChangePercent) || 0,
+    high: parseFloat(data.highPrice) || 0,
+    low: parseFloat(data.lowPrice) || 0,
+    open: parseFloat(data.openPrice) || 0
   };
 }
 
@@ -163,6 +334,12 @@ async function fetchPriceForInvestment(inv) {
     return { price: q.estimatedNav || q.nav, navDate: q.navDate, name: q.name };
   }
 
+  if (strategy.type === 'crypto') {
+    const q = await fetchCryptoQuote(strategy.code);
+    return { price: q.price, navDate: new Date().toISOString().slice(0, 10), name: q.name };
+  }
+
+  // stock / commodity / forex 都走腾讯接口
   const q = await fetchStockQuote(strategy.code);
   return { price: q.price, navDate: new Date().toISOString().slice(0, 10), name: q.name };
 }
@@ -170,8 +347,10 @@ async function fetchPriceForInvestment(inv) {
 module.exports = {
   httpGet,
   detectCodeType,
+  normalizeCode,
   getQuoteStrategy,
   fetchFundQuote,
   fetchStockQuote,
+  fetchCryptoQuote,
   fetchPriceForInvestment
 };

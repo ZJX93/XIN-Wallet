@@ -4,12 +4,15 @@
    ============================================ */
 
 const express = require('express');
-const https = require('https');
-const http = require('http');
 const db = require('../db');
 const { toNumber } = require('../validate');
 const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, ensureWeeklySnapshots } = require('./_helpers');
 const quoteCache = require('../services/quote-cache');
+const {
+  httpGet, detectCodeType, getQuoteStrategy,
+  fetchFundQuote, fetchStockQuote, fetchCryptoQuote,
+  fetchPriceForInvestment
+} = require('../services/market-data');
 
 const router = express.Router();
 
@@ -494,111 +497,6 @@ router.delete('/investments/:id', async (req, res) => {
         handleServerError(res, err);
     }
 });
-
-// ==========================================
-// 理财行情 API（代理外部数据源）
-// ==========================================
-
-// 通用 HTTP GET 请求封装（支持 http 和 https，支持自定义 headers 和 GBK 解码）
-function httpGet(url, options = {}) {
-    const { timeout = 8000, headers = {} } = typeof options === 'number' ? { timeout: options } : options;
-    return new Promise((resolve, reject) => {
-        const client = url.startsWith('https') ? https : http;
-        const req = client.get(url, { timeout, headers }, (resp) => {
-            if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
-                httpGet(resp.headers.location, options).then(resolve).catch(reject);
-                return;
-            }
-            const chunks = [];
-            resp.on('data', chunk => chunks.push(chunk));
-            resp.on('end', () => resolve(Buffer.concat(chunks)));
-        });
-        req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-        req.on('error', reject);
-    });
-}
-
-// 自动识别代码类型
-function detectCodeType(code) {
-    const c = String(code).trim();
-    if (/^s[hz]\d{6}$/i.test(c)) return { type: 'stock', code: c };
-    if (/^\d{6}$/.test(c)) return { type: 'fund', code: c };
-    return { type: 'unknown', code: c };
-}
-
-// 根据理财类型品类 + 代码决定行情查询方式
-function getQuoteStrategy(invTypeCategory, code) {
-    const c = String(code || '').trim();
-    if (!c) return null;
-    // 定期/存款/其他 → 不查行情
-    if (invTypeCategory === 'deposit' || invTypeCategory === 'other') return null;
-    // 股票类型 → 走腾讯证券
-    if (invTypeCategory === 'stock') {
-        const prefix = /^s[hz]/i.test(c) ? c.substring(0, 2).toLowerCase() : 'sh';
-        const numCode = c.replace(/^s[hz]/i, '');
-        return { type: 'stock', code: prefix + numCode };
-    }
-    // 基金类型 → 走天天基金（纯数字）；非纯数字尝试股票
-    if (invTypeCategory === 'fund') {
-        if (/^\d{6}$/.test(c)) return { type: 'fund', code: c };
-        // 带前缀的 → 尝试股票
-        if (/^s[hz]/i.test(c)) return { type: 'stock', code: c };
-        return { type: 'fund', code: c }; // fallback
-    }
-    // 默认：自动识别
-    const detected = detectCodeType(c);
-    if (detected.type === 'unknown') return null;
-    return detected;
-}
-
-// 查询基金行情（东方财富基金净值 API，原天天基金 fundgz 已失效）
-async function fetchFundQuote(code) {
-    const url = `https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=1`;
-    const buf = await httpGet(url, { timeout: 8000, headers: { 'Referer': 'https://fund.eastmoney.com/' } });
-    const data = JSON.parse(buf.toString('utf8'));
-    if (data.ErrCode !== 0 || !data.Data || !data.Data.LSJZList || data.Data.LSJZList.length === 0) {
-        throw new Error(data.ErrMsg || '基金数据获取失败');
-    }
-    const d = data.Data.LSJZList[0];
-    return {
-        code: code,
-        name: '',
-        nav: parseFloat(d.DWJZ) || 0,
-        navDate: d.FSRQ || '',
-        estimatedNav: parseFloat(d.DWJZ) || 0,  // 最新净值（非实时估算）
-        estimatedChange: parseFloat(d.JZZZL) || 0,
-        lastNav: parseFloat(d.DWJZ) || 0
-    };
-}
-
-// 查询股票行情（腾讯证券，GBK 编码）
-async function fetchStockQuote(code) {
-    const url = `https://qt.gtimg.cn/q=${code}`;
-    const buf = await httpGet(url, 6000);
-    // 腾讯接口返回 GBK，用 iconv-lite 解码
-    let raw;
-    try {
-        raw = require('iconv-lite').decode(buf, 'gbk');
-    } catch (_) {
-        raw = buf.toString('utf8');
-    }
-    // 格式: v_sh600519="1~贵州茅台~600519~..."
-    const vMatch = raw.match(/="([^"]+)"/);
-    if (!vMatch) throw new Error('股票数据解析失败');
-    const parts = vMatch[1].split('~');
-    if (parts.length < 35) throw new Error('股票数据字段不足');
-    return {
-        code: parts[2] || code,
-        name: parts[1] || '',
-        price: parseFloat(parts[3]) || 0,
-        change: parseFloat(parts[31]) || 0,
-        changePercent: parseFloat(parts[32]) || 0,
-        high: parseFloat(parts[33]) || 0,
-        low: parseFloat(parts[34]) || 0,
-        open: parseFloat(parts[5]) || 0
-    };
-}
-
 // 查询单个代码行情（自动识别类型）
 router.get('/quote', async (req, res) => {
     try {
@@ -613,9 +511,12 @@ router.get('/quote', async (req, res) => {
         if (strategy.type === 'fund') {
             const data = await fetchFundQuote(strategy.code);
             return res.json(success({ type: 'fund', ...data }));
+        } else if (strategy.type === 'crypto') {
+            const data = await fetchCryptoQuote(strategy.code);
+            return res.json(success({ type: 'crypto', ...data }));
         } else {
             const data = await fetchStockQuote(strategy.code);
-            return res.json(success({ type: 'stock', ...data }));
+            return res.json(success({ type: strategy.type === 'commodity' ? 'commodity' : 'stock', ...data }));
         }
     } catch (err) {
         console.error('[行情查询]', err.message);
@@ -637,18 +538,8 @@ router.post('/:id/refresh', async (req, res) => {
 
         const strategy = getQuoteStrategy(inv.type_category, inv.code);
         if (!strategy) return res.status(400).json(fail('该品类不支持行情查询'));
-        let price, navDate, name;
-        if (strategy.type === 'fund') {
-            const q = await fetchFundQuote(strategy.code);
-            price = q.estimatedNav || q.nav;
-            navDate = q.navDate;
-            name = q.name;
-        } else {
-            const q = await fetchStockQuote(strategy.code);
-            price = q.price;
-            navDate = new Date().toISOString().slice(0, 10);
-            name = q.name;
-        }
+        // 统一使用 market-data.js 的 fetchPriceForInvestment
+        const { price, navDate, name } = await fetchPriceForInvestment(inv);
 
         const qty = parseFloat(inv.quantity);
         const currentValue = price * qty;
@@ -690,18 +581,7 @@ router.post('/refresh-all', async (req, res) => {
                     results.push({ id: inv.id, code: inv.code, status: 'skipped', reason: '该品类不支持行情查询' });
                     continue;
                 }
-                let price, navDate, name;
-                if (strategy.type === 'fund') {
-                    const q = await fetchFundQuote(strategy.code);
-                    price = q.estimatedNav || q.nav;
-                    navDate = q.navDate;
-                    name = q.name;
-                } else {
-                    const q = await fetchStockQuote(strategy.code);
-                    price = q.price;
-                    navDate = new Date().toISOString().slice(0, 10);
-                    name = q.name;
-                }
+                const { price, navDate, name } = await fetchPriceForInvestment(inv);
 
                 const qty = parseFloat(inv.quantity);
                 const currentValue = price * qty;

@@ -323,9 +323,17 @@ INSERT INTO investment_types (id, name, icon, risk_level, description, sort_orde
 (7, '个股', '💹', 'very_high', '直接持有的个股', 7, 'stock'),
 (8, '理财产品', '💎', 'medium', '银行/券商理财产品', 8, 'other'),
 (9, '国债', '🏛️', 'low', '国债/地方债', 9, 'deposit'),
-(10, '黄金', '🥇', 'medium', '实物黄金/纸黄金/黄金ETF', 10, 'other'),
-(11, '其他理财', '📌', 'medium', '其他投资品种', 99, 'other')
+(10, '黄金/贵金属', '🥇', 'medium', '实物黄金/纸黄金/黄金ETF', 10, 'commodity'),
+(11, '其他理财', '📌', 'medium', '其他投资品种', 99, 'other'),
+(12, '港股', '🇭🇰', 'very_high', '香港交易所上市股票', 11, 'hk_stock'),
+(13, '美股', '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票', 12, 'us_stock'),
+(14, '加密货币', '₿', 'very_high', '比特币/以太坊等数字资产', 13, 'crypto'),
+(15, '外汇', '💱', 'high', '美元/欧元/日元等外汇品种', 14, 'forex'),
+(16, '债券', '📜', 'low', '企业债/可转债等固定收益品种', 15, 'deposit')
 ON CONFLICT (id) DO NOTHING;
+
+-- 迁移：将黄金(id=10)的 category 从 other 更新为 commodity（支持行情刷新）
+UPDATE investment_types SET category = 'commodity', description = '实物黄金/纸黄金/黄金ETF（支持实时行情）' WHERE id = 10 AND category = 'other';
 
 -- ============================================
 -- 交易标签表

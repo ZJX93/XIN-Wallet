@@ -254,10 +254,28 @@ async function initDatabase() {
     //     标记预置数据为 is_system，路由层据此拒绝普通用户改删。
     try {
       await pool.query(`ALTER TABLE investment_types ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE`);
-      // 仅回填 schema 预置的 11 条基础类型；用户自建类型（id > 11）保持可编辑
-      await pool.query(`UPDATE investment_types SET is_system = TRUE WHERE id <= 11 AND is_system = FALSE`);
+      // 回填 schema 预置的基础类型（id 1-16）；用户自建类型保持可编辑
+      await pool.query(`UPDATE investment_types SET is_system = TRUE WHERE id <= 16 AND is_system = FALSE`);
     } catch (err) {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.is_system 迁移警告:', err.message);
+    }
+
+    // 12) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
+    try {
+      await pool.query(`
+        INSERT INTO investment_types (id, name, icon, risk_level, description, sort_order, category, is_system)
+        VALUES
+          (12, '港股', '🇭🇰', 'very_high', '香港交易所上市股票', 11, 'hk_stock', TRUE),
+          (13, '美股', '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票', 12, 'us_stock', TRUE),
+          (14, '加密货币', '₿', 'very_high', '比特币/以太坊等数字资产', 13, 'crypto', TRUE),
+          (15, '外汇', '💱', 'high', '美元/欧元/日元等外汇品种', 14, 'forex', TRUE),
+          (16, '债券', '📜', 'low', '企业债/可转债等固定收益品种', 15, 'deposit', TRUE)
+        ON CONFLICT (id) DO NOTHING
+      `);
+      // 将原有黄金(id=10)从 other 迁移到 commodity（支持腾讯行情刷新）
+      await pool.query(`UPDATE investment_types SET category = 'commodity', description = '实物黄金/纸黄金/黄金ETF（支持实时行情）' WHERE id = 10 AND category = 'other'`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types 品类扩展警告:', err.message);
     }
 
     console.log('✅ 数据库表结构已初始化');
