@@ -1,11 +1,11 @@
 /* ============================================
-   鑫钱包 · 种子数据模块
-   为每个新用户首次创建后，自动注入覆盖所有功能模块的演示数据
+   鑫钱包 · 种子数据模块 v2
+   基于新分类体系（15一级 + 54二级），覆盖全部功能模块
    ============================================ */
 
 const db = require('./db');
 
-// 复式记账账户余额计算（与 routes/_helpers.js 中的逻辑保持一致）
+// 复式记账账户余额计算
 async function sumLedgerEffects(conn, userId, accountId) {
     const rows = await conn.query(
         `SELECT COALESCE(SUM(
@@ -31,54 +31,45 @@ async function computeAccountBalance(conn, userId, accountId) {
 }
 
 /**
- * 为指定用户注入完整的种子数据
- * @param {number} userId - 用户 ID
- * @param {object} conn - 数据库连接（事务中）
+ * 为指定用户注入完整种子数据
  */
 async function seedUserData(userId, conn) {
     const now = new Date();
     const y = now.getFullYear();
-    const m = now.getMonth();
+    const m = now.getMonth(); // 0-based
     const currentMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
     const prevMonth = m === 0 ? `${y - 1}-12` : `${y}-${String(m).padStart(2, '0')}`;
     const lastMonth = m === 0 ? 11 : m - 1;
     const lmY = m === 0 ? y - 1 : y;
     const twoMonthsAgo = (() => {
-        let mm = m - 2;
-        let yy = y;
+        let mm = m - 2, yy = y;
         if (mm < 0) { mm += 12; yy -= 1; }
         return `${yy}-${String(mm + 1).padStart(2, '0')}`;
     })();
 
     // ===========================================
-    // 1. 账户（覆盖现金/银行卡/微信/支付宝/信用卡）
+    // 1. 账户（6个，覆盖各种类型）
     // ===========================================
-    // 先检查该用户是否已有账户（schema.sql 中的 ON CONFLICT DO NOTHING 会为新用户预先创建 6 个默认账户）
     const existingAccounts = await conn.query(
         'SELECT id, name FROM accounts WHERE user_id = ? ORDER BY id', [userId]
     );
 
     const accountData = [
-        { name: '现金', type: 'cash', icon: '💵', balance: 800.00, credit_limit: 0 },
-        { name: '工商银行', type: 'bank_card', icon: '🏦', balance: 35000.00, credit_limit: 0 },
-        { name: '招商银行', type: 'bank_card', icon: '🏦', balance: 22000.00, credit_limit: 0 },
-        { name: '微信支付', type: 'electronic_payment', icon: '💚', balance: 4500.00, credit_limit: 0 },
-        { name: '支付宝', type: 'electronic_payment', icon: '🔵', balance: 6800.00, credit_limit: 0 },
-        { name: '信用卡', type: 'credit_card', icon: '💳', balance: -3500.00, credit_limit: 30000 },
+        { name: '现金',       type: 'cash',                 icon: '💵',  balance: 1200.00,  credit_limit: 0 },
+        { name: '工商银行',   type: 'bank_card',            icon: '🏦',  balance: 42000.00, credit_limit: 0 },
+        { name: '招商银行',   type: 'bank_card',            icon: '🏦',  balance: 28000.00, credit_limit: 0 },
+        { name: '微信支付',   type: 'electronic_payment',   icon: '💚',  balance: 3200.00,  credit_limit: 0 },
+        { name: '支付宝',     type: 'electronic_payment',   icon: '🔵',  balance: 5600.00,  credit_limit: 0 },
+        { name: '信用卡',     type: 'credit_card',           icon: '💳',  balance: -2800.00, credit_limit: 50000 },
     ];
 
     const accountIds = {};
     if (existingAccounts.length >= 6) {
-        // 复用已有账户（schema 默认账户，按 ID 顺序对应种子数据）
-        // schema 默认顺序：现金, 工商银行, 招商银行, 微信支付, 支付宝, 信用卡
         for (let i = 0; i < accountData.length; i++) {
             accountIds[accountData[i].name] = existingAccounts[i].id;
         }
-        // 更新余额为演示数据中的值（仅在 opening_balance=0 时覆盖，表示 schema 默认占位）
         for (const a of accountData) {
-            const acc = await conn.query(
-                'SELECT opening_balance FROM accounts WHERE id = ?', [accountIds[a.name]]
-            );
+            const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ?', [accountIds[a.name]]);
             if (acc[0] && parseFloat(acc[0].opening_balance || 0) === 0) {
                 await conn.query(
                     'UPDATE accounts SET balance = ?, opening_balance = ?, credit_limit = ?, type = ?, icon = ? WHERE id = ?',
@@ -87,7 +78,6 @@ async function seedUserData(userId, conn) {
             }
         }
     } else {
-        // 没有默认账户（如全新用户），插入全部
         for (const a of accountData) {
             const r = await conn.query(
                 `INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit, is_default, sort_order, status)
@@ -100,101 +90,140 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 2. 交易记录（覆盖本月上月及更多月份，含各一级分类）
+    // 2. 交易记录（基于新分类体系，真实中国消费场景）
     // ===========================================
-    const txTemplates = {
-        income: [
-            { cat: 15, name: '月工资', amount: 15000 },
-            { cat: 16, name: '季度奖金', amount: 3000 },
-            { cat: 17, name: '基金分红', amount: 850 },
-            { cat: 19, name: '房租收入', amount: 4200 },
-            { cat: 18, name: '副业收入', amount: 1500 },
-            { cat: 21, name: '退款', amount: 89 },
-        ],
-        expense: [
-            { cat: 1, name: '午餐', amount: 45 },
-            { cat: 1, name: '周末聚餐', amount: 220 },
-            { cat: 1, name: '早餐咖啡', amount: 35 },
-            { cat: 1, name: '超市采购', amount: 280 },
-            { cat: 1, name: '外卖', amount: 65 },
-            { cat: 2, name: '滴滴打车', amount: 38 },
-            { cat: 2, name: '加油', amount: 350 },
-            { cat: 2, name: '公交地铁', amount: 100 },
-            { cat: 2, name: '高铁票', amount: 553 },
-            { cat: 3, name: '京东购物', amount: 299 },
-            { cat: 3, name: '日用品', amount: 89 },
-            { cat: 3, name: '淘宝衣物', amount: 450 },
-            { cat: 5, name: '电影票', amount: 80 },
-            { cat: 5, name: '游戏充值', amount: 128 },
-            { cat: 5, name: '健身房月卡', amount: 199 },
-            { cat: 4, name: '房租', amount: 4500 },
-            { cat: 4, name: '水电费', amount: 220 },
-            { cat: 8, name: '手机话费', amount: 99 },
-            { cat: 8, name: '宽带费', amount: 120 },
-            { cat: 6, name: '体检', amount: 580 },
-            { cat: 6, name: '药品', amount: 85 },
-            { cat: 7, name: '网课', amount: 599 },
-            { cat: 7, name: '书籍', amount: 78 },
-            { cat: 9, name: '买衣服', amount: 350 },
-            { cat: 9, name: '朋友婚礼', amount: 666 },
-            { cat: 10, name: '护肤', amount: 280 },
-            { cat: 11, name: '旅行预订', amount: 1800 },
-            { cat: 12, name: '猫粮', amount: 168 },
-            { cat: 13, name: '商业保险', amount: 320 },
-            { cat: 23, name: '停车费', amount: 45 },
-            { cat: 23, name: '维保', amount: 600 },
-        ],
-    };
-
-    // 当月 + 上月 + 上上月，共 3 个月数据
-    const months = [
-        { year: y, month: m, prefix: 'currentMonth' },
-        { year: lmY, month: lastMonth, prefix: 'prevMonth' },
-        { year: twoMonthsAgo.split('-')[0] | 0, month: (parseInt(twoMonthsAgo.split('-')[1]) - 1), prefix: 'twoMonthsAgo' },
+    // 收入模板：使用一级分类 ID
+    const incomeTemplates = [
+        { cat: 15, name: '月工资',         amount: 18000, account: '工商银行' },
+        { cat: 15, name: '季度奖金',       amount: 8000,  account: '工商银行' },
+        { cat: 15, name: '加班补贴',       amount: 1200,  account: '工商银行' },
+        { cat: 17, name: '基金分红',       amount: 650,   account: '招商银行' },
+        { cat: 17, name: '房租收入',       amount: 3500,  account: '招商银行' },
+        { cat: 17, name: '理财到期赎回',   amount: 20000, account: '工商银行' },
+        { cat: 18, name: '周末兼职',       amount: 2000,  account: '微信支付' },
+        { cat: 18, name: '接外包项目',     amount: 5000,  account: '工商银行' },
+        { cat: 21, name: '拼多多退款',     amount: 35,    account: '微信支付' },
     ];
 
-    for (const monthInfo of months) {
-        const py = monthInfo.year;
-        const pm = monthInfo.month;
-        const lastDay = new Date(py, pm + 1, 0).getDate();
-        let dayCounter = 1;
+    // 支出模板：使用一级分类 ID，note 描述具体消费内容
+    const expenseTemplates = [
+        // 餐饮 (id=1)
+        { cat: 1,  name: '午餐-黄焖鸡',       amount: 28,   account: '微信支付' },
+        { cat: 1,  name: '早餐-包子豆浆',     amount: 12,   account: '微信支付' },
+        { cat: 1,  name: '晚餐外卖',           amount: 42,   account: '支付宝' },
+        { cat: 1,  name: '周末聚餐-海底捞',   amount: 320,  account: '支付宝' },
+        { cat: 1,  name: '瑞幸咖啡',           amount: 18,   account: '微信支付' },
+        { cat: 1,  name: '超市买菜',           amount: 156,  account: '微信支付' },
+        { cat: 1,  name: '水果店',             amount: 45,   account: '微信支付' },
+        { cat: 1,  name: '烟酒',               amount: 85,   account: '微信支付' },
+        // 交通出行 (id=2)
+        { cat: 2,  name: '滴滴打车-上班',     amount: 32,   account: '支付宝' },
+        { cat: 2,  name: '地铁月卡',           amount: 200,  account: '支付宝' },
+        { cat: 2,  name: '加油',               amount: 380,  account: '信用卡' },
+        { cat: 2,  name: '商场停车费',         amount: 25,   account: '微信支付' },
+        { cat: 2,  name: '北京→上海高铁',     amount: 553,  account: '支付宝' },
+        { cat: 2,  name: '车辆保养',           amount: 680,  account: '信用卡' },
+        // 购物消费 (id=3)
+        { cat: 3,  name: '京东-纸巾洗衣液',   amount: 89,   account: '微信支付' },
+        { cat: 3,  name: '淘宝-夏季T恤',      amount: 168,  account: '支付宝' },
+        { cat: 3,  name: '优衣库-衬衫',       amount: 299,  account: '信用卡' },
+        { cat: 3,  name: 'Apple Watch表带',   amount: 149,  account: '支付宝' },
+        { cat: 3,  name: '宜家-台灯',         amount: 79,   account: '信用卡' },
+        // 居家生活 (id=4)
+        { cat: 4,  name: '房租',               amount: 4500, account: '招商银行' },
+        { cat: 4,  name: '电费',               amount: 185,  account: '支付宝' },
+        { cat: 4,  name: '水费+燃气',          amount: 92,   account: '支付宝' },
+        { cat: 4,  name: '水管维修',           amount: 150,  account: '微信支付' },
+        { cat: 4,  name: '话费充值',           amount: 99,   account: '微信支付' },
+        { cat: 4,  name: '宽带月费',           amount: 79,   account: '支付宝' },
+        { cat: 4,  name: '社保代缴',           amount: 1480, account: '工商银行' },
+        { cat: 4,  name: '洗洁精垃圾袋',       amount: 35,   account: '微信支付' },
+        { cat: 4,  name: '顺丰寄文件',         amount: 23,   account: '微信支付' },
+        // 休闲娱乐 (id=5)
+        { cat: 5,  name: '流浪地球3 电影',    amount: 80,   account: '支付宝' },
+        { cat: 5,  name: 'Steam-黑神话DLC',   amount: 128,  account: '微信支付' },
+        { cat: 5,  name: '乐刻健身房月卡',     amount: 199,  account: '支付宝' },
+        { cat: 5,  name: '三亚机票+酒店',      amount: 2800, account: '信用卡' },
+        { cat: 5,  name: '猫粮+猫砂',           amount: 220,  account: '支付宝' },
+        { cat: 5,  name: 'B站大会员年费',       amount: 148,  account: '支付宝' },
+        { cat: 5,  name: 'iCloud月费',          amount: 21,   account: '支付宝' },
+        // 医疗健康 (id=6)
+        { cat: 6,  name: '感冒药',             amount: 45,   account: '微信支付' },
+        { cat: 6,  name: '年度体检',           amount: 680,  account: '信用卡' },
+        { cat: 6,  name: '洗牙',               amount: 298,  account: '支付宝' },
+        { cat: 6,  name: '蛋白粉',             amount: 189,  account: '支付宝' },
+        // 学习进修 (id=7)
+        { cat: 7,  name: '软考报名费',         amount: 180,  account: '支付宝' },
+        { cat: 7,  name: '技术书籍3本',       amount: 156,  account: '支付宝' },
+        { cat: 7,  name: '极客时间年会员',     amount: 365,  account: '微信支付' },
+        // 人情往来 (id=9)
+        { cat: 9,  name: '给爸妈转生活费',     amount: 2000, account: '工商银行' },
+        { cat: 9,  name: '同事结婚红包',       amount: 500,  account: '微信支付' },
+        { cat: 9,  name: '水滴筹捐款',         amount: 50,   account: '微信支付' },
+        { cat: 9,  name: '请朋友吃饭',         amount: 286,  account: '支付宝' },
+        // 育儿亲子 (id=141)
+        { cat: 141, name: '奶粉3罐',           amount: 450,  account: '支付宝' },
+        { cat: 141, name: '乐高积木',           amount: 199,  account: '信用卡' },
+        { cat: 141, name: '英语培训班',         amount: 2800, account: '招商银行' },
+        { cat: 141, name: '小儿退烧药',         amount: 68,   account: '微信支付' },
+    ];
 
-        for (const tx of txTemplates.income) {
+    // 生成 3 个月数据（当月 + 上月 + 上上月）
+    const months = [
+        { year: y, month: m },
+        { year: lmY, month: lastMonth },
+        { year: parseInt(twoMonthsAgo.split('-')[0]), month: parseInt(twoMonthsAgo.split('-')[1]) - 1 },
+    ];
+
+    for (const mi of months) {
+        const py = mi.year, pm = mi.month;
+        const lastDay = new Date(py, pm + 1, 0).getDate();
+
+        // 收入：分散在月初/月中/月末
+        let dayCounter = 5;
+        for (const tx of incomeTemplates) {
             const day = Math.min(dayCounter, lastDay);
             const dateStr = `${py}-${String(pm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const variance = 0.9 + Math.random() * 0.2;
+            const acctId = accountIds[tx.account] || accountIds['工商银行'];
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-                [userId, accountIds['工商银行'], tx.cat, 'income', tx.amount + Math.floor(Math.random() * 200), tx.name, dateStr, accountIds['工商银行']]
+                [userId, acctId, tx.cat, 'income', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
-            dayCounter += 1 + Math.floor(Math.random() * 3);
+            dayCounter += 3 + Math.floor(Math.random() * 4);
+            if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
         }
 
+        // 支出：覆盖整月
         dayCounter = 1;
-        for (const tx of txTemplates.expense) {
+        for (const tx of expenseTemplates) {
             const day = Math.min(dayCounter, lastDay);
             const dateStr = `${py}-${String(pm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const variance = 0.8 + Math.random() * 0.4;
+            const acctId = accountIds[tx.account] || accountIds['微信支付'];
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-                [userId, accountIds['工商银行'], tx.cat, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, accountIds['工商银行']]
+                [userId, acctId, tx.cat, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
-            dayCounter += 1 + Math.floor(Math.random() * 2);
-            if (dayCounter > lastDay) break;
+            dayCounter += 1 + Math.floor(Math.random() * 3);
+            if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
         }
     }
 
     // ===========================================
-    // 3. 转账演示（跨账户转移资金）
+    // 3. 转账（跨账户资金转移）
     // ===========================================
-    const demoTransfers = [
-        { from: '工商银行', to: '现金', amount: 2000, note: '工资取现', daysAgo: 3 },
-        { from: '工商银行', to: '微信支付', amount: 1500, note: '日常转账', daysAgo: 7 },
-        { from: '招商银行', to: '支付宝', amount: 800, note: '还信用卡', daysAgo: 10 },
-        { from: '支付宝', to: '工商银行', amount: 3000, note: '归还借款', daysAgo: 14 },
+    const transfers = [
+        { from: '工商银行', to: '微信支付', amount: 2000, note: '日常零花', daysAgo: 2 },
+        { from: '工商银行', to: '支付宝',   amount: 1500, note: '淘宝购物备用', daysAgo: 5 },
+        { from: '工商银行', to: '现金',     amount: 1000, note: '取现备用', daysAgo: 8 },
+        { from: '招商银行', to: '工商银行', amount: 5000, note: '资金归集', daysAgo: 12 },
+        { from: '工商银行', to: '信用卡',   amount: 2800, note: '还信用卡', daysAgo: 15 },
+        { from: '支付宝',   to: '微信支付', amount: 500,  note: 'AA收款转出', daysAgo: 18 },
     ];
-    for (const t of demoTransfers) {
+    for (const t of transfers) {
         const d = new Date(y, m, Math.max(1, now.getDate() - t.daysAgo));
         const dateStr = d.toISOString().split('T')[0];
         const tr = await conn.query(
@@ -216,21 +245,18 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 4. 预算（覆盖各分类，月度）
+    // 4. 预算（基于新分类体系的月度预算）
     // ===========================================
     const budgetData = [
-        { name: '餐饮', amount: 2500 },
-        { name: '交通', amount: 800 },
-        { name: '购物', amount: 1000 },
-        { name: '娱乐', amount: 500 },
-        { name: '住房', amount: 5000 },
-        { name: '通讯', amount: 250 },
-        { name: '医疗', amount: 500 },
-        { name: '教育', amount: 800 },
-        { name: '人情', amount: 800 },
-        { name: '美容', amount: 400 },
-        { name: '旅行', amount: 2000 },
-        { name: '爱车', amount: 800 },
+        { name: '餐饮',      amount: 3000 },
+        { name: '交通出行',  amount: 1200 },
+        { name: '购物消费',  amount: 1500 },
+        { name: '居家生活',  amount: 6500 },
+        { name: '休闲娱乐',  amount: 1000 },
+        { name: '医疗健康',  amount: 800 },
+        { name: '学习进修',  amount: 600 },
+        { name: '人情往来',  amount: 1500 },
+        { name: '育儿亲子',  amount: 3000 },
     ];
     for (const b of budgetData) {
         const startDate = `${currentMonth}-01`;
@@ -244,21 +270,22 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 5. 理财持仓（覆盖各理财产品类型）
+    // 5. 理财持仓（覆盖各种投资品类）
     // ===========================================
     const investmentData = [
-        { type: 1, name: '银行定期存款', code: '', buy_price: 1, current_price: 1, quantity: 50000, buy_date: `${y}-01-15`, expected_rate: 2.75 },
-        { type: 2, name: '余额宝', code: '000198', buy_price: 1.0, current_price: 1.0018, quantity: 20000, buy_date: `${y}-02-01`, expected_rate: 2.5 },
-        { type: 3, name: '纯债基金A', code: '003547', buy_price: 1.05, current_price: 1.0876, quantity: 10000, buy_date: `${y}-03-10`, expected_rate: 4.5 },
-        { type: 4, name: '沪深300ETF', code: '510300', buy_price: 4.12, current_price: 4.56, quantity: 5000, buy_date: `${y}-04-15`, expected_rate: 8 },
-        { type: 5, name: '混合基金', code: '161725', buy_price: 2.8, current_price: 3.12, quantity: 8000, buy_date: `${y}-05-20`, expected_rate: 10 },
-        { type: 6, name: '股票基金', code: '005827', buy_price: 1.5, current_price: 1.68, quantity: 15000, buy_date: `${y}-06-10`, expected_rate: 12 },
-        { type: 7, name: '贵州茅台', code: 'sh600519', buy_price: 1680, current_price: 1820, quantity: 10, buy_date: `${y}-07-05`, expected_rate: 8 },
-        { type: 8, name: '银行理财', code: '', buy_price: 1, current_price: 1.018, quantity: 100000, buy_date: `${y}-08-01`, expected_rate: 3.5 },
-        { type: 9, name: '国债', code: '', buy_price: 100, current_price: 101.5, quantity: 100, buy_date: `${y}-09-15`, expected_rate: 3.0 },
-        { type: 10, name: '黄金ETF', code: '518880', buy_price: 5.32, current_price: 5.85, quantity: 2000, buy_date: `${y}-10-10`, expected_rate: 6 },
+        { type: 1,  name: '定期存款-1年期',   code: '',           buy_price: 1,       current_price: 1.015,   quantity: 50000,  buy_date: `${y}-01-15`, expected_rate: 1.5 },
+        { type: 2,  name: '余额宝',            code: '000198',     buy_price: 1.0,     current_price: 1.0018,  quantity: 30000,  buy_date: `${y}-02-01`, expected_rate: 1.8 },
+        { type: 3,  name: '招商产业债C',       code: '001868',     buy_price: 1.12,    current_price: 1.156,   quantity: 20000,  buy_date: `${y}-03-10`, expected_rate: 3.2 },
+        { type: 4,  name: '沪深300ETF',        code: '510300',     buy_price: 3.85,    current_price: 4.12,    quantity: 8000,   buy_date: `${y}-04-15`, expected_rate: 8 },
+        { type: 5,  name: '易方达蓝筹精选',    code: '005827',     buy_price: 2.35,    current_price: 2.58,    quantity: 10000,  buy_date: `${y}-05-20`, expected_rate: 10 },
+        { type: 7,  name: '贵州茅台',           code: 'sh600519',   buy_price: 1650,    current_price: 1780,    quantity: 10,     buy_date: `${y}-06-10`, expected_rate: 8 },
+        { type: 8,  name: '招行季季宝',        code: '',           buy_price: 1,       current_price: 1.012,   quantity: 80000,  buy_date: `${y}-07-01`, expected_rate: 3.0 },
+        { type: 10, name: '黄金ETF',           code: '518880',     buy_price: 5.15,    current_price: 5.62,    quantity: 3000,   buy_date: `${y}-08-10`, expected_rate: 6 },
+        { type: 12, name: '腾讯控股',           code: '00700',      buy_price: 380,     current_price: 452,     quantity: 100,    buy_date: `${y}-09-05`, expected_rate: 12 },
+        { type: 13, name: 'Apple Inc.',         code: 'AAPL',       buy_price: 195,     current_price: 218,     quantity: 30,     buy_date: `${y}-10-15`, expected_rate: 10 },
+        { type: 14, name: '比特币',             code: 'BTCUSDT',    buy_price: 42000,   current_price: 68000,   quantity: 0.05,   buy_date: `${y}-11-01`, expected_rate: 20 },
+        { type: 16, name: '国债逆回购',         code: '',           buy_price: 100,     current_price: 100.8,   quantity: 500,    buy_date: `${y}-12-01`, expected_rate: 2.0 },
     ];
-
     for (const inv of investmentData) {
         const totalCost = inv.buy_price * inv.quantity;
         const currentValue = inv.current_price * inv.quantity;
@@ -273,13 +300,14 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 6. 储蓄目标（多个目标，进度不一）
+    // 6. 储蓄目标
     // ===========================================
     const savingsGoals = [
-        { name: '新车基金', target: 200000, current: 85000, icon: '🚗', status: 'active' },
-        { name: '旅行基金', target: 50000, current: 32000, icon: '✈️', status: 'active' },
-        { name: '应急储备', target: 100000, current: 100000, icon: '🛡️', status: 'completed' },
-        { name: '装修基金', target: 80000, current: 12000, icon: '🏠', status: 'active' },
+        { name: '买车基金',   target: 200000, current: 95000,  icon: '🚗', status: 'active' },
+        { name: '旅行基金',   target: 50000,  current: 28000,  icon: '✈️', status: 'active' },
+        { name: '应急储备',   target: 100000, current: 100000, icon: '🛡️', status: 'completed' },
+        { name: '装修基金',   target: 150000, current: 45000,  icon: '🏠', status: 'active' },
+        { name: '教育基金',   target: 80000,  current: 22000,  icon: '🎓', status: 'active' },
     ];
     for (const g of savingsGoals) {
         await conn.query(
@@ -290,12 +318,13 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 7. 债务（覆盖信用卡/房贷/个人借贷）
+    // 7. 债务（信用卡 + 房贷 + 车贷 + 个人借贷）
     // ===========================================
     const debts = [
-        { name: '交通银行信用卡', type: 'credit_card', creditor: '交通银行', principal: 30000, remaining: 3500, interest_rate: 18.25, term_months: 0, method: 'minimum', monthly_payment: 350, billing_day: 5, payment_day: 25, min_payment: 350, status: 'active', start_date: `${y}-01-01` },
-        { name: '房贷', type: 'loan', creditor: '建设银行', principal: 800000, remaining: 720000, interest_rate: 4.9, term_months: 240, method: 'equal_installment', monthly_payment: 5235.5, status: 'active', start_date: '2022-06-01', due_date: '2026-07-20' },
-        { name: '装修分期', type: 'loan', creditor: '招商银行', principal: 50000, remaining: 35000, interest_rate: 5.4, term_months: 36, method: 'equal_installment', monthly_payment: 1505.2, status: 'active', start_date: '2024-08-01' },
+        { name: '招商银行信用卡', type: 'credit_card', creditor: '招商银行', principal: 50000, remaining: 2800, interest_rate: 18.25, term_months: 0, method: 'minimum', monthly_payment: 280, billing_day: 10, payment_day: 28, min_payment: 280, status: 'active', start_date: `${y}-01-01` },
+        { name: '住房按揭贷款',   type: 'loan',        creditor: '建设银行', principal: 1200000, remaining: 1050000, interest_rate: 3.95, term_months: 360, method: 'equal_installment', monthly_payment: 5692.8, status: 'active', start_date: '2021-03-01', due_date: '2051-03-01' },
+        { name: '汽车分期贷款',   type: 'loan',        creditor: '工商银行', principal: 80000, remaining: 48000, interest_rate: 4.5, term_months: 36, method: 'equal_installment', monthly_payment: 2380.5, status: 'active', start_date: '2024-06-01' },
+        { name: '借朋友周转',     type: 'personal',    creditor: '老张',     principal: 10000, remaining: 10000, interest_rate: 0, term_months: 3, method: 'lump_sum', monthly_payment: 0, status: 'active', start_date: `${y}-${String(m + 1).padStart(2, '0')}-01` },
     ];
     for (const d of debts) {
         await conn.query(
@@ -310,18 +339,18 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 8. 标签（覆盖各种用途）
+    // 8. 标签
     // ===========================================
     const tags = [
-        { name: '必需', color: '#ef4444', icon: '⭐' },
-        { name: '可省', color: '#10b981', icon: '💡' },
-        { name: '大额', color: '#8b5cf6', icon: '💎' },
-        { name: '订阅', color: '#3b82f6', icon: '🔁' },
-        { name: '应急', color: '#f59e0b', icon: '🚨' },
-        { name: '投资回报', color: '#22c55e', icon: '📈' },
-        { name: '家庭', color: '#ec4899', icon: '👨‍👩‍👧' },
+        { name: '必需',      color: '#ef4444', icon: '⭐' },
+        { name: '可省',      color: '#10b981', icon: '💡' },
+        { name: '大额',      color: '#8b5cf6', icon: '💎' },
+        { name: '订阅',      color: '#3b82f6', icon: '🔁' },
+        { name: '冲动消费',  color: '#f59e0b', icon: '⚡' },
+        { name: '投资相关',  color: '#22c55e', icon: '📈' },
+        { name: '家庭支出',  color: '#ec4899', icon: '👨‍👩‍👧' },
+        { name: '可报销',    color: '#06b6d4', icon: '🧾' },
     ];
-    // 检查用户是否已有标签，避免重复（schema 默认有 5 个系统预设标签）
     const existingTags = await conn.query('SELECT COUNT(*) AS cnt FROM tags WHERE user_id = ?', [userId]);
     if (parseInt(existingTags[0].cnt) === 0) {
         for (const t of tags) {
@@ -333,20 +362,19 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 9. 投资净值快照（为趋势图生成历史数据，至少 8 周的周日）
+    // 9. 投资净值快照（8周历史，用于趋势图）
     // ===========================================
     const invList = await conn.query('SELECT id, total_cost, current_value FROM investments WHERE user_id = ?', [userId]);
     const today = new Date();
     for (let w = 8; w >= 0; w--) {
         const d = new Date(today);
-        d.setDate(d.getDate() - d.getDay() - w * 7); // 回溯到每个周日
+        d.setDate(d.getDate() - d.getDay() - w * 7);
         const snapDate = d.toISOString().slice(0, 10);
         for (const inv of invList) {
-            // 模拟市值在成本附近 ±10% 波动的等差数列，让趋势图有变化
             const cost = parseFloat(inv.total_cost);
             const baseValue = parseFloat(inv.current_value);
-            const weekProgress = w / 8; // 0=8周前, 1=本周
-            const randomFactor = 0.92 + weekProgress * 0.16 + (Math.random() * 0.04 - 0.02); // 从 0.92 稳步收敛
+            const weekProgress = w / 8;
+            const randomFactor = 0.92 + weekProgress * 0.16 + (Math.random() * 0.04 - 0.02);
             const snapValue = Math.round(baseValue * randomFactor * 100) / 100;
             const snapCost = Math.round(cost * (0.95 + Math.random() * 0.1) * 100) / 100;
             await conn.query(
@@ -358,7 +386,7 @@ async function seedUserData(userId, conn) {
     }
 
     // ===========================================
-    // 10. 重新计算所有账户余额（基于账本推导）
+    // 10. 重新计算所有账户余额
     // ===========================================
     for (const aid of Object.values(accountIds)) {
         const bal = await computeAccountBalance(conn, userId, aid);
@@ -366,17 +394,11 @@ async function seedUserData(userId, conn) {
     }
 }
 
-/**
- * 检查用户是否已有数据（用于判断是否需要种子数据）
- */
 async function userHasData(userId) {
     const r = await db.queryOne('SELECT COUNT(*) AS cnt FROM transactions WHERE user_id = ?', [userId]);
     return parseInt(r.cnt) > 0;
 }
 
-/**
- * 为用户注入种子数据（如果还没有数据）
- */
 async function ensureUserSeed(userId) {
     if (await userHasData(userId)) return false;
     await db.transaction(async (conn) => {
