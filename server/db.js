@@ -199,6 +199,55 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.user_id 迁移警告:', err.message);
     }
 
+    // 4.1) 幂等迁移：categories.code（结构化编码 E0101=支出餐饮早午晚餐）
+    try {
+      await pool.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS code VARCHAR(5)`);
+      // 为旧数据回填 code（按 id 映射，仅对 code 为 NULL 的记录）
+      await pool.query(`
+        UPDATE categories SET code = CASE id
+          -- 支出一级
+          WHEN 1  THEN 'E0100' WHEN 2  THEN 'E0200' WHEN 3  THEN 'E0300'
+          WHEN 4  THEN 'E0400' WHEN 5  THEN 'E0500' WHEN 6  THEN 'E0600'
+          WHEN 7  THEN 'E0700' WHEN 9  THEN 'E0800' WHEN 11 THEN 'E0900'
+          WHEN 14 THEN 'E1000'
+          -- 支出二级
+          WHEN 23 THEN 'E0101' WHEN 24 THEN 'E0102' WHEN 25 THEN 'E0103'
+          WHEN 26 THEN 'E0104' WHEN 27 THEN 'E0105' WHEN 28 THEN 'E0106'
+          WHEN 29 THEN 'E0201' WHEN 30 THEN 'E0202' WHEN 31 THEN 'E0203'
+          WHEN 32 THEN 'E0204' WHEN 33 THEN 'E0205' WHEN 34 THEN 'E0206'
+          WHEN 35 THEN 'E0301' WHEN 36 THEN 'E0302' WHEN 37 THEN 'E0303'
+          WHEN 38 THEN 'E0304'
+          WHEN 39 THEN 'E0401' WHEN 40 THEN 'E0402' WHEN 41 THEN 'E0403'
+          WHEN 42 THEN 'E0404' WHEN 43 THEN 'E0405' WHEN 44 THEN 'E0406'
+          WHEN 45 THEN 'E0407'
+          WHEN 46 THEN 'E0501' WHEN 47 THEN 'E0502' WHEN 48 THEN 'E0503'
+          WHEN 49 THEN 'E0504' WHEN 50 THEN 'E0505' WHEN 51 THEN 'E0506'
+          WHEN 52 THEN 'E0601' WHEN 53 THEN 'E0602' WHEN 54 THEN 'E0603'
+          WHEN 55 THEN 'E0604'
+          WHEN 56 THEN 'E0701' WHEN 57 THEN 'E0702' WHEN 58 THEN 'E0703'
+          WHEN 59 THEN 'E0801' WHEN 60 THEN 'E0802' WHEN 61 THEN 'E0803'
+          WHEN 62 THEN 'E0804'
+          WHEN 67 THEN 'E0901' WHEN 68 THEN 'E0902' WHEN 69 THEN 'E0903'
+          WHEN 70 THEN 'E0904'
+          -- 收入一级
+          WHEN 15 THEN 'I0100' WHEN 17 THEN 'I0200' WHEN 18 THEN 'I0300'
+          WHEN 21 THEN 'I0400'
+          -- 收入二级
+          WHEN 71 THEN 'I0101' WHEN 72 THEN 'I0102' WHEN 73 THEN 'I0103'
+          WHEN 74 THEN 'I0201' WHEN 75 THEN 'I0202' WHEN 76 THEN 'I0203'
+          WHEN 77 THEN 'I0301' WHEN 78 THEN 'I0302' WHEN 79 THEN 'I0303'
+          WHEN 80 THEN 'I0304'
+          -- 转账
+          WHEN 22 THEN 'T0100'
+        END
+        WHERE code IS NULL
+      `);
+      // 确保 NOT NULL（schema.sql 中的新表已定义，这里只补迁移）
+      await pool.query(`ALTER TABLE categories ALTER COLUMN code SET NOT NULL`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.code 迁移警告:', err.message);
+    }
+
     // 5) 幂等迁移：investments.nav_date
     try {
       await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS nav_date DATE DEFAULT NULL`);

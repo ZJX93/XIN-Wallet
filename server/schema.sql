@@ -50,8 +50,11 @@ DROP TRIGGER IF EXISTS trg_accounts_updated ON accounts;
 CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 交易类别表
+-- code: 结构化编码（5位），E=支出 I=收入 T=转账 + 2位一级 + 2位二级
+--   如 E0101=支出-餐饮-早午晚餐，E0100=餐饮一级本身（仅展示），T0100=转账
 CREATE TABLE IF NOT EXISTS categories (
   id SERIAL PRIMARY KEY,
+  code VARCHAR(5) NOT NULL,                           -- 结构化编码（如 E0101）
   parent_id INT DEFAULT NULL,                         -- 父分类ID，NULL为一级分类
   user_id INT DEFAULT NULL,                           -- 所属用户ID（NULL=系统预设全局分类）
   name VARCHAR(50) NOT NULL,                          -- 类别名称
@@ -64,6 +67,7 @@ CREATE TABLE IF NOT EXISTS categories (
 );
 CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories (parent_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON categories (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_code ON categories (code);
 -- 防重复：同一父分类下名称唯一（支持 ON CONFLICT DO NOTHING 幂等插入）
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'categories_parent_name_unique') THEN
@@ -231,108 +235,108 @@ ON CONFLICT (id) DO NOTHING;
 --   5. 缺失场景主动补齐（烟酒、牙科、知识付费、会员订阅、育儿亲子）
 -- ============================================
 
--- ◆ 支出类别（一级 10 个）
-INSERT INTO categories (id, name, type, icon, sort_order, is_system) VALUES
-(1,  '餐饮',     'expense', '🍜', 1,  TRUE),
-(2,  '交通出行', 'expense', '🚗', 2,  TRUE),
-(3,  '购物消费', 'expense', '🛒', 3,  TRUE),
-(4,  '居家生活', 'expense', '🏠', 4,  TRUE),
-(5,  '休闲娱乐', 'expense', '🎮', 5,  TRUE),
-(6,  '医疗健康', 'expense', '💊', 6,  TRUE),
-(7,  '学习进修', 'expense', '📚', 7,  TRUE),
-(9,  '人情往来', 'expense', '🎁', 8,  TRUE),
-(14, '其他支出', 'expense', '📌', 99, TRUE)
+-- ◆ 支出类别（一级 10 个，code 以 00 结尾表示一级本身仅展示）
+INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
+(1,  'E0100', '餐饮',     'expense', '🍜', 1,  TRUE),
+(2,  'E0200', '交通出行', 'expense', '🚗', 2,  TRUE),
+(3,  'E0300', '购物消费', 'expense', '🛒', 3,  TRUE),
+(4,  'E0400', '居家生活', 'expense', '🏠', 4,  TRUE),
+(5,  'E0500', '休闲娱乐', 'expense', '🎮', 5,  TRUE),
+(6,  'E0600', '医疗健康', 'expense', '💊', 6,  TRUE),
+(7,  'E0700', '学习进修', 'expense', '📚', 7,  TRUE),
+(9,  'E0800', '人情往来', 'expense', '🎁', 8,  TRUE),
+(14, 'E1000', '其他支出', 'expense', '📌', 99, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 育儿亲子（固定 ID=11）
-INSERT INTO categories (id, name, type, icon, sort_order, is_system) VALUES
-(11, '育儿亲子', 'expense', '👶', 9, TRUE)
+INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
+(11, 'E0900', '育儿亲子', 'expense', '👶', 9, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- ◆ 支出二级分类（44 个，固定 ID 23-66，避免与收入一级分类 ID 15-22 冲突）
-INSERT INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
--- 餐饮（6 子类）
-(23, 1, '早午晚餐', 'expense', '🌅', 1, TRUE),
-(24, 1, '外卖小吃', 'expense', '🥡', 2, TRUE),
-(25, 1, '零食饮料', 'expense', '🧋', 3, TRUE),
-(26, 1, '烟酒',     'expense', '🍷', 4, TRUE),
-(27, 1, '聚餐请客', 'expense', '🍻', 5, TRUE),
-(28, 1, '生鲜食材', 'expense', '🥬', 6, TRUE),
--- 交通出行（6 子类）
-(29, 2, '公交地铁', 'expense', '🚌', 1, TRUE),
-(30, 2, '打车拼车', 'expense', '🚕', 2, TRUE),
-(31, 2, '加油充电', 'expense', '⛽', 3, TRUE),
-(32, 2, '停车过路', 'expense', '🅿️', 4, TRUE),
-(33, 2, '火车飞机', 'expense', '🚄', 5, TRUE),
-(34, 2, '维保车险', 'expense', '🔧', 6, TRUE),
--- 购物消费（4 子类）
-(35, 3, '日用百货', 'expense', '🧴', 1, TRUE),
-(36, 3, '服饰美容', 'expense', '👗', 2, TRUE),
-(37, 3, '数码电器', 'expense', '📱', 3, TRUE),
-(38, 3, '家居家具', 'expense', '🛋️', 4, TRUE),
--- 居家生活（7 子类）
-(39, 4, '房租月供', 'expense', '🏘️', 1, TRUE),
-(40, 4, '水电燃气', 'expense', '💡', 2, TRUE),
-(41, 4, '物业维修', 'expense', '🛠️', 3, TRUE),
-(42, 4, '话费宽带', 'expense', '📶', 4, TRUE),
-(43, 4, '社保保险', 'expense', '🛡️', 5, TRUE),
-(44, 4, '日用杂货', 'expense', '🧹', 6, TRUE),
-(45, 4, '快递邮寄', 'expense', '📦', 7, TRUE),
--- 休闲娱乐（6 子类）
-(46, 5, '电影演出', 'expense', '🎬', 1, TRUE),
-(47, 5, '游戏电竞', 'expense', '🎮', 2, TRUE),
-(48, 5, '运动健身', 'expense', '🏋️', 3, TRUE),
-(49, 5, '旅游度假', 'expense', '✈️', 4, TRUE),
-(50, 5, '宠物开销', 'expense', '🐾', 5, TRUE),
-(51, 5, '会员订阅', 'expense', '📺', 6, TRUE),
--- 医疗健康（4 子类）
-(52, 6, '门诊药品', 'expense', '💊', 1, TRUE),
-(53, 6, '体检住院', 'expense', '🏥', 2, TRUE),
-(54, 6, '牙科眼科', 'expense', '🦷', 3, TRUE),
-(55, 6, '保健养生', 'expense', '🌿', 4, TRUE),
--- 学习进修（3 子类）
-(56, 7, '培训考试', 'expense', '📝', 1, TRUE),
-(57, 7, '书本文具', 'expense', '📚', 2, TRUE),
-(58, 7, '知识付费', 'expense', '🎧', 3, TRUE),
--- 人情往来（4 子类）
-(59, 9, '孝敬父母', 'expense', '👴', 1, TRUE),
-(60, 9, '送礼红包', 'expense', '🧧', 2, TRUE),
-(61, 9, '慈善捐赠', 'expense', '💝', 3, TRUE),
-(62, 9, '请客招待', 'expense', '🍻', 4, TRUE)
+-- ◆ 支出二级分类（44 个，code E+一级序号+二级序号）
+INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+-- 餐饮 E01（6 子类）
+(23, 'E0101', 1, '早午晚餐', 'expense', '🌅', 1, TRUE),
+(24, 'E0102', 1, '外卖小吃', 'expense', '🥡', 2, TRUE),
+(25, 'E0103', 1, '零食饮料', 'expense', '🧋', 3, TRUE),
+(26, 'E0104', 1, '烟酒',     'expense', '🍷', 4, TRUE),
+(27, 'E0105', 1, '聚餐请客', 'expense', '🍻', 5, TRUE),
+(28, 'E0106', 1, '生鲜食材', 'expense', '🥬', 6, TRUE),
+-- 交通出行 E02（6 子类）
+(29, 'E0201', 2, '公交地铁', 'expense', '🚌', 1, TRUE),
+(30, 'E0202', 2, '打车拼车', 'expense', '🚕', 2, TRUE),
+(31, 'E0203', 2, '加油充电', 'expense', '⛽', 3, TRUE),
+(32, 'E0204', 2, '停车过路', 'expense', '🅿️', 4, TRUE),
+(33, 'E0205', 2, '火车飞机', 'expense', '🚄', 5, TRUE),
+(34, 'E0206', 2, '维保车险', 'expense', '🔧', 6, TRUE),
+-- 购物消费 E03（4 子类）
+(35, 'E0301', 3, '日用百货', 'expense', '🧴', 1, TRUE),
+(36, 'E0302', 3, '服饰美容', 'expense', '👗', 2, TRUE),
+(37, 'E0303', 3, '数码电器', 'expense', '📱', 3, TRUE),
+(38, 'E0304', 3, '家居家具', 'expense', '🛋️', 4, TRUE),
+-- 居家生活 E04（7 子类）
+(39, 'E0401', 4, '房租月供', 'expense', '🏘️', 1, TRUE),
+(40, 'E0402', 4, '水电燃气', 'expense', '💡', 2, TRUE),
+(41, 'E0403', 4, '物业维修', 'expense', '🛠️', 3, TRUE),
+(42, 'E0404', 4, '话费宽带', 'expense', '📶', 4, TRUE),
+(43, 'E0405', 4, '社保保险', 'expense', '🛡️', 5, TRUE),
+(44, 'E0406', 4, '日用杂货', 'expense', '🧹', 6, TRUE),
+(45, 'E0407', 4, '快递邮寄', 'expense', '📦', 7, TRUE),
+-- 休闲娱乐 E05（6 子类）
+(46, 'E0501', 5, '电影演出', 'expense', '🎬', 1, TRUE),
+(47, 'E0502', 5, '游戏电竞', 'expense', '🎮', 2, TRUE),
+(48, 'E0503', 5, '运动健身', 'expense', '🏋️', 3, TRUE),
+(49, 'E0504', 5, '旅游度假', 'expense', '✈️', 4, TRUE),
+(50, 'E0505', 5, '宠物开销', 'expense', '🐾', 5, TRUE),
+(51, 'E0506', 5, '会员订阅', 'expense', '📺', 6, TRUE),
+-- 医疗健康 E06（4 子类）
+(52, 'E0601', 6, '门诊药品', 'expense', '💊', 1, TRUE),
+(53, 'E0602', 6, '体检住院', 'expense', '🏥', 2, TRUE),
+(54, 'E0603', 6, '牙科眼科', 'expense', '🦷', 3, TRUE),
+(55, 'E0604', 6, '保健养生', 'expense', '🌿', 4, TRUE),
+-- 学习进修 E07（3 子类）
+(56, 'E0701', 7, '培训考试', 'expense', '📝', 1, TRUE),
+(57, 'E0702', 7, '书本文具', 'expense', '📚', 2, TRUE),
+(58, 'E0703', 7, '知识付费', 'expense', '🎧', 3, TRUE),
+-- 人情往来 E08（4 子类）
+(59, 'E0801', 9, '孝敬父母', 'expense', '👴', 1, TRUE),
+(60, 'E0802', 9, '送礼红包', 'expense', '🧧', 2, TRUE),
+(61, 'E0803', 9, '慈善捐赠', 'expense', '💝', 3, TRUE),
+(62, 'E0804', 9, '请客招待', 'expense', '🍻', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- 育儿亲子二级分类（固定 ID 67-70，parent_id=11）
-INSERT INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
-(67, 11, '奶粉尿布', 'expense', '🍼', 1, TRUE),
-(68, 11, '玩具童书', 'expense', '🧸', 2, TRUE),
-(69, 11, '学费培训', 'expense', '🎓', 3, TRUE),
-(70, 11, '医疗保健', 'expense', '🏥', 4, TRUE)
+-- 育儿亲子二级分类（E09，固定 ID 67-70，parent_id=11）
+INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+(67, 'E0901', 11, '奶粉尿布', 'expense', '🍼', 1, TRUE),
+(68, 'E0902', 11, '玩具童书', 'expense', '🧸', 2, TRUE),
+(69, 'E0903', 11, '学费培训', 'expense', '🎓', 3, TRUE),
+(70, 'E0904', 11, '医疗保健', 'expense', '🏥', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- ◆ 收入类别（一级 4 个）
-INSERT INTO categories (id, name, type, icon, sort_order, is_system) VALUES
-(15, '职业收入', 'income', '💼', 1,  TRUE),
-(17, '被动收入', 'income', '📈', 2,  TRUE),
-(18, '兼职副业', 'income', '💻', 3,  TRUE),
-(21, '其他收入', 'income', '📌', 99, TRUE),
-(22, '转账',     'transfer', '↔️', 1,  TRUE)
+-- ◆ 收入类别（一级 4 个 + 转账 1 个）
+INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
+(15, 'I0100', '职业收入', 'income',   '💼', 1,  TRUE),
+(17, 'I0200', '被动收入', 'income',   '📈', 2,  TRUE),
+(18, 'I0300', '兼职副业', 'income',   '💻', 3,  TRUE),
+(21, 'I0400', '其他收入', 'income',   '📌', 99, TRUE),
+(22, 'T0100', '转账',     'transfer', '↔️', 1,  TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- ◆ 收入二级分类（10 个，固定 ID 71-80）
-INSERT INTO categories (id, parent_id, name, type, icon, sort_order, is_system) VALUES
--- 职业收入（3 子类）
-(71, 15, '工资薪水', 'income', '💰', 1, TRUE),
-(72, 15, '奖金绩效', 'income', '🏆', 2, TRUE),
-(73, 15, '补贴报销', 'income', '📋', 3, TRUE),
--- 被动收入（3 子类）
-(74, 17, '理财收益', 'income', '📊', 1, TRUE),
-(75, 17, '房租收入', 'income', '🏠', 2, TRUE),
-(76, 17, '分红利息', 'income', '💹', 3, TRUE),
--- 兼职副业（4 子类）
-(77, 18, '自由职业',   'income', '🎨', 1, TRUE),
-(78, 18, '咨询服务',   'income', '🗣️', 2, TRUE),
-(79, 18, '自媒体创作', 'income', '🎬', 3, TRUE),
-(80, 18, '电商微商',   'income', '🛍️', 4, TRUE)
+-- ◆ 收入二级分类（10 个）
+INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+-- 职业收入 I01（3 子类）
+(71, 'I0101', 15, '工资薪水',   'income', '💰', 1, TRUE),
+(72, 'I0102', 15, '奖金绩效',   'income', '🏆', 2, TRUE),
+(73, 'I0103', 15, '补贴报销',   'income', '📋', 3, TRUE),
+-- 被动收入 I02（3 子类）
+(74, 'I0201', 17, '理财收益',   'income', '📊', 1, TRUE),
+(75, 'I0202', 17, '房租收入',   'income', '🏠', 2, TRUE),
+(76, 'I0203', 17, '分红利息',   'income', '💹', 3, TRUE),
+-- 兼职副业 I03（4 子类）
+(77, 'I0301', 18, '自由职业',   'income', '🎨', 1, TRUE),
+(78, 'I0302', 18, '咨询服务',   'income', '🗣️', 2, TRUE),
+(79, 'I0303', 18, '自媒体创作', 'income', '🎬', 3, TRUE),
+(80, 'I0304', 18, '电商微商',   'income', '🛍️', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 理财产品类型

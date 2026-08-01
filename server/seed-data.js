@@ -92,80 +92,80 @@ async function seedUserData(userId, conn) {
     // ===========================================
     // 2. 交易记录（基于新分类体系，真实中国消费场景）
     // ===========================================
-    // 收入模板：使用一级分类 ID
+    // 收入模板：使用分类 code（E=支出 I=收入 T=转账）
     const incomeTemplates = [
-        { cat: 15, name: '月工资',         amount: 18000, account: '工商银行' },
-        { cat: 15, name: '季度奖金',       amount: 8000,  account: '工商银行' },
-        { cat: 15, name: '加班补贴',       amount: 1200,  account: '工商银行' },
-        { cat: 17, name: '基金分红',       amount: 650,   account: '招商银行' },
-        { cat: 17, name: '房租收入',       amount: 3500,  account: '招商银行' },
-        { cat: 17, name: '理财到期赎回',   amount: 20000, account: '工商银行' },
-        { cat: 18, name: '周末兼职',       amount: 2000,  account: '微信支付' },
-        { cat: 18, name: '接外包项目',     amount: 5000,  account: '工商银行' },
-        { cat: 21, name: '拼多多退款',     amount: 35,    account: '微信支付' },
+        { cat: 'I0101', name: '月工资',         amount: 18000, account: '工商银行' },
+        { cat: 'I0102', name: '季度奖金',       amount: 8000,  account: '工商银行' },
+        { cat: 'I0103', name: '加班补贴',       amount: 1200,  account: '工商银行' },
+        { cat: 'I0201', name: '基金分红',       amount: 650,   account: '招商银行' },
+        { cat: 'I0202', name: '房租收入',       amount: 3500,  account: '招商银行' },
+        { cat: 'I0203', name: '理财到期赎回',   amount: 20000, account: '工商银行' },
+        { cat: 'I0301', name: '周末兼职',       amount: 2000,  account: '微信支付' },
+        { cat: 'I0302', name: '接外包项目',     amount: 5000,  account: '工商银行' },
+        { cat: 'I0400', name: '拼多多退款',     amount: 35,    account: '微信支付' },
     ];
 
-    // 支出模板：使用一级分类 ID，note 描述具体消费内容
+    // 支出模板：使用分类 code（E=支出）
     const expenseTemplates = [
-        // 餐饮 (id=1)
-        { cat: 1,  name: '午餐-黄焖鸡',       amount: 28,   account: '微信支付' },
-        { cat: 1,  name: '早餐-包子豆浆',     amount: 12,   account: '微信支付' },
-        { cat: 1,  name: '晚餐外卖',           amount: 42,   account: '支付宝' },
-        { cat: 1,  name: '周末聚餐-海底捞',   amount: 320,  account: '支付宝' },
-        { cat: 1,  name: '瑞幸咖啡',           amount: 18,   account: '微信支付' },
-        { cat: 1,  name: '超市买菜',           amount: 156,  account: '微信支付' },
-        { cat: 1,  name: '水果店',             amount: 45,   account: '微信支付' },
-        { cat: 1,  name: '烟酒',               amount: 85,   account: '微信支付' },
-        // 交通出行 (id=2)
-        { cat: 2,  name: '滴滴打车-上班',     amount: 32,   account: '支付宝' },
-        { cat: 2,  name: '地铁月卡',           amount: 200,  account: '支付宝' },
-        { cat: 2,  name: '加油',               amount: 380,  account: '信用卡' },
-        { cat: 2,  name: '商场停车费',         amount: 25,   account: '微信支付' },
-        { cat: 2,  name: '北京→上海高铁',     amount: 553,  account: '支付宝' },
-        { cat: 2,  name: '车辆保养',           amount: 680,  account: '信用卡' },
-        // 购物消费 (id=3)
-        { cat: 3,  name: '京东-纸巾洗衣液',   amount: 89,   account: '微信支付' },
-        { cat: 3,  name: '淘宝-夏季T恤',      amount: 168,  account: '支付宝' },
-        { cat: 3,  name: '优衣库-衬衫',       amount: 299,  account: '信用卡' },
-        { cat: 3,  name: 'Apple Watch表带',   amount: 149,  account: '支付宝' },
-        { cat: 3,  name: '宜家-台灯',         amount: 79,   account: '信用卡' },
-        // 居家生活 (id=4)
-        { cat: 4,  name: '房租',               amount: 4500, account: '招商银行' },
-        { cat: 4,  name: '电费',               amount: 185,  account: '支付宝' },
-        { cat: 4,  name: '水费+燃气',          amount: 92,   account: '支付宝' },
-        { cat: 4,  name: '水管维修',           amount: 150,  account: '微信支付' },
-        { cat: 4,  name: '话费充值',           amount: 99,   account: '微信支付' },
-        { cat: 4,  name: '宽带月费',           amount: 79,   account: '支付宝' },
-        { cat: 4,  name: '社保代缴',           amount: 1480, account: '工商银行' },
-        { cat: 4,  name: '洗洁精垃圾袋',       amount: 35,   account: '微信支付' },
-        { cat: 4,  name: '顺丰寄文件',         amount: 23,   account: '微信支付' },
-        // 休闲娱乐 (id=5)
-        { cat: 5,  name: '流浪地球3 电影',    amount: 80,   account: '支付宝' },
-        { cat: 5,  name: 'Steam-黑神话DLC',   amount: 128,  account: '微信支付' },
-        { cat: 5,  name: '乐刻健身房月卡',     amount: 199,  account: '支付宝' },
-        { cat: 5,  name: '三亚机票+酒店',      amount: 2800, account: '信用卡' },
-        { cat: 5,  name: '猫粮+猫砂',           amount: 220,  account: '支付宝' },
-        { cat: 5,  name: 'B站大会员年费',       amount: 148,  account: '支付宝' },
-        { cat: 5,  name: 'iCloud月费',          amount: 21,   account: '支付宝' },
-        // 医疗健康 (id=6)
-        { cat: 6,  name: '感冒药',             amount: 45,   account: '微信支付' },
-        { cat: 6,  name: '年度体检',           amount: 680,  account: '信用卡' },
-        { cat: 6,  name: '洗牙',               amount: 298,  account: '支付宝' },
-        { cat: 6,  name: '蛋白粉',             amount: 189,  account: '支付宝' },
-        // 学习进修 (id=7)
-        { cat: 7,  name: '软考报名费',         amount: 180,  account: '支付宝' },
-        { cat: 7,  name: '技术书籍3本',       amount: 156,  account: '支付宝' },
-        { cat: 7,  name: '极客时间年会员',     amount: 365,  account: '微信支付' },
-        // 人情往来 (id=9)
-        { cat: 9,  name: '给爸妈转生活费',     amount: 2000, account: '工商银行' },
-        { cat: 9,  name: '同事结婚红包',       amount: 500,  account: '微信支付' },
-        { cat: 9,  name: '水滴筹捐款',         amount: 50,   account: '微信支付' },
-        { cat: 9,  name: '请朋友吃饭',         amount: 286,  account: '支付宝' },
-        // 育儿亲子 (id=11)
-        { cat: 11, name: '奶粉3罐',           amount: 450,  account: '支付宝' },
-        { cat: 11, name: '乐高积木',           amount: 199,  account: '信用卡' },
-        { cat: 11, name: '英语培训班',         amount: 2800, account: '招商银行' },
-        { cat: 11, name: '小儿退烧药',         amount: 68,   account: '微信支付' },
+        // 餐饮 E01
+        { cat: 'E0101', name: '午餐-黄焖鸡',       amount: 28,   account: '微信支付' },
+        { cat: 'E0101', name: '早餐-包子豆浆',     amount: 12,   account: '微信支付' },
+        { cat: 'E0102', name: '晚餐外卖',           amount: 42,   account: '支付宝' },
+        { cat: 'E0105', name: '周末聚餐-海底捞',   amount: 320,  account: '支付宝' },
+        { cat: 'E0103', name: '瑞幸咖啡',           amount: 18,   account: '微信支付' },
+        { cat: 'E0106', name: '超市买菜',           amount: 156,  account: '微信支付' },
+        { cat: 'E0106', name: '水果店',             amount: 45,   account: '微信支付' },
+        { cat: 'E0104', name: '烟酒',               amount: 85,   account: '微信支付' },
+        // 交通出行 E02
+        { cat: 'E0202', name: '滴滴打车-上班',     amount: 32,   account: '支付宝' },
+        { cat: 'E0201', name: '地铁月卡',           amount: 200,  account: '支付宝' },
+        { cat: 'E0203', name: '加油',               amount: 380,  account: '信用卡' },
+        { cat: 'E0204', name: '商场停车费',         amount: 25,   account: '微信支付' },
+        { cat: 'E0205', name: '北京→上海高铁',     amount: 553,  account: '支付宝' },
+        { cat: 'E0206', name: '车辆保养',           amount: 680,  account: '信用卡' },
+        // 购物消费 E03
+        { cat: 'E0301', name: '京东-纸巾洗衣液',   amount: 89,   account: '微信支付' },
+        { cat: 'E0302', name: '淘宝-夏季T恤',      amount: 168,  account: '支付宝' },
+        { cat: 'E0302', name: '优衣库-衬衫',       amount: 299,  account: '信用卡' },
+        { cat: 'E0303', name: 'Apple Watch表带',   amount: 149,  account: '支付宝' },
+        { cat: 'E0304', name: '宜家-台灯',         amount: 79,   account: '信用卡' },
+        // 居家生活 E04
+        { cat: 'E0401', name: '房租',               amount: 4500, account: '招商银行' },
+        { cat: 'E0402', name: '电费',               amount: 185,  account: '支付宝' },
+        { cat: 'E0402', name: '水费+燃气',          amount: 92,   account: '支付宝' },
+        { cat: 'E0403', name: '水管维修',           amount: 150,  account: '微信支付' },
+        { cat: 'E0404', name: '话费充值',           amount: 99,   account: '微信支付' },
+        { cat: 'E0404', name: '宽带月费',           amount: 79,   account: '支付宝' },
+        { cat: 'E0405', name: '社保代缴',           amount: 1480, account: '工商银行' },
+        { cat: 'E0406', name: '洗洁精垃圾袋',       amount: 35,   account: '微信支付' },
+        { cat: 'E0407', name: '顺丰寄文件',         amount: 23,   account: '微信支付' },
+        // 休闲娱乐 E05
+        { cat: 'E0501', name: '流浪地球3 电影',    amount: 80,   account: '支付宝' },
+        { cat: 'E0502', name: 'Steam-黑神话DLC',   amount: 128,  account: '微信支付' },
+        { cat: 'E0503', name: '乐刻健身房月卡',     amount: 199,  account: '支付宝' },
+        { cat: 'E0504', name: '三亚机票+酒店',      amount: 2800, account: '信用卡' },
+        { cat: 'E0505', name: '猫粮+猫砂',           amount: 220,  account: '支付宝' },
+        { cat: 'E0506', name: 'B站大会员年费',       amount: 148,  account: '支付宝' },
+        { cat: 'E0506', name: 'iCloud月费',          amount: 21,   account: '支付宝' },
+        // 医疗健康 E06
+        { cat: 'E0601', name: '感冒药',             amount: 45,   account: '微信支付' },
+        { cat: 'E0602', name: '年度体检',           amount: 680,  account: '信用卡' },
+        { cat: 'E0603', name: '洗牙',               amount: 298,  account: '支付宝' },
+        { cat: 'E0604', name: '蛋白粉',             amount: 189,  account: '支付宝' },
+        // 学习进修 E07
+        { cat: 'E0701', name: '软考报名费',         amount: 180,  account: '支付宝' },
+        { cat: 'E0702', name: '技术书籍3本',       amount: 156,  account: '支付宝' },
+        { cat: 'E0703', name: '极客时间年会员',     amount: 365,  account: '微信支付' },
+        // 人情往来 E08
+        { cat: 'E0801', name: '给爸妈转生活费',     amount: 2000, account: '工商银行' },
+        { cat: 'E0802', name: '同事结婚红包',       amount: 500,  account: '微信支付' },
+        { cat: 'E0803', name: '水滴筹捐款',         amount: 50,   account: '微信支付' },
+        { cat: 'E0804', name: '请朋友吃饭',         amount: 286,  account: '支付宝' },
+        // 育儿亲子 E09
+        { cat: 'E0901', name: '奶粉3罐',           amount: 450,  account: '支付宝' },
+        { cat: 'E0902', name: '乐高积木',           amount: 199,  account: '信用卡' },
+        { cat: 'E0903', name: '英语培训班',         amount: 2800, account: '招商银行' },
+        { cat: 'E0904', name: '小儿退烧药',         amount: 68,   account: '微信支付' },
     ];
 
     // 生成 3 个月数据（当月 + 上月 + 上上月）
@@ -174,6 +174,13 @@ async function seedUserData(userId, conn) {
         { year: lmY, month: lastMonth },
         { year: parseInt(twoMonthsAgo.split('-')[0]), month: parseInt(twoMonthsAgo.split('-')[1]) - 1 },
     ];
+
+    // 构建 code → category_id 映射（种子数据用 code 引用，这里转为数据库 id）
+    const codeToId = {};
+    const catRows = await conn.query('SELECT id, code FROM categories WHERE code IS NOT NULL');
+    for (const row of catRows) {
+        codeToId[row.code] = row.id;
+    }
 
     for (const mi of months) {
         const py = mi.year, pm = mi.month;
@@ -186,10 +193,12 @@ async function seedUserData(userId, conn) {
             const dateStr = `${py}-${String(pm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const variance = 0.9 + Math.random() * 0.2;
             const acctId = accountIds[tx.account] || accountIds['工商银行'];
+            const catId = codeToId[tx.cat];
+            if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-                [userId, acctId, tx.cat, 'income', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
+                [userId, acctId, catId, 'income', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
             dayCounter += 3 + Math.floor(Math.random() * 4);
             if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
@@ -202,10 +211,12 @@ async function seedUserData(userId, conn) {
             const dateStr = `${py}-${String(pm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const variance = 0.8 + Math.random() * 0.4;
             const acctId = accountIds[tx.account] || accountIds['微信支付'];
+            const catId = codeToId[tx.cat];
+            if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-                [userId, acctId, tx.cat, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
+                [userId, acctId, catId, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
             dayCounter += 1 + Math.floor(Math.random() * 3);
             if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
