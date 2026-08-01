@@ -9,8 +9,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY server/package.json server/package-lock.json ./
-# 使用 npm ci 确保 lockfile 与 package.json 一致，避免隐性升级
-RUN npm ci --omit=dev
+# 使用 npmmirror 镜像源加速，npm ci 在某些环境下有 bug
+RUN npm config set registry https://registry.npmmirror.com && npm ci --omit=dev
 
 # ---- 阶段 2：精简运行镜像 ----
 FROM node:22-alpine

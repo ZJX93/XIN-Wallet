@@ -248,6 +248,38 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.code 迁移警告:', err.message);
     }
 
+    // 4.2) 幂等迁移：accounts.code（结构化编码 A0201=银行卡-工商银行）
+    try {
+      await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS code VARCHAR(5)`);
+      await pool.query(`
+        UPDATE accounts SET code = CASE id
+          WHEN 1 THEN 'A0101' WHEN 2 THEN 'A0201' WHEN 3 THEN 'A0202'
+          WHEN 4 THEN 'A0401' WHEN 5 THEN 'A0402' WHEN 6 THEN 'A0301'
+        END
+        WHERE code IS NULL
+      `);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ accounts.code 迁移警告:', err.message);
+    }
+
+    // 4.3) 幂等迁移：investment_types.code（结构化编码 V0203=指数基金）
+    try {
+      await pool.query(`ALTER TABLE investment_types ADD COLUMN IF NOT EXISTS code VARCHAR(5)`);
+      await pool.query(`
+        UPDATE investment_types SET code = CASE id
+          WHEN 1  THEN 'V0101' WHEN 2  THEN 'V0201' WHEN 3  THEN 'V0202'
+          WHEN 4  THEN 'V0203' WHEN 5  THEN 'V0204' WHEN 6  THEN 'V0205'
+          WHEN 7  THEN 'V0301' WHEN 8  THEN 'V9901' WHEN 9  THEN 'V0102'
+          WHEN 10 THEN 'V0601' WHEN 11 THEN 'V9902' WHEN 12 THEN 'V0401'
+          WHEN 13 THEN 'V0501' WHEN 14 THEN 'V0701' WHEN 15 THEN 'V0801'
+          WHEN 16 THEN 'V0103'
+        END
+        WHERE code IS NULL
+      `);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.code 迁移警告:', err.message);
+    }
+
     // 5) 幂等迁移：investments.nav_date
     try {
       await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS nav_date DATE DEFAULT NULL`);

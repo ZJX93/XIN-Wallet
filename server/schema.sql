@@ -30,8 +30,11 @@ DROP TRIGGER IF EXISTS trg_users_updated ON users;
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 账户表
+-- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
+--   如 A0201=银行卡-工商银行，A0100=现金类（虚拟分组）
 CREATE TABLE IF NOT EXISTS accounts (
   id SERIAL PRIMARY KEY,
+  code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 A0201）
   user_id INT NOT NULL DEFAULT 1,
   name VARCHAR(50) NOT NULL,                          -- 账户名称
   type VARCHAR(30) NOT NULL CHECK (type IN ('cash','bank_card','credit_card','electronic_payment','financial_account','digital','other')),
@@ -46,6 +49,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_code ON accounts (code) WHERE code IS NOT NULL;
 DROP TRIGGER IF EXISTS trg_accounts_updated ON accounts;
 CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -139,10 +143,13 @@ DROP TRIGGER IF EXISTS trg_budgets_updated ON budgets;
 CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 理财产品类型表（全局共享，无 user_id）
+-- code: 结构化编码（5位），V=投资 + 2位大类 + 2位序号
+--   V01=存款固收 V02=基金 V03=A股 V04=港股 V05=美股 V06=商品 V07=加密 V08=外汇 V99=其他
 -- is_system：系统预置类型标记，为 TRUE 时禁止普通用户 UPDATE/DELETE，
 --            防止任意用户篡改全局类型影响其他所有用户。
 CREATE TABLE IF NOT EXISTS investment_types (
   id SERIAL PRIMARY KEY,
+  code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 V0203）
   name VARCHAR(50) NOT NULL,
   icon VARCHAR(10) DEFAULT '📈',
   risk_level VARCHAR(10) DEFAULT 'medium' CHECK (risk_level IN ('low','medium','high','very_high')),
@@ -152,6 +159,7 @@ CREATE TABLE IF NOT EXISTS investment_types (
   is_system BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_investment_types_code ON investment_types (code) WHERE code IS NOT NULL;
 
 -- 理财持仓表
 CREATE TABLE IF NOT EXISTS investments (
@@ -215,13 +223,15 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON investment_snapshots (user
 -- ============================================
 
 -- 默认账户
-INSERT INTO accounts (id, user_id, name, type, icon, balance, is_default, sort_order) VALUES
-(1, 1, '现金', 'cash', '💵', 500.00, FALSE, 1),
-(2, 1, '工商银行', 'bank_card', '🏦', 25000.00, TRUE, 2),
-(3, 1, '招商银行', 'bank_card', '🏦', 18000.00, FALSE, 3),
-(4, 1, '微信支付', 'electronic_payment', '💚', 3200.00, FALSE, 4),
-(5, 1, '支付宝', 'electronic_payment', '🔵', 5000.00, FALSE, 5),
-(6, 1, '信用卡', 'credit_card', '💳', 0.00, FALSE, 6)
+-- code 编码规则：A + 2位类型 + 2位序号
+--   A01=cash A02=bank_card A03=credit_card A04=electronic_payment A05=financial A06=digital A99=other
+INSERT INTO accounts (id, code, user_id, name, type, icon, balance, is_default, sort_order) VALUES
+(1, 'A0101', 1, '现金',       'cash',                '💵', 500.00,  FALSE, 1),
+(2, 'A0201', 1, '工商银行',   'bank_card',           '🏦', 25000.00, TRUE,  2),
+(3, 'A0202', 1, '招商银行',   'bank_card',           '🏦', 18000.00, FALSE, 3),
+(4, 'A0401', 1, '微信支付',   'electronic_payment',  '💚', 3200.00,  FALSE, 4),
+(5, 'A0402', 1, '支付宝',     'electronic_payment',  '🔵', 5000.00,  FALSE, 5),
+(6, 'A0301', 1, '信用卡',     'credit_card',         '💳', 0.00,     FALSE, 6)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================
@@ -340,23 +350,25 @@ INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_sy
 ON CONFLICT (id) DO NOTHING;
 
 -- 理财产品类型
-INSERT INTO investment_types (id, name, icon, risk_level, description, sort_order, category) VALUES
-(1, '银行存款', '🏦', 'low', '银行定期/活期存款', 1, 'deposit'),
-(2, '货币基金', '💰', 'low', '余额宝等货币市场基金', 2, 'fund'),
-(3, '债券基金', '📊', 'low', '纯债/混合债基金', 3, 'fund'),
-(4, '指数基金', '📈', 'medium', '沪深300/中证500等宽基指数', 4, 'fund'),
-(5, '混合基金', '🔄', 'medium', '股债混合型基金', 5, 'fund'),
-(6, '股票基金', '🚀', 'high', '主动管理型股票基金', 6, 'fund'),
-(7, '个股', '💹', 'very_high', '直接持有的个股', 7, 'stock'),
-(8, '理财产品', '💎', 'medium', '银行/券商理财产品', 8, 'other'),
-(9, '国债', '🏛️', 'low', '国债/地方债', 9, 'deposit'),
-(10, '黄金/贵金属', '🥇', 'medium', '实物黄金/纸黄金/黄金ETF', 10, 'commodity'),
-(11, '其他理财', '📌', 'medium', '其他投资品种', 99, 'other'),
-(12, '港股', '🇭🇰', 'very_high', '香港交易所上市股票', 11, 'hk_stock'),
-(13, '美股', '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票', 12, 'us_stock'),
-(14, '加密货币', '₿', 'very_high', '比特币/以太坊等数字资产', 13, 'crypto'),
-(15, '外汇', '💱', 'high', '美元/欧元/日元等外汇品种', 14, 'forex'),
-(16, '债券', '📜', 'low', '企业债/可转债等固定收益品种', 15, 'deposit')
+-- code 编码规则：V + 2位大类 + 2位序号
+--   V01=存款固收 V02=基金 V03=A股 V04=港股 V05=美股 V06=商品 V07=加密 V08=外汇 V99=其他
+INSERT INTO investment_types (id, code, name, icon, risk_level, description, sort_order, category) VALUES
+(1,  'V0101', '银行存款',    '🏦', 'low',       '银行定期/活期存款',               1,  'deposit'),
+(2,  'V0201', '货币基金',    '💰', 'low',       '余额宝等货币市场基金',             2,  'fund'),
+(3,  'V0202', '债券基金',    '📊', 'low',       '纯债/混合债基金',                 3,  'fund'),
+(4,  'V0203', '指数基金',    '📈', 'medium',    '沪深300/中证500等宽基指数',        4,  'fund'),
+(5,  'V0204', '混合基金',    '🔄', 'medium',    '股债混合型基金',                  5,  'fund'),
+(6,  'V0205', '股票基金',    '🚀', 'high',      '主动管理型股票基金',               6,  'fund'),
+(7,  'V0301', '个股',        '💹', 'very_high', '直接持有的个股',                   7,  'stock'),
+(8,  'V9901', '理财产品',    '💎', 'medium',    '银行/券商理财产品',                8,  'other'),
+(9,  'V0102', '国债',        '🏛️', 'low',       '国债/地方债',                      9,  'deposit'),
+(10, 'V0601', '黄金/贵金属', '🥇', 'medium',    '实物黄金/纸黄金/黄金ETF',          10, 'commodity'),
+(11, 'V9902', '其他理财',    '📌', 'medium',    '其他投资品种',                     99, 'other'),
+(12, 'V0401', '港股',        '🇭🇰', 'very_high', '香港交易所上市股票',               11, 'hk_stock'),
+(13, 'V0501', '美股',        '🇺🇸', 'very_high', '美国纳斯达克/NYSE上市股票',        12, 'us_stock'),
+(14, 'V0701', '加密货币',    '₿',   'very_high', '比特币/以太坊等数字资产',          13, 'crypto'),
+(15, 'V0801', '外汇',        '💱', 'high',      '美元/欧元/日元等外汇品种',          14, 'forex'),
+(16, 'V0103', '债券',        '📜', 'low',       '企业债/可转债等固定收益品种',       15, 'deposit')
 ON CONFLICT (id) DO NOTHING;
 
 -- 迁移：将黄金(id=10)的 category 从 other 更新为 commodity（支持行情刷新）

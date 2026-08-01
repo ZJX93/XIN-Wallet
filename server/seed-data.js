@@ -283,28 +283,37 @@ async function seedUserData(userId, conn) {
     // ===========================================
     // 5. 理财持仓（覆盖各种投资品类）
     // ===========================================
+    // 构建 code → investment_type_id 映射
+    const investTypeCodeToId = {};
+    const itRows = await conn.query('SELECT id, code FROM investment_types WHERE code IS NOT NULL');
+    for (const row of itRows) {
+        investTypeCodeToId[row.code] = row.id;
+    }
+
     const investmentData = [
-        { type: 1,  name: '定期存款-1年期',   code: '',           buy_price: 1,       current_price: 1.015,   quantity: 50000,  buy_date: `${y}-01-15`, expected_rate: 1.5 },
-        { type: 2,  name: '余额宝',            code: '000198',     buy_price: 1.0,     current_price: 1.0018,  quantity: 30000,  buy_date: `${y}-02-01`, expected_rate: 1.8 },
-        { type: 3,  name: '招商产业债C',       code: '001868',     buy_price: 1.12,    current_price: 1.156,   quantity: 20000,  buy_date: `${y}-03-10`, expected_rate: 3.2 },
-        { type: 4,  name: '沪深300ETF',        code: '510300',     buy_price: 3.85,    current_price: 4.12,    quantity: 8000,   buy_date: `${y}-04-15`, expected_rate: 8 },
-        { type: 5,  name: '易方达蓝筹精选',    code: '005827',     buy_price: 2.35,    current_price: 2.58,    quantity: 10000,  buy_date: `${y}-05-20`, expected_rate: 10 },
-        { type: 7,  name: '贵州茅台',           code: 'sh600519',   buy_price: 1650,    current_price: 1780,    quantity: 10,     buy_date: `${y}-06-10`, expected_rate: 8 },
-        { type: 8,  name: '招行季季宝',        code: '',           buy_price: 1,       current_price: 1.012,   quantity: 80000,  buy_date: `${y}-07-01`, expected_rate: 3.0 },
-        { type: 10, name: '黄金ETF',           code: '518880',     buy_price: 5.15,    current_price: 5.62,    quantity: 3000,   buy_date: `${y}-08-10`, expected_rate: 6 },
-        { type: 12, name: '腾讯控股',           code: '00700',      buy_price: 380,     current_price: 452,     quantity: 100,    buy_date: `${y}-09-05`, expected_rate: 12 },
-        { type: 13, name: 'Apple Inc.',         code: 'AAPL',       buy_price: 195,     current_price: 218,     quantity: 30,     buy_date: `${y}-10-15`, expected_rate: 10 },
-        { type: 14, name: '比特币',             code: 'BTCUSDT',    buy_price: 42000,   current_price: 68000,   quantity: 0.05,   buy_date: `${y}-11-01`, expected_rate: 20 },
-        { type: 16, name: '国债逆回购',         code: '',           buy_price: 100,     current_price: 100.8,   quantity: 500,    buy_date: `${y}-12-01`, expected_rate: 2.0 },
+        { typeCode: 'V0101', name: '定期存款-1年期',   code: '',           buy_price: 1,       current_price: 1.015,   quantity: 50000,  buy_date: `${y}-01-15`, expected_rate: 1.5 },
+        { typeCode: 'V0201', name: '余额宝',            code: '000198',     buy_price: 1.0,     current_price: 1.0018,  quantity: 30000,  buy_date: `${y}-02-01`, expected_rate: 1.8 },
+        { typeCode: 'V0202', name: '招商产业债C',       code: '001868',     buy_price: 1.12,    current_price: 1.156,   quantity: 20000,  buy_date: `${y}-03-10`, expected_rate: 3.2 },
+        { typeCode: 'V0203', name: '沪深300ETF',        code: '510300',     buy_price: 3.85,    current_price: 4.12,    quantity: 8000,   buy_date: `${y}-04-15`, expected_rate: 8 },
+        { typeCode: 'V0204', name: '易方达蓝筹精选',    code: '005827',     buy_price: 2.35,    current_price: 2.58,    quantity: 10000,  buy_date: `${y}-05-20`, expected_rate: 10 },
+        { typeCode: 'V0301', name: '贵州茅台',           code: 'sh600519',   buy_price: 1650,    current_price: 1780,    quantity: 10,     buy_date: `${y}-06-10`, expected_rate: 8 },
+        { typeCode: 'V9901', name: '招行季季宝',        code: '',           buy_price: 1,       current_price: 1.012,   quantity: 80000,  buy_date: `${y}-07-01`, expected_rate: 3.0 },
+        { typeCode: 'V0601', name: '黄金ETF',           code: '518880',     buy_price: 5.15,    current_price: 5.62,    quantity: 3000,   buy_date: `${y}-08-10`, expected_rate: 6 },
+        { typeCode: 'V0401', name: '腾讯控股',           code: '00700',      buy_price: 380,     current_price: 452,     quantity: 100,    buy_date: `${y}-09-05`, expected_rate: 12 },
+        { typeCode: 'V0501', name: 'Apple Inc.',         code: 'AAPL',       buy_price: 195,     current_price: 218,     quantity: 30,     buy_date: `${y}-10-15`, expected_rate: 10 },
+        { typeCode: 'V0701', name: '比特币',             code: 'BTCUSDT',    buy_price: 42000,   current_price: 68000,   quantity: 0.05,   buy_date: `${y}-11-01`, expected_rate: 20 },
+        { typeCode: 'V0103', name: '国债逆回购',         code: '',           buy_price: 100,     current_price: 100.8,   quantity: 500,    buy_date: `${y}-12-01`, expected_rate: 2.0 },
     ];
     for (const inv of investmentData) {
         const totalCost = inv.buy_price * inv.quantity;
         const currentValue = inv.current_price * inv.quantity;
+        const typeId = investTypeCodeToId[inv.typeCode];
+        if (!typeId) { console.warn(`⚠️ 未知投资类型 code: ${inv.typeCode}`); continue; }
         await conn.query(
             `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity,
              total_cost, current_value, buy_date, expected_rate, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')`,
-            [userId, accountIds['工商银行'], inv.type, inv.name, inv.code || '',
+            [userId, accountIds['工商银行'], typeId, inv.name, inv.code || '',
              inv.buy_price, inv.current_price, inv.quantity,
              totalCost, currentValue, inv.buy_date, inv.expected_rate]
         );
