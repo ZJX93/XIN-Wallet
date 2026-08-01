@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   nickname VARCHAR(100),
+  avatar VARCHAR(10) DEFAULT '👤',
   fail_count INT NOT NULL DEFAULT 0,
   locked_until TIMESTAMP NULL,
   last_fail_at TIMESTAMP NULL,

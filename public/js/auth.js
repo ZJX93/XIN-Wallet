@@ -65,7 +65,7 @@ if (_origFetch) {
     window.fetch = async (input, init = {}) => {
         const url = typeof input === 'string' ? input : (input.url || '');
         const isApi = url.includes('/api/') || url.startsWith(apiBase());
-        const isAuth = url.includes('/api/auth') || url.includes(`${apiBase()}/auth`);
+        const isAuth = url.includes('/api/auth/login') || url.includes('/api/auth/register') || url.includes('/api/auth/refresh') || url.includes('/api/auth/demo');
         const requestInit = { ...init, headers: { ...(init.headers || {}) } };
         const token = getToken();
         // 兼容反向代理/子路径：API 路径可能带前缀（如 /xin/api/...）
@@ -103,4 +103,148 @@ export function bindLogout() {
         clearSession();
         window.location.href = '/login';
     });
+}
+
+// ============================================
+// 个人资料弹窗
+// ============================================
+
+const AVATARS = ['👤', '🐱', '🐶', '🐼', '🦊', '🐰', '🐸', '🐧', '🐙', '🦄', '🐳', '🦋', '🌻', '🍀', '⭐', '🔥', '💎', '🎯', '🚀', '🎸'];
+
+function renderAvatarPicker(selected) {
+    const picker = document.getElementById('profileAvatarPicker');
+    if (!picker) return;
+    picker.innerHTML = AVATARS.map(a =>
+        `<button type="button" class="avatar-option${a === selected ? ' active' : ''}" data-avatar="${a}">${a}</button>`
+    ).join('');
+    // 绑定点击事件
+    picker.querySelectorAll('.avatar-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const avatar = btn.dataset.avatar;
+            document.getElementById('profileAvatarPreview').textContent = avatar;
+            picker.querySelectorAll('.avatar-option').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+}
+
+function getSelectedAvatar() {
+    const active = document.querySelector('#profileAvatarPicker .avatar-option.active');
+    return active ? active.dataset.avatar : '👤';
+}
+
+export function bindProfileModal() {
+    const profileBtn = document.getElementById('profileBtn');
+    const modal = document.getElementById('profileModal');
+    const closeBtn = document.getElementById('profileModalClose');
+    const cancelBtn = document.getElementById('profileCancelBtn');
+    const form = document.getElementById('profileForm');
+
+    if (!profileBtn || !modal) return;
+
+    // 打开弹窗
+    profileBtn.addEventListener('click', async () => {
+        // 加载当前用户信息
+        try {
+            const res = await window.fetch(`${apiBase()}/auth/profile`);
+            const data = await res.json();
+            if (data.success && data.data.user) {
+                const u = data.data.user;
+                document.getElementById('profileUsername').value = u.username;
+                document.getElementById('profileNickname').value = u.nickname || '';
+                // 清空密码字段
+                document.getElementById('profileOldPassword').value = '';
+                document.getElementById('profileNewPassword').value = '';
+                document.getElementById('profileNewPassword2').value = '';
+                document.getElementById('profileMsg').textContent = '';
+                document.getElementById('profileMsg').className = 'profile-msg';
+                // 头像选择器
+                const stored = getStoredUser();
+                const avatar = (u.avatar) || (stored && stored.avatar) || '👤';
+                document.getElementById('profileAvatarPreview').textContent = avatar;
+                renderAvatarPicker(avatar);
+            }
+        } catch (err) {
+            console.error('获取用户资料失败:', err);
+            showProfileMsg('加载用户信息失败', 'error');
+        }
+        modal.classList.add('show');
+    });
+
+    function close() {
+        modal.classList.remove('show');
+    }
+
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) close();
+    });
+
+    // 提交表单
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const nickname = document.getElementById('profileNickname').value.trim();
+        const oldPassword = document.getElementById('profileOldPassword').value;
+        const newPassword = document.getElementById('profileNewPassword').value;
+        const newPassword2 = document.getElementById('profileNewPassword2').value;
+        const avatar = getSelectedAvatar();
+
+        // 验证
+        if (newPassword && newPassword !== newPassword2) {
+            showProfileMsg('两次输入的新密码不一致', 'error');
+            return;
+        }
+        if (newPassword && !oldPassword) {
+            showProfileMsg('请输入旧密码', 'error');
+            return;
+        }
+
+        const body = {};
+        if (nickname) body.nickname = nickname;
+        if (avatar) body.avatar = avatar;
+        if (oldPassword && newPassword) {
+            body.oldPassword = oldPassword;
+            body.newPassword = newPassword;
+        }
+
+        try {
+            const res = await window.fetch(`${apiBase()}/auth/profile`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                // 更新 localStorage 中的用户信息
+                const stored = getStoredUser();
+                if (stored) {
+                    stored.nickname = data.data.user.nickname;
+                    stored.avatar = avatar;
+                    localStorage.setItem(USER_KEY, JSON.stringify(stored));
+                }
+                // 更新头部显示
+                renderUserMenu();
+                showProfileMsg(data.message || '保存成功', 'success');
+                // 清空密码字段
+                document.getElementById('profileOldPassword').value = '';
+                document.getElementById('profileNewPassword').value = '';
+                document.getElementById('profileNewPassword2').value = '';
+                // 1.5秒后自动关闭
+                setTimeout(close, 1500);
+            } else {
+                showProfileMsg(data.message || '保存失败', 'error');
+            }
+        } catch (err) {
+            console.error('更新用户资料失败:', err);
+            showProfileMsg('网络错误，请重试', 'error');
+        }
+    });
+}
+
+function showProfileMsg(msg, type) {
+    const el = document.getElementById('profileMsg');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'profile-msg ' + type;
 }

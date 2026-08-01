@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const db = require('../db');
-const { hashPassword, verifyPassword, signToken, signRefreshToken } = require('../auth');
+const { hashPassword, verifyPassword, signToken, signRefreshToken, authMiddleware } = require('../auth');
 const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
@@ -185,6 +185,97 @@ router.post('/refresh', validate({
             });
     } catch (err) {
         return res.status(401).json(fail('Refresh token 无效或已过期'));
+    }
+});
+
+// ============================================
+// 用户个人资料
+// ============================================
+
+// GET /api/auth/profile — 获取当前用户信息
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        const user = await db.queryOne(
+            'SELECT id, username, nickname, avatar, created_at FROM users WHERE id = ?',
+            [req.user.id]
+        );
+        if (!user) return res.status(404).json(fail('用户不存在'));
+        res.json(success({ user }));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// PUT /api/auth/profile — 更新昵称 / 修改密码
+router.put('/profile', authMiddleware, validate({
+    body: {
+        nickname: { type: 'string', min: 1, max: 32, required: false },
+        avatar: { type: 'string', min: 1, max: 10, required: false },
+        oldPassword: { type: 'string', min: 1, max: 128, required: false },
+        newPassword: { type: 'string', min: 1, max: 128, required: false },
+    }
+}), async (req, res) => {
+    try {
+        const { nickname, avatar, oldPassword, newPassword } = req.body;
+        const userId = req.user.id;
+
+        // 获取当前用户完整信息
+        const user = await db.queryOne(
+            'SELECT * FROM users WHERE id = ?',
+            [userId]
+        );
+        if (!user) return res.status(404).json(fail('用户不存在'));
+
+        const updates = [];
+        const params = [];
+
+        // 更新昵称
+        if (nickname !== undefined && nickname !== user.nickname) {
+            updates.push('nickname = ?');
+            params.push(nickname);
+        }
+
+        // 更新头像
+        if (avatar !== undefined && avatar !== user.avatar) {
+            updates.push('avatar = ?');
+            params.push(avatar);
+        }
+
+        // 修改密码
+        if (oldPassword || newPassword) {
+            if (!oldPassword) return res.status(400).json(fail('请输入旧密码'));
+            if (!newPassword) return res.status(400).json(fail('请输入新密码'));
+
+            const passwordOk = await verifyPassword(oldPassword, user.password_hash);
+            if (!passwordOk) return res.status(400).json(fail('旧密码不正确'));
+
+            const strengthErr = validatePasswordStrength(newPassword);
+            if (strengthErr) return res.status(400).json(fail(strengthErr));
+
+            if (oldPassword === newPassword) {
+                return res.status(400).json(fail('新密码不能与旧密码相同'));
+            }
+
+            const newHash = await hashPassword(newPassword);
+            updates.push('password_hash = ?');
+            params.push(newHash);
+        }
+
+        if (updates.length === 0) {
+            return res.json(success({ user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar } }, '资料未变更'));
+        }
+
+        params.push(userId);
+        await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+
+        // 返回更新后的信息
+        const updated = await db.queryOne(
+            'SELECT id, username, nickname, avatar, created_at FROM users WHERE id = ?',
+            [userId]
+        );
+        res.json(success({ user: updated }, '资料更新成功'));
+    } catch (err) {
+        handleServerError(res, err);
     }
 });
 

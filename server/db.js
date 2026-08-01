@@ -185,6 +185,7 @@ async function initDatabase() {
       ['fail_count', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS fail_count INT NOT NULL DEFAULT 0'],
       ['locked_until', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP NULL'],
       ['last_fail_at', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_fail_at TIMESTAMP NULL'],
+      ['avatar', 'ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(10) DEFAULT \'👤\''],
     ];
     for (const [col, ddl] of userCols) {
       try { await pool.query(ddl); } catch (err) {

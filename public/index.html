@@ -40,6 +40,7 @@
             <div class="user-menu" id="userMenu">
                 <span class="user-avatar">👤</span>
                 <span class="user-name" id="userName">demo</span>
+                <button class="btn btn-ghost btn-sm" id="profileBtn" title="个人资料">个人资料</button>
                 <button class="btn btn-ghost btn-sm" id="logoutBtn">退出</button>
             </div>
         </div>
@@ -656,6 +657,48 @@
     <div class="modal-overlay" id="accountDetailModal"><div class="modal glass-card">
         <div class="modal-header"><h3>账户资金明细</h3><button class="modal-close" id="accountDetailModalClose">✕</button></div>
         <div class="repay-history" id="accountDetailBody"></div>
+    </div></div>
+
+    <!-- 个人资料弹窗 -->
+    <div class="modal-overlay" id="profileModal"><div class="modal glass-card modal-profile">
+        <div class="modal-header"><h3>个人资料</h3><button class="modal-close" id="profileModalClose">✕</button></div>
+        <form class="profile-form" id="profileForm">
+            <div class="profile-avatar-section">
+                <div class="profile-avatar-preview" id="profileAvatarPreview">👤</div>
+                <div class="profile-avatar-picker" id="profileAvatarPicker">
+                    <!-- JS 动态生成 emoji 头像选择 -->
+                </div>
+            </div>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="profileUsername" disabled class="input-disabled">
+                <small class="form-hint">用户名不可修改</small>
+            </div>
+            <div class="form-group">
+                <label>昵称</label>
+                <input type="text" id="profileNickname" placeholder="设置一个昵称" maxlength="32">
+            </div>
+            <div class="profile-section-divider">
+                <span>修改密码</span>
+            </div>
+            <div class="form-group">
+                <label>旧密码</label>
+                <input type="password" id="profileOldPassword" placeholder="输入旧密码" autocomplete="current-password">
+            </div>
+            <div class="form-group">
+                <label>新密码</label>
+                <input type="password" id="profileNewPassword" placeholder="至少 8 位，包含字母和数字" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>确认新密码</label>
+                <input type="password" id="profileNewPassword2" placeholder="再次输入新密码" autocomplete="new-password">
+            </div>
+            <div class="profile-msg" id="profileMsg"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-ghost" id="profileCancelBtn">取消</button>
+                <button type="submit" class="btn btn-primary">保存修改</button>
+            </div>
+        </form>
     </div></div>
 
     <div class="toast-container" id="toastContainer" role="region" aria-live="polite" aria-atomic="true"></div>
