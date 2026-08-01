@@ -161,11 +161,11 @@ async function seedUserData(userId, conn) {
         { cat: 9,  name: '同事结婚红包',       amount: 500,  account: '微信支付' },
         { cat: 9,  name: '水滴筹捐款',         amount: 50,   account: '微信支付' },
         { cat: 9,  name: '请朋友吃饭',         amount: 286,  account: '支付宝' },
-        // 育儿亲子 (id=141)
-        { cat: 141, name: '奶粉3罐',           amount: 450,  account: '支付宝' },
-        { cat: 141, name: '乐高积木',           amount: 199,  account: '信用卡' },
-        { cat: 141, name: '英语培训班',         amount: 2800, account: '招商银行' },
-        { cat: 141, name: '小儿退烧药',         amount: 68,   account: '微信支付' },
+        // 育儿亲子 (id=11)
+        { cat: 11, name: '奶粉3罐',           amount: 450,  account: '支付宝' },
+        { cat: 11, name: '乐高积木',           amount: 199,  account: '信用卡' },
+        { cat: 11, name: '英语培训班',         amount: 2800, account: '招商银行' },
+        { cat: 11, name: '小儿退烧药',         amount: 68,   account: '微信支付' },
     ];
 
     // 生成 3 个月数据（当月 + 上月 + 上上月）
