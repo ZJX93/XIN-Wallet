@@ -1,0 +1,52 @@
+# 修复审核报告 M8：缺 .dockerignore 会把 .git / node_modules / .env
+# 一并送入构建上下文（增大镜像体积 + 密钥泄露风险）
+
+# 版本控制
+.git
+.gitignore
+.gitattributes
+.github
+
+# 依赖（镜像内通过 npm ci 重新安装）
+node_modules
+server/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 密钥与本地环境（绝不进镜像）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 测试与脚本产物
+test
+coverage
+.nyc_output
+scripts/*.log
+
+# 文档
+*.md
+!README.md
+LICENSE
+RELEASE.md
+
+# 编辑器与系统文件
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# 本地数据与临时文件
+data
+*.sqlite
+*.db
+tmp
+temp
+*.tar
+*.zip
+
+# Windows 安装脚本（与 Linux 镜像无关）
+install-docker-cn.ps1

@@ -45,7 +45,7 @@ router.post('/', async (req, res) => {
         const { parent_id, name, icon, type, color } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
         const maxSort = await db.queryOne(
-            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id <=> ? AND (user_id IS NULL OR user_id = ?)',
+            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NOT DISTINCT FROM ? AND (user_id IS NULL OR user_id = ?)',
             [type, parent_id || null, req.userId]
         );
         const result = await db.query(
@@ -63,7 +63,7 @@ router.put('/:id', async (req, res) => {
         // 检查权限：必须是当前用户的私有分类（系统预设不允许修改）
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        if (owner.user_id !== null && owner.user_id !== req.userId) {
+        if (owner.user_id === null || owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权修改该分类'));
         }
         await db.query(
@@ -79,7 +79,7 @@ router.delete('/:id', async (req, res) => {
     try {
         const owner = await db.queryOne('SELECT user_id FROM categories WHERE id = ?', [req.params.id]);
         if (!owner) return res.status(404).json(fail('分类不存在'));
-        if (owner.user_id !== null && owner.user_id !== req.userId) {
+        if (owner.user_id === null || owner.user_id !== req.userId) {
             return res.status(403).json(fail('无权删除该分类'));
         }
         const used = await db.queryOne('SELECT COUNT(*) as cnt FROM transactions WHERE category_id = ?', [req.params.id]);

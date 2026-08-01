@@ -43,13 +43,31 @@ router.post('/', async (req, res) => {
     }
 });
 
+/**
+ * 安全修复：investment_types 是全局共享表（无 user_id 列），schema 预置 11 条基础类型。
+ * 此前 PUT/DELETE 无任何保护 → 任意登录用户可改删全局类型，影响所有用户
+ * （与审核报告 C4「系统分类可被任意用户篡改」同构，报告未覆盖此表）。
+ * 系统预置类型一律拒绝普通用户改删。
+ */
+async function assertTypeEditable(id) {
+    const t = await db.queryOne('SELECT id, is_system FROM investment_types WHERE id = ?', [id]);
+    if (!t) return { ok: false, code: 404, msg: '理财类型不存在' };
+    if (t.is_system) return { ok: false, code: 403, msg: '系统预置类型不可修改或删除' };
+    return { ok: true };
+}
+
 // 更新理财类型
 router.put('/:id', async (req, res) => {
     try {
+        const typeId = parseInt(req.params.id);
+        if (!Number.isInteger(typeId)) return res.status(400).json(fail('无效的类型 ID'));
+        const guard = await assertTypeEditable(typeId);
+        if (!guard.ok) return res.status(guard.code).json(fail(guard.msg));
+
         const { name, icon, risk_level, description, category } = req.body;
         await db.query(
-            `UPDATE investment_types SET name=?, icon=?, risk_level=?, description=?, category=? WHERE id=?`,
-            [name, icon, risk_level, description, category, req.params.id]
+            `UPDATE investment_types SET name=?, icon=?, risk_level=?, description=?, category=? WHERE id=? AND is_system = FALSE`,
+            [name, icon, risk_level, description, category, typeId]
         );
         res.json(success(null, '类型已更新'));
     } catch (err) {
@@ -60,13 +78,18 @@ router.put('/:id', async (req, res) => {
 // 删除理财类型
 router.delete('/:id', async (req, res) => {
     try {
+        const typeId = parseInt(req.params.id);
+        if (!Number.isInteger(typeId)) return res.status(400).json(fail('无效的类型 ID'));
+        const guard = await assertTypeEditable(typeId);
+        if (!guard.ok) return res.status(guard.code).json(fail(guard.msg));
+
         const count = await db.queryOne(
             'SELECT COUNT(*) as cnt FROM investments WHERE investment_type_id = ?',
-            [req.params.id]
+            [typeId]
         );
         if (count.cnt > 0) return res.status(400).json(fail('该类型下仍有持仓，无法删除'));
-        
-        await db.query('DELETE FROM investment_types WHERE id = ?', [req.params.id]);
+
+        await db.query('DELETE FROM investment_types WHERE id = ? AND is_system = FALSE', [typeId]);
         res.json(success(null, '类型已删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -74,37 +97,11 @@ router.delete('/:id', async (req, res) => {
 });
 
 // 获取所有持仓
-// 理财进阶指标：单持仓年化收益率（基于买入日持有期）
-function calcAnnualizedRate(totalCost, currentValue, buyDate) {
-    const c = parseFloat(totalCost), v = parseFloat(currentValue);
-    if (!(c > 0) || !(v > 0) || !buyDate) return 0;
-    const start = new Date(buyDate);
-    if (isNaN(start.getTime())) return 0;
-    const days = (Date.now() - start.getTime()) / 86400000;
-    if (days <= 0) return 0;
-    return (Math.pow(v / c, 365 / days) - 1) * 100;
-}
-// 组合进阶指标：年化、集中度(top1 占比)、预期收益加权
-function calcPortfolioMetrics(investments) {
-    const tCost = investments.reduce((s, i) => s + parseFloat(i.total_cost), 0);
-    const tVal = investments.reduce((s, i) => s + parseFloat(i.current_value), 0);
-    const earliest = investments.reduce((min, i) => {
-        const d = i.buy_date ? new Date(i.buy_date) : null;
-        return (d && (!min || d < min)) ? d : min;
-    }, null);
-    const days = earliest ? Math.max((Date.now() - earliest.getTime()) / 86400000, 1) : 0;
-    const annualizedRate = (tCost > 0 && tVal > 0 && days > 0) ? (Math.pow(tVal / tCost, 365 / days) - 1) * 100 : 0;
-    const maxHolding = investments.reduce((m, i) => Math.max(m, parseFloat(i.current_value)), 0);
-    const concentration = tVal > 0 ? (maxHolding / tVal * 100) : 0;
-    const expectedRateAvg = tCost > 0
-        ? investments.reduce((s, i) => s + (parseFloat(i.expected_rate || 0) * parseFloat(i.total_cost)), 0) / tCost : 0;
-    return {
-        totalCost: tCost, totalValue: tVal, totalProfit: tVal - tCost,
-        annualizedRate: Math.round(annualizedRate * 100) / 100,
-        concentration: Math.round(concentration * 10) / 10,
-        expectedRateAvg: Math.round(expectedRateAvg * 100) / 100
-    };
-}
+//
+// 修复 m2（重复实现）：calcAnnualizedRate / calcPortfolioMetrics 原先在本文件与
+// stats.js 中各存一份逐字节相同的副本，而 services/portfolio.js 早已提供同名实现
+// 却无人引用 —— 三份代码各自漂移的隐患。现统一复用共享服务。
+const { annualizedRate: calcAnnualizedRate, calcPortfolioMetrics } = require('../services/portfolio');
 
 router.get('/investments', async (req, res) => {
     try {
@@ -316,6 +313,16 @@ router.post('/investments/:id/transactions', async (req, res) => {
     try {
         const { type, amount, price, quantity, date, note } = req.body;
         const investmentId = parseInt(req.params.id);
+        if (!Number.isInteger(investmentId)) return res.status(400).json(fail('无效的持仓 ID'));
+
+        // 安全修复（审核报告 C3）：本接口原先完全没有归属校验，
+        // 登录用户枚举 id 即可向他人持仓插入流水并篡改其数量/市值。
+        // 此处强制先校验持仓归属，后续所有写操作一律带 user_id 条件。
+        const ownedInv = await db.queryOne(
+            'SELECT * FROM investments WHERE id = ? AND user_id = ?',
+            [investmentId, req.userId]
+        );
+        if (!ownedInv) return res.status(404).json(fail('持仓不存在'));
 
         await db.query(
             `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
@@ -326,14 +333,14 @@ router.post('/investments/:id/transactions', async (req, res) => {
         // 如果是卖出，更新持仓
         if (type === 'sell') {
             await db.query(
-                'UPDATE investments SET quantity = quantity - ?, current_value = current_value - ? WHERE id = ?',
-                [parseFloat(quantity), parseFloat(amount), investmentId]
+                'UPDATE investments SET quantity = quantity - ?, current_value = current_value - ? WHERE id = ? AND user_id = ?',
+                [parseFloat(quantity), parseFloat(amount), investmentId, req.userId]
             );
         }
 
         // 如果是分红/利息，记录到主交易
         if (type === 'dividend' || type === 'interest') {
-            const investment = await db.queryOne('SELECT * FROM investments WHERE id = ?', [investmentId]);
+            const investment = ownedInv;
             if (investment && investment.account_id) {
                 await db.transaction(async (conn) => {
                     await conn.query(
@@ -375,8 +382,8 @@ router.put('/investments/:id/sell', async (req, res) => {
 
             // 更新持仓状态
             await conn.query(
-                `UPDATE investments SET current_price=?, current_value=?, quantity=0, status='sold' WHERE id=?`,
-                [parseFloat(sell_price), sellAmount, id]
+                `UPDATE investments SET current_price=?, current_value=?, quantity=0, status='sold' WHERE id=? AND user_id=?`,
+                [parseFloat(sell_price), sellAmount, id, req.userId]
             );
 
             // 记录到主交易（如果关联了账户）
@@ -430,8 +437,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [req.userId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], note || '加仓']
                 );
                 await conn.query(
-                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status=? WHERE id=?`,
-                    [newQty, newTotalCost, newCurrentValue, avgCost, 'holding', id]
+                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status=? WHERE id=? AND user_id=?`,
+                    [newQty, newTotalCost, newCurrentValue, avgCost, 'holding', id, req.userId]
                 );
                 if (investment.account_id) {
                     await conn.query(
@@ -457,8 +464,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [req.userId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], note || '部分卖出']
                 );
                 await conn.query(
-                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, status=? WHERE id=?`,
-                    [remainingQty, newTotalCost, newCurrentValue, remainingQty > 0 ? 'holding' : 'sold', id]
+                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, status=? WHERE id=? AND user_id=?`,
+                    [remainingQty, newTotalCost, newCurrentValue, remainingQty > 0 ? 'holding' : 'sold', id, req.userId]
                 );
                 if (investment.account_id) {
                     const profit = sellAmount - reducedCost;
@@ -480,7 +487,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
 // 删除理财持仓
 router.delete('/investments/:id', async (req, res) => {
     try {
-        await db.query('DELETE FROM investment_transactions WHERE investment_id = ?', [req.params.id]);
+        await db.query('DELETE FROM investment_transactions WHERE investment_id = ? AND user_id = ?', [req.params.id, req.userId]);
         await db.query('DELETE FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         res.json(success(null, '持仓已删除'));
     } catch (err) {
@@ -649,8 +656,8 @@ router.post('/:id/refresh', async (req, res) => {
         const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
 
         await db.query(
-            'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=?',
-            [price, currentValue, actualRate, navDate || null, inv.id]
+            'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=?',
+            [price, currentValue, actualRate, navDate || null, inv.id, req.userId]
         );
 
         res.json(success({
@@ -702,8 +709,8 @@ router.post('/refresh-all', async (req, res) => {
                 const actualRate = totalCost > 0 ? ((currentValue - totalCost) / totalCost * 100) : 0;
 
                 await db.query(
-                    'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=?',
-                    [price, currentValue, actualRate, navDate || null, inv.id]
+                    'UPDATE investments SET current_price=?, current_value=?, actual_rate=?, nav_date=? WHERE id=? AND user_id=?',
+                    [price, currentValue, actualRate, navDate || null, inv.id, req.userId]
                 );
                 results.push({ id: inv.id, code: inv.code, name: name || inv.name, price, currentValue, actualRate, navDate, status: 'ok' });
             } catch (e) {

@@ -8,6 +8,40 @@ const db = require('../db');
 const { success, fail, handleServerError, fmtDateOnly } = require('./_helpers');
 
 // ==========================================
+// 轻量内存缓存：避免同一周期内重复聚合
+// ==========================================
+// 报表端点一次性聚合 15+ 条查询（transactions / accounts / investments / debts / budgets
+// 以及资产负债表与现金流量表）。仪表盘往往在同一周期反复拉取，短 TTL 缓存可直接吃掉重复聚合，
+// 把"数据库 15+ 次查询"降为"命中缓存时 0 次查询"。
+// - TTL 默认 30s：个人财务数据近实时，30s 陈旧可忽略；可通过 ?fresh=1 强制刷新。
+// - 按 userId 隔离键，杜绝跨用户数据泄漏；仅缓存成功结果，不缓存异常。
+// - 单容器部署（docker-compose 单 app 实例）下内存缓存有效；多实例需换为共享缓存（如 Redis）。
+const REPORT_CACHE_TTL_MS = 30 * 1000;
+const REPORT_CACHE_MAX = 200;
+const reportCache = new Map();
+
+function reportCacheKey(userId, type, period) {
+    return `${userId}:${type}:${period}`;
+}
+
+function getCachedReport(key) {
+    const hit = reportCache.get(key);
+    if (!hit) return null;
+    if (hit.expires > Date.now()) return hit.data;
+    reportCache.delete(key); // 过期则顺手清理
+    return null;
+}
+
+function setCachedReport(key, data) {
+    reportCache.set(key, { data, expires: Date.now() + REPORT_CACHE_TTL_MS });
+    // 容量保护：超过上限时清理最旧的一部分，避免长会话内存膨胀
+    if (reportCache.size > REPORT_CACHE_MAX) {
+        const oldKeys = Array.from(reportCache.keys()).slice(0, 50);
+        oldKeys.forEach(k => reportCache.delete(k));
+    }
+}
+
+// ==========================================
 // 辅助函数
 // ==========================================
 
@@ -92,30 +126,123 @@ async function buildReport(userId, type, period) {
     const days = daysInRange(start, end);
     const periodMonths = monthsInRange(start, end);
 
-    // 收支总览
-    const summaryRow = await db.queryOne(
-        `SELECT
-            COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
-            COUNT(*) as tx_count
-         FROM transactions
-         WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')`,
-        [userId, start, end]
-    );
+    const prev = prevPeriod(type, period);
+    const prevRange = prev ? parseReportPeriod(prev.type, prev.period) : null;
+    const hasMonths = periodMonths.length > 0;
+
+    // 性能优化：原实现串行执行约 13 次 DB 查询（接口延迟≈各查询耗时之和）。
+    // 这些查询彼此独立、仅依赖 userId/start/end 等已知参数，统一用 Promise.all 并发执行，
+    // 接口延迟降为「最慢一次查询」，在交易量大时收益明显。输出结构与重构前完全一致。
+    const [
+        summaryRow, dailyRows, expByCat, incByCat, accountFlows, topExpenses,
+        budgetRows, actualByBudgetCat,
+        accountAssets, invAssets,
+        prevRow,
+        debtAll, debtRepayments,
+    ] = await Promise.all([
+        db.queryOne(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
+                COUNT(*) as tx_count
+             FROM transactions
+             WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date,
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
+             FROM transactions
+             WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
+             GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
+             FROM transactions t JOIN categories c ON t.category_id = c.id
+             WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+             GROUP BY c.id ORDER BY total DESC`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
+             FROM transactions t JOIN categories c ON t.category_id = c.id
+             WHERE t.user_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?
+             GROUP BY c.id ORDER BY total DESC`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT a.id, a.name, a.icon, a.type,
+                COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0) as net
+             FROM transactions t JOIN accounts a ON t.account_id = a.id
+             WHERE t.user_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
+             GROUP BY a.id, a.name, a.icon, a.type
+             ORDER BY ABS(COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0)) DESC`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
+             FROM transactions t JOIN categories c ON t.category_id = c.id
+             WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+             ORDER BY t.amount DESC LIMIT 5`,
+            [userId, start, end]
+        ),
+        // 仅当周期含月份时才查预算（无月份范围时预算执行无意义）
+        hasMonths
+            ? db.query(
+                `SELECT b.id, b.name, b.amount as budget_amount, b.period_type,
+                        c.id as cat_id, c.icon
+                 FROM budgets b
+                 LEFT JOIN categories c ON c.name = b.name AND c.type = 'expense'
+                 WHERE b.user_id = ? AND b.start_date <= ? AND b.end_date >= ?
+                 ORDER BY b.amount DESC`,
+                [userId, end, start]
+            )
+            : Promise.resolve([]),
+        hasMonths
+            ? db.query(
+                `SELECT c.id, COALESCE(SUM(t.amount), 0) as actual
+                 FROM transactions t JOIN categories c ON t.category_id = c.id
+                 WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+                 GROUP BY c.id`,
+                [userId, start, end]
+            )
+            : Promise.resolve([]),
+        db.query(
+            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND status = \'active\'',
+            [userId]
+        ),
+        db.queryOne(
+            'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND status = \'holding\'',
+            [userId]
+        ),
+        prev
+            ? db.queryOne(
+                `SELECT
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+                    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
+                 FROM transactions
+                 WHERE user_id = ? AND date >= ? AND date <= ?`,
+                [userId, prevRange.start, prevRange.end]
+            )
+            : Promise.resolve({ income: 0, expense: 0 }),
+        db.query(
+            `SELECT id, name, type, principal, remaining, monthly_payment, status, due_date
+             FROM debts WHERE user_id = ? AND status != 'paid_off'`,
+            [userId]
+        ),
+        db.query(
+            `SELECT debt_id, amount, principal_part, interest_part, paid_at, note
+             FROM debt_repayments WHERE user_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
+            [userId, start, end]
+        ),
+    ]);
+
     const income = parseFloat(summaryRow.income);
     const expense = parseFloat(summaryRow.expense);
     const balance = income - expense;
 
-    // 每日趋势
-    const dailyRows = await db.query(
-        `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date,
-            COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-            COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-         FROM transactions
-         WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
-         GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
-        [userId, start, end]
-    );
     // 补齐无交易日期
     const trendMap = new Map(dailyRows.map(r => [r.date, { income: parseFloat(r.income), expense: parseFloat(r.expense) }]));
     const dailyTrend = [];
@@ -127,68 +254,12 @@ async function buildReport(userId, type, period) {
         cur.setDate(cur.getDate() + 1);
     }
 
-    // 支出类别
-    const expByCat = await db.query(
-        `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
-         FROM transactions t JOIN categories c ON t.category_id = c.id
-         WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
-         GROUP BY c.id ORDER BY total DESC`,
-        [userId, start, end]
-    );
-    // 收入类别
-    const incByCat = await db.query(
-        `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
-         FROM transactions t JOIN categories c ON t.category_id = c.id
-         WHERE t.user_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?
-         GROUP BY c.id ORDER BY total DESC`,
-        [userId, start, end]
-    );
-
-    // 账户资金流向
-    const accountFlows = await db.query(
-        `SELECT a.id, a.name, a.icon, a.type,
-            COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0) as net
-         FROM transactions t JOIN accounts a ON t.account_id = a.id
-         WHERE t.user_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
-         GROUP BY a.id, a.name, a.icon, a.type
-         ORDER BY ABS(COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0)) DESC`,
-        [userId, start, end]
-    );
-
-    // TOP 支出
-    const topExpenses = await db.query(
-        `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
-         FROM transactions t JOIN categories c ON t.category_id = c.id
-         WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
-         ORDER BY t.amount DESC LIMIT 5`,
-        [userId, start, end]
-    );
-
     // 预算执行（按预算名称匹配类别，按日期范围筛选当期预算）
     let budgetExecution = [];
-    if (periodMonths.length > 0) {
-        // 当前周期内生效的预算：预算的 start_date/end_date 与查询范围有交集
-        const budgetRows = await db.query(
-            `SELECT b.id, b.name, b.amount as budget_amount, b.period_type,
-                    c.id as cat_id, c.icon
-             FROM budgets b
-             LEFT JOIN categories c ON c.name = b.name AND c.type = 'expense'
-             WHERE b.user_id = ? AND b.start_date <= ? AND b.end_date >= ?
-             ORDER BY b.amount DESC`,
-            [userId, end, start]
-        );
-        // 按类别统计该周期内的实际支出
-        const actualByBudgetCat = await db.query(
-            `SELECT c.id, COALESCE(SUM(t.amount), 0) as actual
-             FROM transactions t JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
-             GROUP BY c.id`,
-            [userId, start, end]
-        );
+    if (hasMonths) {
         const actualMap = new Map(actualByBudgetCat.map(r => [r.id, parseFloat(r.actual)]));
         // 按预算名称去重合并（同一名称可能有不同周期的预算，取时间重叠的）
         const seen = new Set();
-        budgetExecution = [];
         for (const b of budgetRows) {
             const key = b.name;
             if (seen.has(key)) continue;
@@ -208,30 +279,11 @@ async function buildReport(userId, type, period) {
             .sort((a, b) => b.actual - a.actual);
     }
 
-    // 资产快照
-    const accountAssets = await db.query(
-        'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = ? AND status = \'active\'',
-        [userId]
-    );
-    const invAssets = await db.queryOne(
-        'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND status = \'holding\'',
-        [userId]
-    );
     const totalAssets = parseFloat(accountAssets[0].total) + parseFloat(invAssets.total);
 
     // 环比
-    const prev = prevPeriod(type, period);
     let compare = null;
     if (prev) {
-        const prevRange = parseReportPeriod(prev.type, prev.period);
-        const prevRow = await db.queryOne(
-            `SELECT
-                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
-                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-             FROM transactions
-             WHERE user_id = ? AND date >= ? AND date <= ?`,
-            [userId, prevRange.start, prevRange.end]
-        );
         const pi = parseFloat(prevRow.income), pe = parseFloat(prevRow.expense);
         compare = {
             period: prev.period, label: prevRange.label,
@@ -239,17 +291,7 @@ async function buildReport(userId, type, period) {
         };
     }
 
-    // 债务数据汇总（本期）
-    const debtAll = await db.query(
-        `SELECT id, name, type, principal, remaining, monthly_payment, status, due_date
-         FROM debts WHERE user_id = ? AND status != 'paid_off'`,
-        [userId]
-    );
-    const debtRepayments = await db.query(
-        `SELECT debt_id, amount, principal_part, interest_part, paid_at, note
-         FROM debt_repayments WHERE user_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
-        [userId, start, end]
-    );
+    // 债务数据汇总（本期）—— debtAll / debtRepayments 已在上方 Promise.all 并发获取，此处直接消费
     const repByDebt = {};
     let periodPaid = 0;
     debtRepayments.forEach(r => {
@@ -298,6 +340,12 @@ async function buildReport(userId, type, period) {
         });
     });
 
+    // 资产负债表与现金流量表彼此独立，与上方查询也无依赖，并发执行进一步压缩延迟
+    const [balanceSheet, cashFlow] = await Promise.all([
+        buildBalanceSheet(userId, start, end, totalAssets),
+        buildCashFlow(userId, start, end, income, expense, periodPaid),
+    ]);
+
     return {
         type, period,
         label: range.label,
@@ -330,10 +378,8 @@ async function buildReport(userId, type, period) {
             repayments: flatRepayments
         },
         compare,
-        // ===== 资产负债表（期末快照）=====
-        balanceSheet: await buildBalanceSheet(userId, start, end, totalAssets),
-        // ===== 现金流量表（按活动分类）=====
-        cashFlow: await buildCashFlow(userId, start, end, income, expense, periodPaid),
+        balanceSheet,
+        cashFlow,
         // ===== 关键财务比率 =====
         ratios: {
             savingsRate: income > 0 ? Math.round((balance / income * 100) * 10) / 10 : 0,
@@ -347,15 +393,30 @@ async function buildReport(userId, type, period) {
 
 // ==================== 资产负债表（期末快照+期初对比）====================
 async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAssets) {
-    // 资产明细
-    const accounts = await db.query(
-        'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY balance DESC',
-        [userId]
-    );
-    const investments = await db.query(
-        `SELECT id, name, total_cost, current_value, investment_type_id FROM investments WHERE user_id = ? AND status = 'holding'`,
-        [userId]
-    );
+    // 资产明细 / 投资持仓 / 长期负债 / 期初前交易净额 —— 彼此独立，并发查询压缩延迟
+    const [accounts, investments, longTermDebts, txBefore] = await Promise.all([
+        db.query(
+            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY balance DESC',
+            [userId]
+        ),
+        db.query(
+            `SELECT id, name, total_cost, current_value, investment_type_id FROM investments WHERE user_id = ? AND status = 'holding'`,
+            [userId]
+        ),
+        db.query(
+            `SELECT id, name, type, remaining, term_months FROM debts
+             WHERE user_id = ? AND status != 'paid_off'
+             ORDER BY term_months DESC`,
+            [userId]
+        ),
+        db.queryOne(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END), 0) as net,
+                COUNT(*) as cnt
+             FROM transactions WHERE user_id = ? AND date < ?`,
+            [userId, periodStart]
+        ),
+    ]);
 
     // 现金 = 余额为正的账户
     const liquidAssets = accounts.filter(a => parseFloat(a.balance) > 0);
@@ -372,12 +433,6 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
     }, 0);
 
     // 非流动负债 = 长期贷款（>1年）
-    const longTermDebts = await db.query(
-        `SELECT id, name, type, remaining, term_months FROM debts
-         WHERE user_id = ? AND status != 'paid_off'
-         ORDER BY term_months DESC`,
-        [userId]
-    );
     // 长期负债：term >= 12 个月的贷款（含 loan 类型）
     const longTermDebt = longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12)
         .reduce((s, d) => s + parseFloat(d.remaining), 0);
@@ -394,13 +449,6 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
     // 期末/期初对比：通过查 periodStart 之前的资产估算期初
     // 简化方案：期初资产 ≈ 期末 - 净变化（用本期交易净额 + 还款 + 投资变化估算）
     // 为了精确，需要逐账户快照；这里用简化算法（基于本期净额）
-    const txBefore = await db.queryOne(
-        `SELECT
-            COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END), 0) as net,
-            COUNT(*) as cnt
-         FROM transactions WHERE user_id = ? AND date < ?`,
-        [userId, periodStart]
-    );
     const netBefore = parseFloat(txBefore.net);
     const openingAssets = totalAssets - netBefore; // 极简估算
     const openingNetWorth = openingAssets - totalLiabilities;
@@ -457,27 +505,29 @@ async function buildCashFlow(userId, start, end, income, expense, debtRepayment)
     const operatingExpense = expense;
     const operatingNet = operatingIncome - operatingExpense;
 
-    // 投资活动：投资增减
-    const investBuy = await db.query(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-         WHERE user_id = ? AND type = 'buy' AND date BETWEEN ? AND ?`,
-        [userId, start, end]
-    );
-    const investSell = await db.query(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-         WHERE user_id = ? AND type = 'sell' AND date BETWEEN ? AND ?`,
-        [userId, start, end]
-    );
+    // 投资活动：投资增减（买入/卖出/新借债务彼此独立，并发查询）
+    const [investBuy, investSell, debtNew] = await Promise.all([
+        db.query(
+            `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
+             WHERE user_id = ? AND type = 'buy' AND date BETWEEN ? AND ?`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
+             WHERE user_id = ? AND type = 'sell' AND date BETWEEN ? AND ?`,
+            [userId, start, end]
+        ),
+        db.query(
+            `SELECT COALESCE(SUM(principal), 0) as total FROM debts
+             WHERE user_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?`,
+            [userId, start + ' 00:00:00', end + ' 23:59:59']
+        ),
+    ]);
     const investInflow = parseFloat(investSell[0]?.total || 0);  // 卖出 = 现金流入
     const investOutflow = parseFloat(investBuy[0]?.total || 0);  // 买入 = 现金流出
     const investNet = investInflow - investOutflow; // 正数表示投资变现>投入
 
     // 筹资活动：债务增减 + 转账净额
-    const debtNew = await db.query(
-        `SELECT COALESCE(SUM(principal), 0) as total FROM debts
-         WHERE user_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?`,
-        [userId, start + ' 00:00:00', end + ' 23:59:59']
-    );
     const financingInflow = parseFloat(debtNew[0]?.total || 0); // 借入
     const financingOutflow = debtRepayment; // 还款流出
     const financingNet = financingInflow - financingOutflow;
@@ -516,7 +566,23 @@ router.get('/', async (req, res) => {
     try {
         const { type = 'monthly', period } = req.query;
         if (!period) return res.status(400).json(fail('请指定报表周期'));
+
+        const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
+        const key = reportCacheKey(req.userId, type, period);
+
+        if (!fresh) {
+            const cached = getCachedReport(key);
+            if (cached) {
+                res.set('X-Cache', 'HIT');
+                res.set('Cache-Control', `public, max-age=${Math.floor(REPORT_CACHE_TTL_MS / 1000)}`);
+                return res.json(success(cached));
+            }
+        }
+
         const data = await buildReport(req.userId, type, period);
+        setCachedReport(key, data);
+        res.set('X-Cache', fresh ? 'BYPASS' : 'MISS');
+        res.set('Cache-Control', `public, max-age=${Math.floor(REPORT_CACHE_TTL_MS / 1000)}`);
         res.json(success(data));
     } catch (err) {
         if (err.message && (err.message.includes('格式错误') || err.message.includes('不支持的报表类型'))) {

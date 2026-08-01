@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { toNumber } = require('../validate');
+const { toNumber, toAmount } = require('../validate');
 const { success, fail, handleServerError, fmtDateOnly, fmtDateTime } = require('./_helpers');
 
 // 计算周期时间范围辅助函数
@@ -80,7 +80,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { name, amount, period_type, base_date } = req.body;
-        const amountNum = toNumber(amount);
+        const amountNum = toAmount(amount);
         if (!name || !name.trim() || amountNum === null || amountNum <= 0) {
             return res.status(400).json(fail('预算名称和金额必填'));
         }
@@ -103,7 +103,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { name, amount, period_type, base_date } = req.body;
-        const amountNum = toNumber(amount);
+        const amountNum = toAmount(amount);
         if (!name || !name.trim() || amountNum === null || amountNum <= 0) {
             return res.status(400).json(fail('名称和金额必填'));
         }

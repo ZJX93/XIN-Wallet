@@ -41,20 +41,72 @@ class QueryBuilder {
 
   /**
    * 添加排序
+   *
+   * 安全修复（审核报告 M2）：ORDER BY 的列名无法参数化，只能靠白名单。
+   * 原实现直接拼接调用方字符串，一旦有调用方把 req.query 透传进来即成注入点。
+   * 现在强制校验格式：只允许 `列名 [ASC|DESC]`，多列用逗号分隔；
+   * 列名限定为字母/数字/下划线，可带一级表别名前缀（如 `t.date`）。
+   * 不合法直接抛错——宁可显式失败，也不静默拼出危险 SQL。
+   *
+   * @param {string} orderClause 例如 'date DESC' / 't.date DESC, t.id DESC'
+   * @param {string[]} [allowedColumns] 可选，进一步限定允许排序的列名白名单
    */
-  orderBy(orderClause) {
-    this._order = ` ORDER BY ${orderClause}`;
+  orderBy(orderClause, allowedColumns = null) {
+    if (!orderClause) return this;
+    if (typeof orderClause !== 'string') {
+      throw new Error('orderBy: 排序子句必须是字符串');
+    }
+
+    const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    const parts = orderClause.split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length === 0) return this;
+
+    const safeParts = parts.map(part => {
+      const seg = part.split(/\s+/);
+      if (seg.length > 2) {
+        throw new Error(`orderBy: 非法排序片段「${part}」`);
+      }
+      const [rawCol, rawDir] = seg;
+
+      // 列名，允许 `别名.列名` 形式
+      const colSegments = rawCol.split('.');
+      if (colSegments.length > 2 || !colSegments.every(s => IDENT.test(s))) {
+        throw new Error(`orderBy: 非法列名「${rawCol}」`);
+      }
+      if (allowedColumns && !allowedColumns.includes(rawCol)) {
+        throw new Error(`orderBy: 列「${rawCol}」不在允许排序的白名单内`);
+      }
+
+      // 方向仅允许 ASC / DESC
+      let dir = '';
+      if (rawDir) {
+        const upper = rawDir.toUpperCase();
+        if (upper !== 'ASC' && upper !== 'DESC') {
+          throw new Error(`orderBy: 非法排序方向「${rawDir}」`);
+        }
+        dir = ' ' + upper;
+      }
+      return rawCol + dir;
+    });
+
+    this._order = ` ORDER BY ${safeParts.join(', ')}`;
     return this;
   }
 
   /**
    * 添加分页
+   *
+   * 安全修复（审核报告 M4）：limit 无上限时，攻击者传 limit=99999999
+   * 可拉全表造成内存/带宽型 DoS。此处强制收敛到 [1, MAX_LIMIT]。
    */
   page(limit, offset) {
-    if (limit) {
-      this._limitParts.push({ clause: 'LIMIT ?', values: [parseInt(limit)] });
-      if (offset) {
-        this._limitParts.push({ clause: 'OFFSET ?', values: [parseInt(offset)] });
+    const MAX_LIMIT = 1000;
+    const n = parseInt(limit);
+    if (Number.isInteger(n) && n > 0) {
+      this._limitParts.push({ clause: 'LIMIT ?', values: [Math.min(n, MAX_LIMIT)] });
+      const off = parseInt(offset);
+      if (Number.isInteger(off) && off > 0) {
+        this._limitParts.push({ clause: 'OFFSET ?', values: [off] });
       }
     }
     return this;

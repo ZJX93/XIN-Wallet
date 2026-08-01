@@ -58,7 +58,7 @@ for (const s of mountedRoutes) {
 }
 
 // 前端调用：把模板字符串中的 ${...} 归一为 :param，避免误报
-const jsFiles = ['js/app.js', 'js/auth.js', 'js/login.js'];
+const jsFiles = ['public/js/app.js', 'public/js/auth.js', 'public/js/login.js'];
 const frontendCalls = new Set();
 for (const file of jsFiles) {
     const code = fs.readFileSync(path.join(ROOT, file), 'utf8');

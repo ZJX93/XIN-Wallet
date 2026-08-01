@@ -13,6 +13,7 @@ const DEFAULT_SECRETS = new Set([
     'zhicai-dev-secret-change-me',
     'please-change-this-to-a-long-random-secret-string',
     'please-change-this-secret', // docker-compose.yml default
+    'zhicai-super-secret-jwt-key-2026-fixed', // 已泄露的提交密钥，禁止再次使用
 ]);
 if (!JWT_SECRET || DEFAULT_SECRETS.has(JWT_SECRET)) {
     if (process.env.NODE_ENV === 'production') {

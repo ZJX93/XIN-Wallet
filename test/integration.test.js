@@ -157,19 +157,20 @@ dbTest('computeAccountBalance: 支出交易减少余额', async () => {
     }
 });
 
-dbTest('computeAccountBalance: 储蓄目标从余额中扣减（账本外调整）', async () => {
+dbTest('computeAccountBalance: 关联储蓄目标镜像余额，不重复扣减账户', async () => {
     const user = await createTestUser();
     try {
         const accId = await createTestAccount(user.id, '储蓄账户', 1000);
-        // 创建储蓄目标并分配 300 元
+        // 关联真实账户时 current_amount 直接镜像账户余额（single source of truth，见 savings.js），
+        // 因此账户余额不再“被自己扣减”，避免 余额 = 自身 - 自身 的循环抵消。
         await db.query(
             `INSERT INTO savings_goals (user_id, name, target_amount, current_amount, account_id, status)
              VALUES (?, '应急基金', 10000, 300, ?, 'active')`,
             [user.id, accId]
         );
         const bal = await computeAccountBalance(db, user.id, accId);
-        // 余额 = 期初 1000 + 账本 0 - 已分配 300 = 700
-        assert.strictEqual(bal, 700);
+        // 余额 = 期初 1000 + 账本净额 0 = 1000（储蓄目标已镜像，不重复扣减）
+        assert.strictEqual(bal, 1000);
     } finally {
         await cleanupTestUser(user.id);
     }

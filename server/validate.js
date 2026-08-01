@@ -1,7 +1,7 @@
 /**
  * 鑫钱包 · 输入校验与解析工具（双用途）
  *
- * 1) 纯函数工具：toNumber / parseCsvLine — 供单元测试和路由层复用
+ * 1) 纯函数工具：toNumber / toAmount / parseCsvLine — 供单元测试和路由层复用
  * 2) Express 中间件：validate(schema) — 自动验证 body/query/params
  *
  * 零依赖，避免引入新 npm 包
@@ -17,6 +17,16 @@ function toNumber(value) {
     if (value === undefined || value === null || value === '') return null;
     const n = Number(value);
     return Number.isFinite(n) ? n : null;
+}
+
+// 安全金额转换：基于 toNumber，额外限制非负且不超过 max（默认 1e10）。
+// 空值 / 非数字 / 负数 / 越界统一返回 null，调用方据此返回 400，
+// 防止异常大额或 NaN 被写入金额字段导致账目错乱或存储异常。
+function toAmount(value, max = 1e10) {
+    const n = toNumber(value);
+    if (n === null) return null;
+    if (n < 0 || n > max) return null;
+    return n;
 }
 
 // 合法交易类型枚举（与 schema 中 transactions.type 对齐）
@@ -136,10 +146,16 @@ const rules = {
     date: { type: 'string', required: true, pattern: /^\d{4}-\d{2}-\d{2}$/ },
     amount: { type: 'number', required: true, min: 0, max: 1e10 },
     email: { type: 'email', required: false },
+    // 路径参数 id / rid：非 required —— 仅当路由含该参数且传入值时校验，
+    // 确保为正整数，挡掉 NaN / 负数 / 0（防越权与错误查询）
+    routeId: { type: 'int', min: 1 },
+    // GET 分页上限：1..1000，防大查询 DoS
+    limit: { type: 'int', min: 1, max: 1000 },
 };
 
 module.exports = {
     toNumber,
+    toAmount,
     parseCsvLine,
     TRANSACTION_TYPES,
     validate,

@@ -5,6 +5,8 @@
 
 const db = require('../db');
 const { calcDebtDueSummary } = require('../services/debt-summary');
+// 金额精度工具（修复审核报告 M3：浮点累加分位漂移）
+const { sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf } = require('../services/money');
 
 function success(data, msg = '') {
     return { success: true, data, message: msg };
@@ -138,54 +140,90 @@ async function sumLedgerEffects(conn, userId, accountId) {
 }
 
 // 当前余额 = 期初余额 + 账本净额 - 已分配储蓄目标
+//
+// 金额精度修复（审核报告 M3）：本函数的返回值会被写回 accounts.balance 列，
+// 是"计算 → 落库 → 再读出参与下一轮计算"的闭环起点，也是浮点误差被放大
+// 并永久固化的关键链路。此处改用整数分精确加法，杜绝分位漂移。
 async function computeAccountBalance(conn, userId, accountId) {
     const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
-    const opening = acc[0] ? parseFloat(acc[0].opening_balance || 0) : 0;
+    const opening = acc[0] ? acc[0].opening_balance : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
     // 储蓄目标现已镜像关联账户的余额（current_amount = 账户余额），
     // 不再从账户可用余额中扣减 allocated，避免"账户余额 = 自身 - 自身"的循环抵消。
-    return opening + effects;
+    return addAmounts(opening || 0, effects);
 }
 
-// 理财净值快照
+/**
+ * 理财净值周快照补齐
+ *
+ * 性能修复（审核报告 M5 · N+1）：
+ *   原实现对每个持仓做 2 次查询（存在性预检 + 首笔交易日），再按周逐条 INSERT，
+ *   复杂度 O(持仓数 × 周数) 次串行往返 —— 一个持有两年的持仓就是 104 次 round-trip，
+ *   10 个持仓可产生上千次串行 IO，直接拖垮 /stats/investments 与仪表盘。
+ * 现实现：
+ *   1. 去掉存在性预检 —— INSERT 已带 ON CONFLICT DO NOTHING，本身幂等，预检纯属浪费；
+ *   2. 首笔交易日改为一次 GROUP BY 批量取（顺带补上原先缺失的 user_id 归属校验）；
+ *   3. 所有待补快照汇总后分批多值 INSERT。
+ *   总往返次数从 O(持仓数 × 周数) 降到 O(1 + 批数)。
+ */
 async function ensureWeeklySnapshots(userId, investments) {
+    if (!Array.isArray(investments) || investments.length === 0) return;
+
     const today = new Date();
     const dayOfWeek = today.getDay();
     const lastSunday = new Date(today);
     lastSunday.setDate(today.getDate() - dayOfWeek);
     const lastSundayStr = lastSunday.toISOString().slice(0, 10);
 
+    const invIds = investments.map(i => i.id);
+
+    // 一次性取回全部持仓的首笔交易日期（原为逐持仓查询）
+    // 安全：原查询缺 user_id 条件，此处补齐归属限定
+    const firstTxRows = await db.query(
+        `SELECT investment_id, MIN(date) as first_date
+           FROM investment_transactions
+          WHERE user_id = ? AND investment_id = ANY(?)
+          GROUP BY investment_id`,
+        [userId, invIds]
+    );
+    const firstTxMap = new Map(firstTxRows.map(r => [Number(r.investment_id), r.first_date]));
+
+    // 汇总所有待写入的快照行
+    const rows = [];
     for (const inv of investments) {
-        const existing = await db.queryOne(
-            'SELECT id FROM investment_snapshots WHERE investment_id = ? AND nav_date = ?',
-            [inv.id, lastSundayStr]
-        );
-        if (!existing) {
-            await db.query(
-                'INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING',
-                [userId, inv.id, parseFloat(inv.current_value), parseFloat(inv.total_cost), lastSundayStr]
-            );
-        }
+        const value = parseFloat(inv.current_value);
+        const cost = parseFloat(inv.total_cost);
 
-        const firstTx = await db.queryOne(
-            'SELECT MIN(date) as first_date FROM investment_transactions WHERE investment_id = ?',
-            [inv.id]
-        );
-        if (firstTx && firstTx.first_date) {
-            const start = new Date(firstTx.first_date);
-            start.setDate(start.getDate() + (7 - start.getDay()) % 7);
-            const end = new Date(lastSunday);
-            end.setDate(end.getDate() - 7);
+        // 本周快照
+        rows.push([userId, inv.id, value, cost, lastSundayStr]);
 
-            while (start <= end) {
-                const snapDate = start.toISOString().slice(0, 10);
-                await db.query(
-                    'INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING',
-                    [userId, inv.id, parseFloat(inv.current_value), parseFloat(inv.total_cost), snapDate]
-                );
-                start.setDate(start.getDate() + 7);
-            }
+        // 回填历史周快照
+        const firstDate = firstTxMap.get(Number(inv.id));
+        if (!firstDate) continue;
+
+        const start = new Date(firstDate);
+        start.setDate(start.getDate() + (7 - start.getDay()) % 7);
+        const end = new Date(lastSunday);
+        end.setDate(end.getDate() - 7);
+
+        while (start <= end) {
+            rows.push([userId, inv.id, value, cost, start.toISOString().slice(0, 10)]);
+            start.setDate(start.getDate() + 7);
         }
+    }
+    if (rows.length === 0) return;
+
+    // 分批多值 INSERT：每批 500 行 = 2500 个绑定参数，远低于 PostgreSQL 65535 上限
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const chunk = rows.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunk.map(() => '(?, ?, ?, ?, ?)').join(', ');
+        await db.query(
+            `INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
+             VALUES ${placeholders}
+             ON CONFLICT (investment_id, nav_date) DO NOTHING`,
+            chunk.flat()
+        );
     }
 }
 
@@ -194,5 +232,7 @@ module.exports = {
     extractJson, sumLedgerEffects, computeAccountBalance, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
-    tryDecrypt
+    tryDecrypt,
+    // 金额精度工具（M3）：路由统一从 _helpers 取用，避免各处重复 require
+    sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf
 };

@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { toNumber, TRANSACTION_TYPES } = require('../validate');
+const { toNumber, toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
     success, fail, handleServerError, fmtDateTime, computeAccountBalance,
     ErrorCodes, failBadRequest, failValidation, failNotFound
@@ -203,7 +203,7 @@ router.post('/', async (req, res) => {
     try {
         const { account_id, category_id, budget_id, type, amount, date, note } = req.body;
 
-        const amountNum = toNumber(amount);
+        const amountNum = toAmount(amount);
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
         if (!account_id) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('请选择账户'));
         if (!TRANSACTION_TYPES.includes(type)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('交易类型不合法'));
@@ -250,7 +250,7 @@ router.put('/:id', async (req, res) => {
         const { account_id, category_id, budget_id, type, amount, date, note } = req.body;
         const id = parseInt(req.params.id);
 
-        const amountNum = toNumber(amount);
+        const amountNum = toAmount(amount);
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
         if (!TRANSACTION_TYPES.includes(type)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('交易类型不合法'));
 

@@ -6,6 +6,7 @@
 
 const express = require('express');
 const { authMiddleware } = require('./auth');
+const { validate, rules } = require('./validate');
 const quoteCache = require('./services/quote-cache');
 
 const router = express.Router();
@@ -23,6 +24,18 @@ router.use((req, res, next) => {
     if (req.path.startsWith('/auth/')) return next();
     return authMiddleware(req, res, next);
 });
+
+// ==========================================
+// M4 · 通用参数防护（受保护路由统一接入 validate 中间件）
+// 仅校验“存在的值”，不强制字段必填，故不影响无参路由的正常行为：
+//   - :id / :rid 必须为正整数（挡 NaN / 负数 / 0，防越权与错误查询）
+//   - ?limit=  必须为 1..1000 整数（防大查询 DoS）
+// /auth 路由已在上方子路由内处理，不会经过此处。
+// ==========================================
+router.use(validate({
+    params: { id: rules.routeId, rid: rules.routeId },
+    query: { limit: rules.limit },
+}));
 
 // ==========================================
 // 业务路由模块（按域拆分的路由）

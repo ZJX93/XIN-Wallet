@@ -38,7 +38,11 @@ router.put('/:id', async (req, res) => {
 // 删除标签
 router.delete('/:id', async (req, res) => {
     try {
-        await db.query('DELETE FROM transaction_tags WHERE tag_id = ?', [req.params.id]);
+        // transaction_tags 无 user_id 列，经 tags 表归属校验，仅删除当前用户自己的标签关联
+        await db.query(
+            'DELETE FROM transaction_tags WHERE tag_id = ? AND tag_id IN (SELECT id FROM tags WHERE user_id = ?)',
+            [req.params.id, req.userId]
+        );
         await db.query('DELETE FROM tags WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         res.json(success(null, '标签已删除'));
     } catch (err) { handleServerError(res, err); }

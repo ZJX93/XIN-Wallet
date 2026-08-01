@@ -3,6 +3,7 @@ const router = express.Router();
 
 const db = require('../db');
 const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
+const { toAmount } = require('../validate');
 const { ensureCategory } = require('./utils');
 
 // 获取储蓄目标列表
@@ -79,9 +80,9 @@ router.put('/:id', async (req, res) => {
 router.post('/:id/allocate', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const amount = parseFloat(req.body.amount);
+        const amount = toAmount(req.body.amount);
         const srcId = req.body.account_id ? parseInt(req.body.account_id) : null;
-        if (!amount || amount <= 0) return res.status(400).json(fail('请输入有效金额'));
+        if (amount === null || amount <= 0) return res.status(400).json(fail('请输入有效金额'));
         if (!srcId) return res.status(400).json(fail('请选择来源账户'));
         const goal = await db.queryOne('SELECT * FROM savings_goals WHERE id = ? AND user_id = ?', [id, req.userId]);
         if (!goal) return res.status(404).json(fail('目标不存在'));
@@ -121,9 +122,9 @@ router.post('/:id/allocate', async (req, res) => {
 router.post('/:id/withdraw', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const amount = parseFloat(req.body.amount);
+        const amount = toAmount(req.body.amount);
         const destId = req.body.account_id ? parseInt(req.body.account_id) : null;
-        if (!amount || amount <= 0) return res.status(400).json(fail('请输入有效金额'));
+        if (amount === null || amount <= 0) return res.status(400).json(fail('请输入有效金额'));
         if (!destId) return res.status(400).json(fail('请选择目标账户'));
         const goal = await db.queryOne('SELECT * FROM savings_goals WHERE id = ? AND user_id = ?', [id, req.userId]);
         if (!goal) return res.status(404).json(fail('目标不存在'));

@@ -128,7 +128,9 @@ CREATE TABLE IF NOT EXISTS budgets (
 DROP TRIGGER IF EXISTS trg_budgets_updated ON budgets;
 CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 理财产品类型表
+-- 理财产品类型表（全局共享，无 user_id）
+-- is_system：系统预置类型标记，为 TRUE 时禁止普通用户 UPDATE/DELETE，
+--            防止任意用户篡改全局类型影响其他所有用户。
 CREATE TABLE IF NOT EXISTS investment_types (
   id SERIAL PRIMARY KEY,
   name VARCHAR(50) NOT NULL,
@@ -137,6 +139,7 @@ CREATE TABLE IF NOT EXISTS investment_types (
   category VARCHAR(10) NOT NULL DEFAULT 'fund' CHECK (category IN ('fund','stock','deposit','other')),
   description VARCHAR(200) DEFAULT '',
   sort_order INT DEFAULT 0,
+  is_system BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

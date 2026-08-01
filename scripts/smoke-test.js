@@ -70,7 +70,7 @@ function test(name, ok, detail) {
 
     // Ledger & Reports
     console.log('\n📋 账本报表');
-    test('复式账本', (await call('/ledger', 'GET', null, token)).ok);
+    test('复式账本', (await call('/transactions/ledger', 'GET', null, token)).ok);
     test('月度报表', (await call('/reports?type=monthly&period=2026-07', 'GET', null, token)).ok);
 
     // Savings

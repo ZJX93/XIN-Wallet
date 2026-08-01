@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime } = require('./_helpers');
+const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, subtractAmounts } = require('./_helpers');
 
 // 获取所有账户
 router.get('/', async (req, res) => {
@@ -14,7 +14,8 @@ router.get('/', async (req, res) => {
             'SELECT * FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY sort_order',
             [req.userId]
         );
-        const total = accounts.reduce((s, a) => s + parseFloat(a.balance || 0), 0);
+        // 金额精度（M3）：整数分累加，避免多账户浮点求和产生分位漂移
+        const total = sumAmounts(accounts, a => a.balance || 0);
         res.json(success({ accounts, totalAssets: total }));
     } catch (err) {
         handleServerError(res, err);
@@ -43,7 +44,9 @@ router.put('/:id', async (req, res) => {
         const { name, type, icon, balance, credit_limit } = req.body;
         const newBalance = parseFloat(balance) || 0;
         const effects = await sumLedgerEffects(db, req.userId, parseInt(req.params.id));
-        const newOpening = newBalance - effects;
+        // 金额精度（M3）：newOpening 会落库为 opening_balance，
+        // 是后续每次余额重算的基数，浮点误差会在此永久固化 → 用整数分精确减法
+        const newOpening = subtractAmounts(newBalance, effects);
         await db.query(
             `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=?`,
             [name, type, icon, newBalance, newOpening, parseFloat(credit_limit || 0), req.params.id, req.userId]
@@ -75,18 +78,19 @@ router.post('/reconcile', async (req, res) => {
             [req.userId]
         );
         let fixed = 0;
-        let totalDiff = 0;
+        const diffs = [];
         for (const acc of accounts) {
             const computed = await computeAccountBalance(db, req.userId, acc.id);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
                 await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ?', [computed, acc.id, req.userId]);
                 fixed++;
-                totalDiff += (computed - stored);
+                // 金额精度（M3）：差额先收集，最后整数分求和，避免逐次浮点累加
+                diffs.push(subtractAmounts(computed, stored));
             }
         }
         res.json(success(
-            { reconciled: fixed, totalAdjusted: Math.round(totalDiff * 100) / 100 },
+            { reconciled: fixed, totalAdjusted: sumAmounts(diffs) },
             fixed > 0 ? `已对账，修正 ${fixed} 个账户余额` : '账户余额与账本一致，无需修正'
         ));
     } catch (err) {

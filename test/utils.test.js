@@ -1,7 +1,7 @@
 /* 前端纯函数单元测试：HTML 转义与货币格式化（防存储型 XSS 的关键保障） */
 const test = require('node:test');
 const assert = require('node:assert');
-const { escapeHtml, fmt } = require('../js/utils');
+const { escapeHtml, fmt } = require('../public/js/utils');
 
 test('escapeHtml 转义特殊字符', () => {
     assert.strictEqual(escapeHtml('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;');

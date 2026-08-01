@@ -247,6 +247,19 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ savings_goals.source_account_id 迁移警告:', err.message);
     }
 
+    // 11) 幂等迁移：investment_types.is_system（系统预置类型保护）
+    //     investment_types 是全局共享表（无 user_id），schema 预置 11 条基础类型。
+    //     此前 PUT/DELETE 无任何归属校验 → 任意登录用户可改删全局类型，影响所有人
+    //     （与审核报告 C4「系统分类可被篡改」同构，报告未覆盖此表）。
+    //     标记预置数据为 is_system，路由层据此拒绝普通用户改删。
+    try {
+      await pool.query(`ALTER TABLE investment_types ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE`);
+      // 仅回填 schema 预置的 11 条基础类型；用户自建类型（id > 11）保持可编辑
+      await pool.query(`UPDATE investment_types SET is_system = TRUE WHERE id <= 11 AND is_system = FALSE`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.is_system 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {
