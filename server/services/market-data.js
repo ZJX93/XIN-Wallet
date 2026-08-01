@@ -133,8 +133,16 @@ function getQuoteStrategy(invTypeCategory, code) {
     return { type: 'stock', code: normalizeCode('us_stock', c) };
   }
 
-  // 商品/黄金 → 腾讯证券
+  // 商品/黄金 → 腾讯证券（A股ETF如sh518880走stock，COMEX如GC走commodity）
   if (invTypeCategory === 'commodity') {
+    // A股格式代码（sh/sz开头）→ 走股票行情（黄金ETF等场内品种）
+    if (/^s[hz]/i.test(c)) {
+      const prefix = c.substring(0, 2).toLowerCase();
+      return { type: 'stock', code: prefix + c.replace(/^s[hz]/i, '') };
+    }
+    // 纯数字也走股票（如518880）
+    if (/^\d+$/.test(c)) return { type: 'stock', code: 'sh' + c };
+    // 其他走商品行情（hf_GC等）
     return { type: 'commodity', code: normalizeCode('commodity', c) };
   }
 
