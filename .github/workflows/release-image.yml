@@ -37,6 +37,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # workflow_dispatch 时 checkout 对应 tag 的代码，而非默认分支 HEAD
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       # 一个 step 同时计算 tag + 转小写 owner，输出供后续步骤引用
       - name: 准备镜像配置
