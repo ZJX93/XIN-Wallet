@@ -14,7 +14,7 @@
 - 🏷️ **标签管理**：给交易打标签，支持按标签筛选与统计
 - 🎯 **预算管理**：按类别设定月度预算，超支预警
 - 🐷 **储蓄目标**：整合理财模块（参考 Firefly III piggy banks），可设定目标并向关联账户存入 / 取回
-- 📈 **理财管理**：11 类理财产品、持仓追踪、收益分析、卖出/分红/加仓减仓记录
+- 📈 **理财管理**：多品类理财产品（A 股 / 港股 / 美股 / 基金 / 黄金 / 加密 / 外汇 / 债券）、持仓追踪、收益分析、卖出 / 分红 / 加仓减仓记录
 - 💳 **负债看板**：汇总未结清负债的剩余本金与月供，自动计算近期还款日与待还提醒（仪表盘展示）
 - 📉 **统计分析**：收支趋势、类别占比、异常消费检测、AI 洞察
 - 📟 **数据看板**：今日 / 本周 / 本月 / 本年收支与资产总览，一键查看近期交易
@@ -37,85 +37,97 @@
 ## 📁 目录结构
 
 ```
-xinwallet/
-├── index.html          # 前端 SPA 入口
-├── login.html          # 登录 / 注册独立页面
-├── css/
-│   ├── styles.css      # 主样式（毛玻璃主题 + 三态主题）
-│   ├── auth.css        # 登录/注册层样式
-│   ├── login.css       # 登录页样式
-│   ├── dashboard.css   # 仪表盘 / 各业务页样式
-│   ├── components.css  # 通用组件样式
-│   ├── tokens.css      # 设计令牌（颜色 / 间距变量）
-│   ├── fonts.css       # 字体引入
-│   └── fonts/          # 本地字体资源
-├── js/
-│   ├── app.js          # 前端主逻辑（各页面管理器 + 引导）
-│   ├── api.js          # API 请求与格式化工具模块(ES Module)
-│   ├── auth.js         # 认证模块(ES Module)：token 拦截 / 登录注册 UI
-│   ├── login.js        # 登录页逻辑
-│   ├── utils.js        # 前端通用工具（escapeHtml / fmt / csvCell）
-│   └── vendor/         # 第三方前端库（Chart.js 等）
+xin-wallet/
+├── public/                 # 前端（由本服务同源托管）
+│   ├── index.html          # SPA 入口（仪表盘 / 记账 / 报表 / 理财 等）
+│   ├── login.html          # 登录 / 注册独立页面
+│   ├── pages/              # 业务页（被 index.html 懒加载）
+│   │   ├── dashboard.html
+│   │   ├── reports.html
+│   │   ├── investments.html
+│   │   └── ai-recognition.html
+│   ├── css/
+│   │   ├── styles.css      # 主样式（毛玻璃主题 + 三态主题）
+│   │   ├── auth.css        # 认证层样式
+│   │   ├── login.css       # 登录页样式
+│   │   ├── dashboard.css   # 仪表盘 / 业务页样式
+│   │   ├── components.css  # 通用组件样式
+│   │   ├── tokens.css      # 设计令牌（颜色 / 间距变量）
+│   │   ├── fonts.css       # 字体引入
+│   │   └── fonts/          # 本地字体（Geist 系列）
+│   ├── images/
+│   │   └── logo.png
+│   └── js/
+│       ├── app.js          # 前端主逻辑（各页面管理器 + 引导）
+│       ├── auth.js         # 认证模块：token 拦截 / 登录注册 UI
+│       ├── login.js        # 登录页逻辑
+│       ├── config.js       # 前端配置
+│       ├── bootstrap.js    # 前端引导
+│       ├── page-loader.js  # 页面懒加载
+│       ├── utils.js        # 通用工具（escapeHtml / fmt / csvCell）
+│       ├── managers/       # 业务页管理器（account/transaction/report/dashboard/...）
+│       └── vendor/         # 第三方前端库（Chart.js、xlsx 等）
 ├── server/
-│   ├── index.js        # Express 入口 + 启动引导
-│   ├── auth.js         # 密码哈希 + JWT 签发/校验 + 鉴权中间件
-│   ├── crypto.js       # AES-256-GCM 加密/解密
-│   ├── db.js           # PostgreSQL 连接池 + ?→$N 占位符转换 + 事务封装
-│   ├── validate.js     # 数值/类型校验（toNumber、CSV 解析、Express 验证中间件）
-│   ├── logger.js       # 结构化日志
-│   ├── schema.sql      # 数据表 DDL + 预置种子数据（12 个自定义 ENUM 类型）
-│   ├── bootstrap.js    # 启动引导：演示账号创建 + 种子数据注入
-│   ├── migrations.js   # 数据库幂等迁移（列/索引自动检测与补充）
-│   ├── seed-data.js    # 演示数据生成
-│   ├── openapi.js      # OpenAPI 规范定义
-│   ├── routes.js       # 路由注册入口
-│   ├── routes/         # 按域拆分的路由模块（14 个）
-│   │   ├── auth.js     # 注册/登录/刷新 Token
-│   │   ├── accounts.js # 账户 CRUD + 一键对账
-│   │   ├── transactions.js  # 交易管理（查询构建器 + 复式记账）
-│   │   ├── transfers.js     # 内部转账
-│   │   ├── investments.js   # 理财类型 + 持仓管理 + 行情 API
-│   │   ├── stats.js         # 仪表盘 + 综合统计
-│   │   ├── reports.js       # 综合报表
-│   │   ├── budgets.js       # 预算管理
-│   │   ├── categories.js    # 分类管理
-│   │   ├── tags.js          # 标签管理
-│   │   ├── savings.js       # 储蓄目标
-│   │   ├── debts.js         # 债务台账
-│   │   ├── csv.js           # CSV 导入/导出
-│   │   ├── ai.js            # AI 洞察与分析
-│   │   ├── _helpers.js      # 公共响应/复式记账计算/错误码
-│   │   └── utils.js         # 路由辅助（分类/信用卡同步）
-│   ├── services/       # 可复用业务服务层
-│   │   ├── market-data.js   # 行情数据（东方财富基金/腾讯证券）
-│   │   ├── portfolio.js     # 理财计算（年化/集中度/盈亏）
-│   │   ├── query-builder.js # 轻量 SQL 查询构建器（?→$N 自动转换）
-│   │   ├── quote-cache.js   # 行情 LRU 缓存
-│   │   └── debt-summary.js  # 债务汇总纯逻辑
-│   ├── package.json    # server 依赖（Docker 构建用）
+│   ├── index.js            # Express 入口 + 启动引导（建库建表 / 种子 / 演示数据）
+│   ├── auth.js             # 密码哈希 + JWT 签发校验 + 鉴权中间件
+│   ├── crypto.js           # AES-256-GCM 加解密
+│   ├── db.js               # PostgreSQL 连接池 + ?→$N 占位符转换 + 事务封装
+│   ├── validate.js         # 数值 / 类型校验（toNumber、toAmount、Express 验证中间件）
+│   ├── rate-limit-user.js  # 用户级频率限制
+│   ├── logger.js           # 结构化日志
+│   ├── openapi.js          # OpenAPI 规范定义
+│   ├── schema.sql          # 数据表 DDL + 预置种子数据
+│   ├── seed-data.js        # 演示数据生成
+│   ├── routes.js           # 路由注册入口
+│   ├── routes/             # 按域拆分的路由模块
+│   │   ├── auth.js         # 注册 / 登录 / 刷新 Token
+│   │   ├── accounts.js     # 账户 CRUD + 一键对账
+│   │   ├── transactions.js # 交易管理（查询构建器 + 复式记账）
+│   │   ├── transfers.js    # 内部转账
+│   │   ├── investments.js  # 理财类型 + 持仓管理 + 行情 API
+│   │   ├── stats.js        # 仪表盘 + 综合统计
+│   │   ├── reports.js      # 综合报表
+│   │   ├── budgets.js      # 预算管理
+│   │   ├── categories.js   # 分类管理
+│   │   ├── tags.js         # 标签管理
+│   │   ├── savings.js      # 储蓄目标
+│   │   ├── debts.js        # 债务台账
+│   │   ├── csv.js          # CSV 导入 / 导出
+│   │   ├── ai.js           # AI 洞察与分析
+│   │   ├── _helpers.js     # 公共响应 / 复式记账计算 / 错误码
+│   │   └── utils.js        # 路由辅助（分类 / 信用卡同步）
+│   ├── services/           # 可复用业务服务层
+│   │   ├── market-data.js  # 行情数据（东方财富基金 / 腾讯证券 / 币安）
+│   │   ├── portfolio.js    # 理财计算（年化 / 集中度 / 盈亏）
+│   │   ├── query-builder.js# 轻量 SQL 查询构建器（?→$N 自动转换）
+│   │   ├── quote-cache.js  # 行情 LRU 缓存
+│   │   ├── debt-summary.js # 债务汇总纯逻辑
+│   │   ├── money.js        # 整数分金额运算内核（toCents/fromCents/sumAmounts）
+│   │   ├── url-guard.js    # SSRF 防护（外部 URL 校验）
+│   │   └── ai.js           # AI 服务封装
+│   ├── package.json        # server 依赖（Docker 构建用）
 │   └── package-lock.json
-├── scripts/            # 运维 / 排查脚本
-│   ├── verify-routes.js  # 路由可达性自检
-│   ├── smoke-test.js     # 冒烟测试
-│   └── full-verify.js    # 全量校验脚本
-├── test/              # 纯函数单元测试（无需数据库）
+├── scripts/                # 运维 / 排查脚本
+│   ├── verify-routes.js    # 路由可达性自检
+│   ├── smoke-test.js       # 冒烟测试
+│   └── full-verify.js      # 全量校验脚本
+├── test/                   # 单元测试（部分需数据库，见 CI）
 │   ├── validate.test.js
 │   ├── utils.test.js
-│   └── debt-summary.test.js
-├── images/            # 静态图片（如 logo.png）
-├── Dockerfile             # 多阶段构建（生产依赖 + 非 root 运行）
-├── docker-compose.yml     # 应用 + PostgreSQL，数据卷持久化
+│   ├── _helpers.test.js
+│   ├── debt-summary.test.js
+│   └── integration.test.js
+├── .github/workflows/      # CI：pr-test.yml（测试门禁）/ release-image.yml（镜像构建）
+├── Dockerfile              # 多阶段构建（生产依赖 + 非 root 运行）
+├── docker-compose.yml      # 应用 + PostgreSQL，数据卷持久化
 ├── docker-compose.external.yml  # 仅应用容器，复用已有 PostgreSQL
 ├── .dockerignore
-├── .env.example           # 环境变量示例（复制为 .env 使用）
-├── package.json           # 依赖清单与启动脚本（仓库根）
+├── .env.example            # 环境变量示例（复制为 .env 使用）
+├── package.json            # 根依赖清单与启动脚本
 ├── package-lock.json
-├── LICENSE                # 开源许可证
-├── README.md
-└── 交付协同/              # 项目交付协同资料库（与源码分离，见其内 README）
-
+├── LICENSE                 # 开源许可证
+└── RELEASE.md              # 版本发布与镜像构建说明
 ```
-
 ## 🚀 快速开始
 
 ### 前置要求
@@ -1077,13 +1089,13 @@ npm test
 
 > 仓库含两份 `package.json`：`根 package.json` 承载启动脚本（`npm start` → `node server/index.js`）、测试（`npm test`）与依赖；`server/package.json` 是后端 API 的独立依赖清单（版本可能与根略有差异，以 `server/` 目录安装为准）。本地从源码启动请在 `server/` 目录执行 `npm install && npm start`。
 
-## 📝 架构升级记录（v2.0）
+## 📝 架构说明
 
-- **数据库**：MariaDB → PostgreSQL（支持 CTE/窗口函数/generate_series，为多币种/投资回报率分析铺路）
-- **服务分层**：行情数据（`services/market-data.js`）、理财计算（`services/portfolio.js`）、查询构建器（`services/query-builder.js`）从路由中独立
-- **数据库迁移**：`server/migrations.js` 幂等迁移模块，自动检测并补充缺失列/索引
-- **启动引导**：`server/bootstrap.js` 分离演示账号与种子数据逻辑
-- **兼容层**：`db.js` 内置 `?→$N` 占位符自动转换 + `INSERT RETURNING id` + SQL 双引号→单引号转换
+- **数据库**：采用 PostgreSQL（支持递归 CTE / 窗口函数 / generate_series），为分类汇总、投资回报分析等场景提供支撑。
+- **启动引导**：`server/index.js` 在启动时幂等执行 `server/schema.sql` 建库建表（已存在则跳过），并注入种子分类与演示数据。
+- **服务分层**：行情数据（`services/market-data.js`）、理财计算（`services/portfolio.js`）、查询构建器（`services/query-builder.js`）、金额运算（`services/money.js`）、SSRF 防护（`services/url-guard.js`）从路由中独立为可复用服务层。
+- **整数分金额内核**：`services/money.js` 统一以「整数分」做金额运算，根除浮点精度误差（`toCents`/`fromCents`/`sumAmounts` 等）。
+- **兼容层**：`db.js` 内置 `?→$N` 占位符自动转换 + `INSERT RETURNING id` + SQL 双引号→单引号转换。
 
 ## 📝 后续可增强
 
