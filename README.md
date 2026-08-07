@@ -322,6 +322,23 @@ npm start
 **响应** `200` — 返回新的 JWT（1h 有效期）。
 **错误**：`401` refreshToken 无效或已过期。
 
+#### `GET /auth/profile` — 获取当前用户资料
+
+**响应** `200` — `data.user` 含 `id, username, nickname, avatar` 等当前用户信息（供头像 / 个人资料页使用）。
+
+#### `PUT /auth/profile` — 更新资料 / 修改密码
+
+**请求体**（字段均可选）
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `nickname` | string | 否 | 新昵称 |
+| `avatar` | string | 否 | 头像（emoji 或 URL） |
+| `password` | string | 否 | 新密码（修改密码时填写） |
+| `oldPassword` | string | 条件 | 修改密码时必填，用于校验原密码 |
+
+**响应** `200` — `data.user` 返回更新后的用户信息；`400` 原密码错误（修改密码场景）。
+
 ---
 
 ### 2. 账户管理
@@ -386,6 +403,11 @@ npm start
 ```
 
 （无偏差时 `reconciled: 0`，`message: "账户余额与账本一致，无需修正"`）
+
+#### `GET /accounts/:id/transactions` — 账户交易明细
+
+**查询参数**：`month`（可选，形如 `2025-07`）；缺省返回该账户全部交易。
+**响应** `200` — 该账户下的交易数组（结构同 `GET /transactions` 列表项，含分类 / 账户 / 标签关联）。
 
 ---
 
@@ -616,7 +638,7 @@ npm start
 
 #### `POST /categories` — 新增分类
 
-**请求体**：`parent_id`(number, 可选) · `name`*(string) · `icon`(string, 默认 📌) · `type`*(string: income/expense) · `color`(string, 默认 #6366f1)。
+**请求体**：`parent_id`(number, 可选) · `name`*(string) · `icon`(string, 默认 📌) · `type`*(string: income/expense/transfer) · `color`(string, 默认 #6366f1)。
 **响应** `200` — `data: { id }`；`400` 名称或类型缺失。
 
 #### `PUT /categories/:id` — 更新分类
@@ -871,6 +893,10 @@ npm start
 **请求体**：`name`*(string) · `color`(string, 默认 #3b82f6) · `icon`(string, 默认 🏷️)。
 **响应** `200` — `data: { id }`；`400` 标签名缺失。
 
+#### `PUT /tags/:id` — 更新标签
+
+**请求体**：同 `POST`（全部可选重传，名称必填）。**响应** `200` — `message: "标签已更新"`；`404` 标签不存在。
+
 #### `DELETE /tags/:id` — 删除标签
 
 级联删除 `transaction_tags` 关联。**响应** `200` — `message: "标签已删除"`。
@@ -882,6 +908,10 @@ npm start
 #### `GET /savings-goals` — 目标列表
 
 **响应** `200` — 数组，每项含关联账户信息，`target_amount` / `current_amount` 均为 number。
+
+#### `GET /savings-goals/:id/transactions` — 目标存取流水
+
+**响应** `200` — 该储蓄目标相关的账户余额变动流水（存入/取回记录）。
 
 #### `POST /savings-goals` — 新增目标
 
@@ -948,7 +978,7 @@ npm start
 
 **响应** `200` — `message: "债务已删除"`。
 
-#### `POST /debts/:id/repay` — 记录还款
+#### `POST /debts/:id/repayments` — 记录还款
 
 **请求体**
 
@@ -962,6 +992,14 @@ npm start
 | `note` | string | 否 | 备注 |
 
 事务内：写入 `debt_repayments` → 更新 `debts.remaining` → 若关联账户则写入交易（`expense`）并扣减余额。**响应** `200` — `message: "还款已记录"`。
+
+#### `GET /debts/:id` — 债务详情
+
+**响应** `200` — 同列表项结构（含 `id, name, type, ...` 及 `repayments[]` 还款流水）。
+
+#### `DELETE /debts/:id/repayments/:rid` — 删除单笔还款
+
+删除指定还款流水，回滚对 `debts.remaining` 的影响并撤销其写入的关联交易/余额变动。**响应** `200` — `message: "还款已删除"`；`404` 还款不存在。
 
 ---
 
@@ -984,6 +1022,76 @@ npm start
 
 **响应** `200` — `data: { imported }`，`message: "成功导入 N 条交易"`。
 **错误**：`400` 仅支持交易导入 / CSV 无数据行。
+
+#### `GET /export/full` — 全量导出
+
+按用户维度导出账户、分类、交易、理财持仓、预算、储蓄目标、债务等全部数据（结构化打包），用于完整备份。**响应** `200` — 文件下载（`application/zip` 或 `text/csv`）。
+
+#### `POST /import/full` — 全量导入
+
+**请求体**：`file`(multipart) · `mode`(string: `merge` 合并 / `replace` 覆盖)。导入完整备份包，重建用户全部财务数据。**响应** `200` — `data: { imported }`；`400` 文件缺失 / 格式错误。
+
+---
+
+### 16. AI 模块（服务商 / 洞察 / OCR）
+
+AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-256-GCM 加密存储，列表 / 配置接口返回时自动掩码）；OCR 基于腾讯云（凭证同样加密）。所有接口需 Bearer 令牌。`/ai/*` 另受 AI 专用速率限制（`aiLimiter`）保护，防止成本失控。
+
+#### `GET /ai/providers` — 服务商列表
+
+**响应** `200` — `data.providers` 数组，每项含 `id, name, api_type, base_url, model, is_active, sort_order`，`api_key` 已掩码（如 `sk-****1234`）。
+
+#### `POST /ai/providers` — 新增服务商
+
+**请求体**
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `name` | string | 是 | 服务商名称 |
+| `api_type` | string | 是 | `openai` / `anthropic` |
+| `base_url` | string | 是 | 接口地址 |
+| `api_key` | string | 否 | API Key（加密存储） |
+| `model` | string | 是 | 模型名 |
+| `is_active` | bool | 否 | 是否设为当前启用（启用会取消其他） |
+| `sort_order` | number | 否 | 排序 |
+
+**响应** `200` — `data: { id }`；`400` 校验失败（名称 / 类型 / 地址 / 模型必填）。
+
+#### `PUT /ai/providers/:id` — 更新服务商
+
+**请求体**：同 `POST`（全部可选重传；`api_key` 留空则不覆盖原值）。**响应** `200` — `message: "服务商已更新"`；`404` 不存在。
+
+#### `DELETE /ai/providers/:id` — 删除服务商
+
+**响应** `200` — `message: "服务商已删除"`；`404` 不存在。
+
+#### `POST /ai/providers/:id/activate` — 启用服务商
+
+将该服务商设为 `is_active = TRUE`，并取消其他服务商的启用状态。**响应** `200` — `message: "已启用该服务商"`；`404` 不存在。
+
+#### `POST /ai/providers/:id/test` — 测试连接
+
+使用存储的 API Key 向服务商发一条探针请求。**响应** `200` — `data: { ok, reply }`；`400` 未配置 Key / 解密失败 / 连接失败（`data.ok = false` 时返回错误原因）。
+
+#### `POST /ai/advice` — AI 财务建议
+
+汇总本月 / 上月收支、预算、储蓄目标、账户、债务，调用模型生成 3–5 条建议。**响应** `200` — `data: { advice: [{ title, content, impact, priority }], generatedAt }`；`400` 未配置服务商。
+
+#### `POST /ai/insight` — AI 消费洞察
+
+**请求体**：`month`（可选，形如 `2025-07`，默认当前月）。基于当月支出分类、环比、预算执行、储蓄、债务生成洞察。**响应** `200` — `data: { insights: [{ title, description, action, level }], generatedAt }`；`400` 未配置服务商。
+
+#### `GET /ai/ocr-config` — 获取 OCR 配置
+
+**响应** `200` — `data: { provider, secret_id(掩码), region, credentialsValid, credentialsError }`；未配置时返回默认 `tencent / ap-guangzhou`。`credentialsValid` 用于提示前端密钥是否仍可正常解密。
+
+#### `POST /ai/ocr-config` — 保存 OCR 配置
+
+**请求体**：`secret_id`(string) · `secret_key`(string) · `region`(string, 默认 `ap-guangzhou`)。`secret_id` 若传入脱敏占位符（含 `...`）则保留原值不覆盖。**响应** `200` — `message: "OCR 配置已保存"`；`400` 首次保存时 SecretId / SecretKey 必填。
+
+#### `POST /ai/ocr` — 账单 OCR 识别
+
+`multipart/form-data` 上传账单图片（`file` 字段）。服务端先用正则快速提取交易项，失败再调模型；返回识别文字与结构化交易项。**响应** `200` — `data: { text, items: [{ name, amount, type, date, note, category }], reason }`；`400` 未上传图片 / 未配置 OCR 密钥 / 密钥解密失败。
 
 ---
 
