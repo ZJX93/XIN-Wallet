@@ -1,0 +1,101 @@
+# ============================================
+# 鑫钱包 · 自动版本标签
+# 触发条件：PR Test Gate workflow 在 main 分支 push 后成功完成
+# 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 vX.Y.Z tag
+# 连锁效果：tag push 自动触发 release-image.yml 构建并推送 Docker 镜像到 GHCR
+# 版本规则：
+#   feat:           → minor bump (0.2.3 → 0.3.0)
+#   fix/refactor:   → patch bump (0.2.3 → 0.2.4)
+#   BREAKING CHANGE → major bump (0.2.3 → 1.0.0)
+#   docs/chore:     → 跳过（不触发发布）
+# ============================================
+name: Auto Tag
+
+on:
+  workflow_run:
+    workflows: ["PR Test Gate"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    # 仅当 PR Test Gate 成功完成，且触发事件是 push（非 PR）
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: 计算下一个版本号
+        id: version
+        run: |
+          # 获取按版本号排序的最新 tag
+          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "new_tag=v0.1.0" >> $GITHUB_OUTPUT
+            echo "No existing tags, starting at v0.1.0"
+            exit 0
+          fi
+
+          echo "Latest tag: $LATEST_TAG"
+
+          # 解析当前版本号
+          VERSION=${LATEST_TAG#v}
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          # 获取自上次 tag 以来的所有 commit message（首行）
+          COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s")
+
+          echo "Commits since ${LATEST_TAG}:"
+          echo "$COMMITS"
+          echo ""
+
+          # 如果只有 docs/chore/style/ci 类型的 commit，跳过打标签
+          if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!?:"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Only docs/chore/style commits since last tag, skipping"
+            exit 0
+          fi
+
+          # 检查 BREAKING CHANGE → major bump
+          if echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf)(\(.+\))?!:" || \
+             git log "${LATEST_TAG}..HEAD" --pretty=format:"%B" | grep -qiE "BREAKING[ -]CHANGE"; then
+            BUMP="major"
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+          # feat: → minor bump
+          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
+            BUMP="minor"
+            MINOR=$((MINOR + 1)); PATCH=0
+          # fix/refactor/perf/build: → patch bump
+          else
+            BUMP="patch"
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+          echo "Bump type: ${BUMP}"
+          echo "Next version: ${NEW_TAG}"
+
+      - name: 创建并推送 tag
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.new_tag }}" \
+            -m "chore(release): ${{ steps.version.outputs.new_tag }}"
+          git push origin "${{ steps.version.outputs.new_tag }}"
