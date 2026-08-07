@@ -26,6 +26,8 @@ jobs:
       github.event.workflow_run.event == 'push'
     permissions:
       contents: write
+      # 用于 gh workflow run 主动触发下游镜像构建（GITHUB_TOKEN 推送的 tag 不会触发其他 workflow）
+      actions: write
 
     steps:
       - name: 检出代码
@@ -110,4 +112,4 @@ jobs:
           gh workflow run release-image.yml \
             -f tag="${{ steps.version.outputs.new_tag }}" \
             -r main
-          echo "Triggered release-image.yml for ${{ steps.version.outputs.new_tag }}" 
+          echo "Triggered release-image.yml for ${{ steps.version.outputs.new_tag }}"
