@@ -127,7 +127,7 @@ dbTest('computeAccountBalance: 收入交易增加余额', async () => {
     const user = await createTestUser();
     try {
         const accId = await createTestAccount(user.id, '工资账户', 0);
-        const catId = await getCategoryId(user.id, '工资', 'income');
+        const catId = await getCategoryId(user.id, '工资薪水', 'income');
         await db.query(
             `INSERT INTO transactions (user_id, account_id, category_id, type, amount, date, note)
              VALUES (?, ?, ?, 'income', ?, NOW(), '月工资')`,
@@ -218,7 +218,7 @@ dbTest('computeAccountBalance: 同一账户多笔混合流水', async () => {
     const user = await createTestUser();
     try {
         const accId = await createTestAccount(user.id, '主账户', 0);
-        const incId = await getCategoryId(user.id, '工资', 'income');
+        const incId = await getCategoryId(user.id, '工资薪水', 'income');
         const expId = await getCategoryId(user.id, '餐饮', 'expense');
 
         // 期初 0、收入 3000、支出 500、再收入 200、再支出 800
