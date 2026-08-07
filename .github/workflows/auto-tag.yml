@@ -7,7 +7,9 @@
 #   feat:           → minor bump (0.2.3 → 0.3.0)
 #   fix/refactor:   → patch bump (0.2.3 → 0.2.4)
 #   BREAKING CHANGE → major bump (0.2.3 → 1.0.0)
-#   docs/chore:     → 跳过（不触发发布）
+#   docs/chore/ci:  → 跳过（不触发发布）
+# 注意：major 跳变只认「会发布的类型」(feat/fix/refactor/perf/build) 中的破坏性变更，
+#       ci/docs 等非发布提交的 BREAKING CHANGE 不会触发大版本跳变（避免误判）。
 # ============================================
 name: Auto Tag
 
@@ -58,7 +60,7 @@ jobs:
           MINOR=$(echo "$VERSION" | cut -d. -f2)
           PATCH=$(echo "$VERSION" | cut -d. -f3)
 
-          # 获取自上次 tag 以来的所有 commit message（首行）
+          # 获取自上次 tag 以来的所有 commit 主题（首行）
           COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s")
 
           echo "Commits since ${LATEST_TAG}:"
@@ -68,16 +70,31 @@ jobs:
           # 如果只有 docs/chore/style/ci 类型的 commit，跳过打标签
           if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!?:"; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Only docs/chore/style commits since last tag, skipping"
+            echo "Only docs/chore/style/ci commits since last tag, skipping"
             exit 0
           fi
 
-          # 检查 BREAKING CHANGE → major bump
-          if echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf)(\(.+\))?!:" || \
-             git log "${LATEST_TAG}..HEAD" --pretty=format:"%B" | grep -qiE "BREAKING[ -]CHANGE"; then
+          # major 跳变：仅统计「会发布的类型」(feat/fix/refactor/perf/build) 中的破坏性变更
+          #   - 主题带 !  (如 feat!: 或 fix(api)!:)
+          #   - 或主题是该类型且正文含 BREAKING CHANGE
+          # ci/docs 等非发布类型即使正文含 BREAKING CHANGE 也不触发 major（防误判）
+          MAJOR_BREAK=0
+          while read -r sha; do
+            s=$(git log -1 --pretty="%s" "$sha")
+            b=$(git log -1 --pretty="%b" "$sha")
+            if echo "$s" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!:"; then
+              MAJOR_BREAK=1; break
+            fi
+            if echo "$s" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!?:" && \
+               echo "$b" | grep -qiE "BREAKING[ -]CHANGE"; then
+              MAJOR_BREAK=1; break
+            fi
+          done < <(git log "${LATEST_TAG}..HEAD" --pretty=format:"%H")
+
+          # feat: → minor bump
+          if [ "$MAJOR_BREAK" -eq 1 ]; then
             BUMP="major"
             MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
-          # feat: → minor bump
           elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
             BUMP="minor"
             MINOR=$((MINOR + 1)); PATCH=0
