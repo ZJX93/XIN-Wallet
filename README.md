@@ -503,11 +503,13 @@ npm start
   "success": true,
   "data": {
     "income": 18800, "expense": 7320, "balance": 11480,
-    "expenseByCategory": [ { "id": 4, "name": "住房", "icon": "🏠", "total": 3500 } ],
-    "incomeByCategory": [ { "id": 15, "name": "工资", "icon": "💼", "total": 15000 } ]
+    "expenseByCategory": [ { "id": 4, "name": "住房", "icon": "🏠", "parent_id": null, "total": 3500 } ],
+    "incomeByCategory": [ { "id": 15, "name": "工资", "icon": "💼", "parent_id": null, "total": 15000 } ]
   }
 }
 ```
+
+> 类别汇总在数据库层用递归 CTE 完成「子级向父级汇总」：`total` 为该分类自身 + 全部子孙（任意层级）发生额之和；`parent_id` 为 `null` 表示一级分类。前端据此只展示一级，点击可下钻二级（与 `/reports` 语义一致）。
 
 **错误**：`400` 未指定月份。
 

@@ -80,22 +80,89 @@ const ChartManager = {
             momEl.innerHTML = `环比 收${f(latest.incomeMoM)} 支${f(latest.expenseMoM)}`;
         }
 
-        // 饼图
+        // 饼图（支出构成）：仅显示一级分类，点击扇区下钻到二级（数据库已做子级向父级汇总）
         this.destroy('dashPie');
         const pieCanvas = document.getElementById('dashPieChart');
         if (!pieCanvas) { console.warn('[chart] dashPieChart canvas not found'); return; }
-        const ctx2 = pieCanvas.getContext('2d');
+        this._pieCtx = pieCanvas.getContext('2d');
+        this._pieColors = c;
+        this._pieStack = [];
         const summary = await api(`/transactions/summary?month=${cache.currentMonth}`);
         if (summary && summary.expenseByCategory && summary.expenseByCategory.length > 0) {
-            this.charts['dashPie'] = new Chart(ctx2, {
-                type: 'doughnut',
-                data: {
-                    labels: summary.expenseByCategory.map(e => e.icon + ' ' + e.name),
-                    datasets: [{ data: summary.expenseByCategory.map(e => e.total), backgroundColor: summary.expenseByCategory.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }]
-                },
-                options: { responsive: true, maintainAspectRatio: true, cutout: '55%', plugins: { legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } } } }
-            });
+            this._pieFull = summary.expenseByCategory;
+            this._drawDashPie();
+            if (!this._pieBackBound) {
+                const backEl = document.getElementById('dashPieBack');
+                if (backEl) {
+                    backEl.addEventListener('click', () => {
+                        if (this._pieStack && this._pieStack.length) { this._pieStack.pop(); this._drawDashPie(); }
+                    });
+                    this._pieBackBound = true;
+                }
+            }
         }
+    },
+
+    // 仪表盘支出饼图绘制（支持按一级 + 下钻子级）
+    _drawDashPie() {
+        const ctx = this._pieCtx;
+        const c = this._pieColors;
+        if (!ctx || !this._pieFull) return;
+        this.destroy('dashPie');
+
+        const stack = this._pieStack || [];
+        const cats = this._pieFull;
+        // 当前层级切片：栈空=一级（parent_id 为 null）；否则取栈顶父级的直接子级
+        const slices = stack.length === 0
+            ? cats.filter(e => e.parent_id == null)
+            : cats.filter(e => e.parent_id === stack[stack.length - 1]);
+        this._pieSlices = slices;
+
+        // 面包屑标题 + 返回按钮
+        const titleEl = document.getElementById('dashPieTitle');
+        const backEl = document.getElementById('dashPieBack');
+        const hintEl = document.getElementById('dashPieHint');
+        if (titleEl) {
+            if (stack.length === 0) {
+                titleEl.textContent = '支出构成';
+            } else {
+                const names = stack.map(id => (cats.find(x => x.id === id) || {}).name || '');
+                titleEl.textContent = '支出构成 › ' + names.join(' › ');
+            }
+        }
+        if (backEl) backEl.style.display = stack.length ? '' : 'none';
+        if (hintEl) hintEl.style.display = stack.length ? 'none' : '';
+
+        const total = slices.reduce((s, e) => s + parseFloat(e.total || 0), 0);
+        this.charts['dashPie'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: slices.map(e => e.icon + ' ' + e.name),
+                datasets: [{ data: slices.map(e => parseFloat(e.total || 0)), backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: true, cutout: '55%',
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const cat = this._pieSlices[els[0].index];
+                    if (!cat) return;
+                    const hasChildren = this._pieFull.some(x => x.parent_id === cat.id);
+                    if (hasChildren) { this._pieStack.push(cat.id); this._drawDashPie(); }
+                },
+                plugins: {
+                    legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } },
+                    tooltip: {
+                        callbacks: {
+                            label: cx => {
+                                const v = cx.parsed;
+                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     },
 
     async renderInvestPie(byType) {

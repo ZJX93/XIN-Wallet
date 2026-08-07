@@ -227,12 +227,12 @@ async function seedUserData(userId, conn) {
     // 3. 转账（跨账户资金转移）
     // ===========================================
     const transfers = [
-        { from: '工商银行', to: '微信支付', amount: 2000, note: '日常零花', daysAgo: 2 },
-        { from: '工商银行', to: '支付宝',   amount: 1500, note: '淘宝购物备用', daysAgo: 5 },
-        { from: '工商银行', to: '现金',     amount: 1000, note: '取现备用', daysAgo: 8 },
-        { from: '招商银行', to: '工商银行', amount: 5000, note: '资金归集', daysAgo: 12 },
-        { from: '工商银行', to: '信用卡',   amount: 2800, note: '还信用卡', daysAgo: 15 },
-        { from: '支付宝',   to: '微信支付', amount: 500,  note: 'AA收款转出', daysAgo: 18 },
+        { from: '工商银行', to: '微信支付', amount: 2000, note: '日常零花', daysAgo: 2, cat: 93 },
+        { from: '工商银行', to: '支付宝',   amount: 1500, note: '淘宝购物备用', daysAgo: 5, cat: 93 },
+        { from: '工商银行', to: '现金',     amount: 1000, note: '取现备用', daysAgo: 8, cat: 95 },
+        { from: '招商银行', to: '工商银行', amount: 5000, note: '资金归集', daysAgo: 12, cat: 93 },
+        { from: '工商银行', to: '信用卡',   amount: 2800, note: '还信用卡', daysAgo: 15, cat: 94 },
+        { from: '支付宝',   to: '微信支付', amount: 500,  note: 'AA收款转出', daysAgo: 18, cat: 93 },
     ];
     for (const t of transfers) {
         const d = new Date(y, m, Math.max(1, now.getDate() - t.daysAgo));
@@ -245,13 +245,13 @@ async function seedUserData(userId, conn) {
         const tid = Number(tr.insertId);
         await conn.query(
             `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-             VALUES (?, ?, 22, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-            [userId, accountIds[t.from], t.amount, `转账至${t.to}`, dateStr, tid, accountIds[t.from]]
+             VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+            [userId, accountIds[t.from], t.cat, t.amount, `转账至${t.to}`, dateStr, tid, accountIds[t.from]]
         );
         await conn.query(
             `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-             VALUES (?, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-            [userId, accountIds[t.to], t.amount, `来自${t.from}`, dateStr, tid, accountIds[t.to]]
+             VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+            [userId, accountIds[t.to], t.cat, t.amount, `来自${t.from}`, dateStr, tid, accountIds[t.to]]
         );
     }
 

@@ -82,13 +82,13 @@ const DataManager = {
             tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">📂</div><div class="empty-text">暂无分类数据</div></div></td></tr>';
             return;
         }
-        const typeLabel = { expense: '支出', income: '收入' };
+        const typeLabel = { expense: '支出', income: '收入', transfer: '转账' };
 
         const renderRow = (c, depth) => `
             <tr class="${depth > 0 ? 'dc-sub-row' : 'dc-parent-row'}">
                 <td><span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth * 20}px;display:inline-block">${depth > 0 ? '└ ' : ''}${escapeHtml(c.icon || "📌")}</span></td>
                 <td>${escapeHtml(c.name)}${c.children && c.children.length > 0 ? ` <span class="dc-child-count">(${c.children.length}个子类)</span>` : ''}</td>
-                <td><span class="badge ${c.type === 'income' ? 'badge-income' : 'badge-expense'}">${typeLabel[c.type] || c.type}</span></td>
+                <td><span class="badge ${c.type === 'income' ? 'badge-income' : c.type === 'transfer' ? 'badge-transfer' : 'badge-expense'}">${typeLabel[c.type] || c.type}</span></td>
                 <td><span class="color-dot" style="background:${c.color}"></span></td>
                 <td>${c.sort_order}</td>
                 <td class="dc-actions">

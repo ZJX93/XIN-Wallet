@@ -98,7 +98,7 @@ router.post('/login', validate({
         res.json(success({
             token,
             refreshToken,
-            user: { id: user.id, username: user.username, nickname: user.nickname }
+            user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar }
         }, '登录成功'));
     } catch (err) {
         handleServerError(res, err);
@@ -144,7 +144,7 @@ router.post('/demo', async (req, res) => {
         res.json(success({
             token,
             refreshToken,
-            user: { id: user.id, username: user.username, nickname: user.nickname }
+            user: { id: user.id, username: user.username, nickname: user.nickname, avatar: user.avatar }
         }, '演示登录成功'));
     } catch (err) {
         handleServerError(res, err);
@@ -197,7 +197,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
     try {
         const user = await db.queryOne(
             'SELECT id, username, nickname, avatar, created_at FROM users WHERE id = ?',
-            [req.user.id]
+            [req.userId]
         );
         if (!user) return res.status(404).json(fail('用户不存在'));
         res.json(success({ user }));
@@ -217,7 +217,7 @@ router.put('/profile', authMiddleware, validate({
 }), async (req, res) => {
     try {
         const { nickname, avatar, oldPassword, newPassword } = req.body;
-        const userId = req.user.id;
+        const userId = req.userId;
 
         // 获取当前用户完整信息
         const user = await db.queryOne(

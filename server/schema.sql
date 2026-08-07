@@ -59,7 +59,7 @@ CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECU
 --   如 E0101=支出-餐饮-早午晚餐，E0100=餐饮一级本身（仅展示），T0100=转账
 CREATE TABLE IF NOT EXISTS categories (
   id SERIAL PRIMARY KEY,
-  code VARCHAR(5) NOT NULL,                           -- 结构化编码（如 E0101）
+  code VARCHAR(5),                                      -- 结构化编码（如 E0101）；用户自建分类可不填，种子数据用 code 映射
   parent_id INT DEFAULT NULL,                         -- 父分类ID，NULL为一级分类
   user_id INT DEFAULT NULL,                           -- 所属用户ID（NULL=系统预设全局分类）
   name VARCHAR(50) NOT NULL,                          -- 类别名称
@@ -77,6 +77,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_code ON categories (code);
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'categories_parent_name_unique') THEN
     ALTER TABLE categories ADD CONSTRAINT categories_parent_name_unique UNIQUE (parent_id, name);
+  END IF;
+END $$;
+
+-- 迁移：放宽 categories.code 为可空。
+-- 历史 NOT NULL 约束 + 多处 INSERT 未提供 code，导致用户自建分类（储蓄/债务/自定义分类）全部插入失败(500)。
+-- 种子数据仍通过 code 映射，运行时自建分类无需 code，唯一索引允许 NULL。
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'categories' AND column_name = 'code' AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE categories ALTER COLUMN code DROP NOT NULL;
   END IF;
 END $$;
 
@@ -324,13 +336,33 @@ INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_sy
 (70, 'E0904', 11, '医疗保健', 'expense', '🏥', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- ◆ 收入类别（一级 4 个 + 转账 1 个）
+-- ◆ 收入类别（一级 4 个）
 INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
 (15, 'I0100', '职业收入', 'income',   '💼', 1,  TRUE),
 (17, 'I0200', '被动收入', 'income',   '📈', 2,  TRUE),
 (18, 'I0300', '兼职副业', 'income',   '💻', 3,  TRUE),
-(21, 'I0400', '其他收入', 'income',   '📌', 99, TRUE),
-(22, 'T0100', '转账',     'transfer', '↔️', 1,  TRUE)
+(21, 'I0400', '其他收入', 'income',   '📌', 99, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- ◆ 转账类别（一般转账 / 贷款债务 带二级明细；其他转账 为一级可选叶子，type 统一为 transfer）
+--   一般转账（银行转账 / 信用卡还款 / 存款取款）
+--   贷款债务（借入 / 借出 / 还款 / 收债）
+--   其他转账
+INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
+(22, 'T0100', '一般转账', 'transfer', '🏦', 1, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+-- 一般转账 T01（3 子类）
+(91, 'T0200', NULL, '贷款债务', 'transfer', '💸', 2, TRUE),
+(92, 'T0300', NULL, '其他转账', 'transfer', '↔️', 99, TRUE),
+(93, 'T0101', 22,   '银行转账', 'transfer', '🏦', 1, TRUE),
+(94, 'T0102', 22,   '信用卡还款', 'transfer', '💳', 2, TRUE),
+(95, 'T0103', 22,   '存款取款', 'transfer', '🏧', 3, TRUE),
+(96, 'T0201', 91,   '借入',     'transfer', '🏦', 1, TRUE),
+(97, 'T0202', 91,   '借出',     'transfer', '🤝', 2, TRUE),
+(98, 'T0203', 91,   '还款',     'transfer', '💸', 3, TRUE),
+(99, 'T0204', 91,   '收债',     'transfer', '💰', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 收入二级分类（10 个）

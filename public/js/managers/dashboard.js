@@ -20,6 +20,14 @@ const DashboardManager = {
             console.warn('[Dashboard] dashKpiBar 元素未找到，KPI 卡片点击事件未绑定');
             return;
         }
+        // 仪表盘页面是懒加载片段，其中的 .see-all（如「资产负债概览 › 报表 →」）
+        // 在 app.js 启动时尚未进入 DOM，无法被全局选择器绑定，这里补绑一次。
+        document.querySelectorAll('#page-dashboard .see-all').forEach(el => {
+            el.addEventListener('click', () => {
+                const page = el.dataset.page;
+                if (page) { window.switchPage && window.switchPage(page); }
+            });
+        });
         bar.addEventListener('click', (e) => {
             const card = e.target.closest('.kpi-card');
             if (!card) return;

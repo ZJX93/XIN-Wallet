@@ -361,20 +361,47 @@ router.get('/summary', async (req, res) => {
             [req.userId, month + '%']
         );
 
-        // 类别汇总
+        // 类别汇总（子级向父级汇总，数据库层递归 CTE，语义同报表 /reports）：
+        // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和，并回传 parent_id 供前端分层展示。
         const expByCat = await db.query(
-            `SELECT c.id, c.name, c.icon, SUM(t.amount) as total
-       FROM transactions t JOIN categories c ON t.category_id = c.id
-       WHERE t.user_id = ? AND t.type = 'expense' AND t.date::text LIKE ?
-       GROUP BY c.id ORDER BY total DESC`,
+            `WITH RECURSIVE anc AS (
+               SELECT c.id AS node, c.id AS ancestor_id, c.parent_id AS parent_id
+               FROM categories c
+               UNION ALL
+               SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
+               FROM anc a JOIN categories p ON p.id = a.parent_id
+             ),
+             agg AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+               FROM anc a
+               JOIN transactions t ON t.category_id = a.node
+                AND t.user_id = ? AND t.type = 'expense' AND t.date::text LIKE ?
+               GROUP BY a.ancestor_id
+             )
+             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             FROM agg JOIN categories c ON c.id = agg.cat_id
+             ORDER BY agg.total DESC`,
             [req.userId, month + '%']
         );
 
         const incByCat = await db.query(
-            `SELECT c.id, c.name, c.icon, SUM(t.amount) as total
-       FROM transactions t JOIN categories c ON t.category_id = c.id
-       WHERE t.user_id = ? AND t.type = 'income' AND t.date::text LIKE ?
-       GROUP BY c.id ORDER BY total DESC`,
+            `WITH RECURSIVE anc AS (
+               SELECT c.id AS node, c.id AS ancestor_id, c.parent_id AS parent_id
+               FROM categories c
+               UNION ALL
+               SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
+               FROM anc a JOIN categories p ON p.id = a.parent_id
+             ),
+             agg AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+               FROM anc a
+               JOIN transactions t ON t.category_id = a.node
+                AND t.user_id = ? AND t.type = 'income' AND t.date::text LIKE ?
+               GROUP BY a.ancestor_id
+             )
+             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             FROM agg JOIN categories c ON c.id = agg.cat_id
+             ORDER BY agg.total DESC`,
             [req.userId, month + '%']
         );
 

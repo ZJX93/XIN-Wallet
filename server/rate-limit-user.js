@@ -8,8 +8,8 @@ const rateLimit = require('express-rate-limit');
 
 function userKeyGenerator(req) {
     // 已登录用户用 userId，未登录用 IP
-    if (req.user && req.user.id) {
-        return `u${req.user.id}`;
+    if (req.userId) {
+        return `u${req.userId}`;
     }
     return `ip${req.ip}`;
 }

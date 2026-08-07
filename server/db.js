@@ -243,8 +243,9 @@ async function initDatabase() {
         END
         WHERE code IS NULL
       `);
-      // 确保 NOT NULL（schema.sql 中的新表已定义，这里只补迁移）
-      await pool.query(`ALTER TABLE categories ALTER COLUMN code SET NOT NULL`);
+      // code 保持可空：用户自建分类无结构化编码（置 NULL），PostgreSQL 唯一索引允许多个 NULL；
+      // 系统分类已在 schema.sql 中以唯一 code 填充。此处不再强制 NOT NULL，否则用户自建分类插入必崩。
+      await pool.query(`UPDATE categories SET code = NULL WHERE code = ''`);
     } catch (err) {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.code 迁移警告:', err.message);
     }

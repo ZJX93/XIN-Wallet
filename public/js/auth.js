@@ -90,9 +90,14 @@ if (_origFetch) {
 export function renderUserMenu() {
     const menu = document.getElementById('userMenu');
     const name = document.getElementById('userName');
+    const avatar = document.getElementById('userAvatar');
     const u = getStoredUser();
     if (menu && name) {
-        if (u) { name.textContent = u.nickname || u.username; menu.style.display = 'flex'; }
+        if (u) {
+            name.textContent = u.nickname || u.username;
+            if (avatar) avatar.textContent = u.avatar || '👤';
+            menu.style.display = 'flex';
+        }
         else { menu.style.display = 'none'; }
     }
 }
@@ -134,16 +139,16 @@ function getSelectedAvatar() {
 }
 
 export function bindProfileModal() {
-    const profileBtn = document.getElementById('profileBtn');
+    const profileTrigger = document.getElementById('profileTrigger');
     const modal = document.getElementById('profileModal');
     const closeBtn = document.getElementById('profileModalClose');
     const cancelBtn = document.getElementById('profileCancelBtn');
     const form = document.getElementById('profileForm');
 
-    if (!profileBtn || !modal) return;
+    if (!profileTrigger || !modal) return;
 
-    // 打开弹窗
-    profileBtn.addEventListener('click', async () => {
+    // 点击头像/用户名区域打开弹窗
+    profileTrigger.addEventListener('click', async () => {
         // 加载当前用户信息
         try {
             const res = await window.fetch(`${apiBase()}/auth/profile`);

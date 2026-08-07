@@ -75,10 +75,11 @@ const AnalysisManager = {
         const summary = await api(`/transactions/summary?month=${cache.currentMonth}`);
         if (!summary) return;
 
-        // 消费结构
+        // 消费结构：只取一级分类（后端已做子级向父级汇总，parent_id 为 null 即一级）
+        const topCats = (summary.expenseByCategory || []).filter(e => e.parent_id == null);
         container.className = '';
         const colors = ['#6366f1','#f43f5e','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-        container.innerHTML = summary.expenseByCategory.map((e, i) => `
+        container.innerHTML = topCats.map((e, i) => `
             <div class="analysis-structure-item">
                 <div class="analysis-structure-cat">${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</div>
                 <div class="analysis-structure-bar"><div class="analysis-structure-fill" style="width:${summary.expense > 0 ? (e.total / summary.expense * 100).toFixed(1) : 0}%;background:${colors[i % colors.length]}"></div></div>
@@ -86,8 +87,8 @@ const AnalysisManager = {
             </div>
         `).join('');
 
-        // 异常检测
-        const bigItems = summary.expenseByCategory.filter(e => e.total > summary.expense * 0.3);
+        // 异常检测（基于一级分类）
+        const bigItems = topCats.filter(e => e.total > summary.expense * 0.3);
         anomalyList.innerHTML = bigItems.length > 0 ?
             bigItems.map(e => `<div class="anomaly-item"><div class="anomaly-icon">⚠️</div><div class="anomaly-info"><div class="anomaly-title">${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)} 占比过高</div><div class="anomaly-desc">占比 ${(e.total / summary.expense * 100).toFixed(0)}%，金额 ${fmt(e.total)}</div></div></div>`).join('') :
             '<div class="empty-state ok"><div class="empty-icon">✅</div><div class="empty-text">消费分布较为均衡</div></div>';

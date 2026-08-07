@@ -158,18 +158,56 @@ async function buildReport(userId, type, period) {
              GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
             [userId, start, end]
         ),
+        // 分类金额「子级向父级汇总」——在数据库层用递归 CTE 完成，语义同财务成本科目：
+        // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和。
+        // 做法：先由 categories 自联结生成 (node, ancestor_id) 闭包（每个分类到其所有祖先的映射），
+        // 再把每笔交易按其分类 node 累加到该分类及其所有祖先 ancestor_id 上。
         db.query(
-            `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
-             FROM transactions t JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
-             GROUP BY c.id ORDER BY total DESC`,
+            `WITH RECURSIVE anc AS (
+               SELECT c.id AS node, c.id AS ancestor_id, c.parent_id AS parent_id
+               FROM categories c
+               UNION ALL
+               SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
+               FROM anc a
+               JOIN categories p ON p.id = a.parent_id
+             ),
+             agg AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+               FROM anc a
+               JOIN transactions t
+                 ON t.category_id = a.node
+                AND t.user_id = ? AND t.type = 'expense'
+                AND t.date >= ? AND t.date <= ?
+               GROUP BY a.ancestor_id
+             )
+             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             FROM agg
+             JOIN categories c ON c.id = agg.cat_id
+             ORDER BY agg.total DESC`,
             [userId, start, end]
         ),
         db.query(
-            `SELECT c.id, c.name, c.icon, COALESCE(SUM(t.amount), 0) as total
-             FROM transactions t JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.type = 'income' AND t.date >= ? AND t.date <= ?
-             GROUP BY c.id ORDER BY total DESC`,
+            `WITH RECURSIVE anc AS (
+               SELECT c.id AS node, c.id AS ancestor_id, c.parent_id AS parent_id
+               FROM categories c
+               UNION ALL
+               SELECT a.node, p.id AS ancestor_id, p.parent_id AS parent_id
+               FROM anc a
+               JOIN categories p ON p.id = a.parent_id
+             ),
+             agg AS (
+               SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
+               FROM anc a
+               JOIN transactions t
+                 ON t.category_id = a.node
+                AND t.user_id = ? AND t.type = 'income'
+                AND t.date >= ? AND t.date <= ?
+               GROUP BY a.ancestor_id
+             )
+             SELECT c.id, c.name, c.icon, c.parent_id, agg.total
+             FROM agg
+             JOIN categories c ON c.id = agg.cat_id
+             ORDER BY agg.total DESC`,
             [userId, start, end]
         ),
         db.query(

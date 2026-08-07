@@ -111,27 +111,28 @@ const ReportManager = {
     render(data) {
         const container = document.getElementById('reportContent');
         this.destroyCharts();
+        const bsTitle = data.balanceSheet ? `🏛️ 资产负债表（${data.balanceSheet.period.end} 快照）` : '🏛️ 资产负债表';
         container.innerHTML = `
             <div class="report-header">
                 <h2 class="report-title">📊 ${data.label} 财务报告</h2>
                 <span class="report-date">${data.start} ~ ${data.end}</span>
             </div>
-            <div class="report-grid">
+            <div class="report-grid report-grid--overview">
                 ${this.renderKPIs(data)}
                 ${this.renderCompare(data)}
                 ${this.renderAssets(data)}
             </div>
-            ${this.renderRatios(data)}
-            ${this.renderBalanceSheet(data)}
-            ${this.renderCashFlow(data)}
             ${this.renderCharts(data)}
-            <div class="report-sections">
-                ${this.renderCategorySection(data)}
-                ${this.renderTopExpenses(data)}
-                ${this.renderAccountFlows(data)}
-                ${this.renderBudgetExecution(data)}
-                ${this.renderDebtSection(data)}
+            ${this.renderRatios(data)}
+            <div class="report-tables-row">
+                ${this.renderBalanceSheet(data)}
+                ${this.renderCashFlow(data)}
             </div>
+            <div class="report-grid report-grid--detail">
+                ${this.renderTopExpenses(data)}
+                ${this.renderBudgetExecution(data)}
+            </div>
+            ${this.renderDebtSection(data)}
         `;
         this.initCharts(data);
         this.initInteractions();
@@ -208,14 +209,16 @@ const ReportManager = {
                     <canvas id="reportTrendChart"></canvas>
                 </div>
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title">支出类别占比</h3>
+                    <h3 class="card-title"><span id="reportExpPieTitle">支出类别占比</span> <span id="reportExpPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
                     <canvas id="reportExpPieChart"></canvas>
+                    <div id="reportExpPieHint" class="pie-hint">👆 点击扇区查看二级明细</div>
                 </div>
             </div>
             <div class="report-charts-row">
                 <div class="glass-card report-chart-card">
-                    <h3 class="card-title">收入来源占比</h3>
+                    <h3 class="card-title"><span id="reportIncPieTitle">收入来源占比</span> <span id="reportIncPieBack" class="see-all" style="display:none;cursor:pointer">← 返回</span></h3>
                     <canvas id="reportIncPieChart"></canvas>
+                    <div id="reportIncPieHint" class="pie-hint">👆 点击扇区查看二级明细</div>
                 </div>
                 <div class="glass-card report-chart-card">
                     <h3 class="card-title">账户资金流向</h3>
@@ -224,67 +227,43 @@ const ReportManager = {
             </div>
         `;
     },
-    renderCategorySection(data) {
-        const expTotal = data.summary.expense;
-        const incTotal = data.summary.income;
-        const expRows = data.expenseByCategory.map((e, i) => `
-            <tr>
-                <td><span class="report-cat-rank">${i + 1}</span> ${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</td>
-                <td class="report-amount">${fmt(e.total)}</td>
-                <td>
-                    <div class="report-progress-wrap">
-                        <div class="report-progress"><div class="report-progress-bar" style="width:${expTotal > 0 ? Math.min(100, e.total / expTotal * 100) : 0}%"></div></div>
-                        <span class="report-progress-text">${expTotal > 0 ? (e.total / expTotal * 100).toFixed(1) : 0}%</span>
-                    </div>
-                </td>
-            </tr>
-        `).join('') || '<tr><td colspan="3" class="report-empty">暂无支出数据</td></tr>';
-        const incRows = data.incomeByCategory.map((e, i) => `
-            <tr>
-                <td><span class="report-cat-rank">${i + 1}</span> ${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</td>
-                <td class="report-amount">${fmt(e.total)}</td>
-                <td>
-                    <div class="report-progress-wrap">
-                        <div class="report-progress"><div class="report-progress-bar income" style="width:${incTotal > 0 ? Math.min(100, e.total / incTotal * 100) : 0}%"></div></div>
-                        <span class="report-progress-text">${incTotal > 0 ? (e.total / incTotal * 100).toFixed(1) : 0}%</span>
-                    </div>
-                </td>
-            </tr>
-        `).join('') || '<tr><td colspan="3" class="report-empty">暂无收入数据</td></tr>';
-        return `
-            <div class="report-section">
-                <h3 class="report-section-title">📋 收支类别明细</h3>
-                <div class="report-tables-row">
-                    <div class="glass-card report-table-card">
-                        <h4 class="report-table-title">支出类别 TOP</h4>
-                        <table class="report-table">
-                            <thead><tr><th>类别</th><th>金额</th><th>占比</th></tr></thead>
-                            <tbody>${expRows}</tbody>
-                        </table>
-                    </div>
-                    <div class="glass-card report-table-card">
-                        <h4 class="report-table-title">收入类别 TOP</h4>
-                        <table class="report-table">
-                            <thead><tr><th>类别</th><th>金额</th><th>占比</th></tr></thead>
-                            <tbody>${incRows}</tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        `;
+    rollupCategories(list) {
+        // 后端已按「子级向父级汇总」（递归 CTE）给出每个分类的 rolled total（=自身+全部子孙），
+        // 这里只做「树结构重组 + 排序」用于渲染与点击展开，不再前端重算金额，避免与后端口径不一致。
+        const byId = new Map();
+        (list || []).forEach(c => byId.set(String(c.id), { ...c, children: [], rolledTotal: parseFloat(c.total || 0) }));
+        const roots = [];
+        byId.forEach(c => {
+            const pid = c.parent_id != null ? String(c.parent_id) : null;
+            if (pid && byId.has(pid)) byId.get(pid).children.push(c);
+            else roots.push(c);
+        });
+        roots.sort((a, b) => b.rolledTotal - a.rolledTotal);
+        roots.forEach(r => r.children.sort((a, b) => b.rolledTotal - a.rolledTotal));
+        return roots;
     },
     renderTopExpenses(data) {
         if (!data.topExpenses || data.topExpenses.length === 0) return '';
-        const items = data.topExpenses.map((t, i) => `
-            <div class="report-top-item">
-                <div class="report-top-rank">${i + 1}</div>
-                <div class="report-top-info">
-                    <div class="report-top-name">${t.category_icon} ${escapeHtml(t.category_name)} · ${escapeHtml(t.note || '无备注')}</div>
-                    <div class="report-top-meta">${String(t.date).slice(0, 10)}</div>
+        const max = parseFloat(data.topExpenses[0].amount || 0);
+        const total = data.summary.expense || 0;
+        const items = data.topExpenses.map((t, i) => {
+            const pctOfMax = max > 0 ? (parseFloat(t.amount || 0) / max * 100) : 0;
+            const pctOfTotal = total > 0 ? (parseFloat(t.amount || 0) / total * 100) : 0;
+            return `
+                <div class="report-top-item">
+                    <div class="report-top-rank ${i < 3 ? 'top' : ''}">${i + 1}</div>
+                    <div class="report-top-info">
+                        <div class="report-top-name">${escapeHtml(t.category_icon || '📌')} ${escapeHtml(t.category_name || '未分类')} · ${escapeHtml(t.note || '无备注')}</div>
+                        <div class="report-top-bar-wrap">
+                            <div class="report-top-bar"><div class="report-top-bar-fill" style="width:${Math.min(100, pctOfMax).toFixed(1)}%"></div></div>
+                            <span class="report-top-pct">占总额 ${pctOfTotal.toFixed(1)}%</span>
+                        </div>
+                        <div class="report-top-meta">${String(t.date).slice(0, 10)}</div>
+                    </div>
+                    <div class="report-top-amount">${fmt(t.amount)}</div>
                 </div>
-                <div class="report-top-amount">${fmt(t.amount)}</div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
         return `
             <div class="report-section">
                 <h3 class="report-section-title">🔥 支出 TOP 5</h3>
@@ -292,34 +271,32 @@ const ReportManager = {
             </div>
         `;
     },
-    renderAccountFlows(data) {
-        if (!data.accountFlows || data.accountFlows.length === 0) return '';
-        const rows = data.accountFlows.map(a => `
-            <div class="report-account-flow-row">
-                <div class="report-account-flow-name">${escapeHtml(a.icon || "💰")} ${escapeHtml(a.name)}</div>
-                <div class="report-account-flow-value ${a.net >= 0 ? 'income' : 'expense'}">${a.net >= 0 ? '+' : ''}${fmt(a.net)}</div>
-            </div>
-        `).join('');
-        return `
-            <div class="report-section">
-                <h3 class="report-section-title">🏦 账户资金流向</h3>
-                <div class="glass-card report-account-flows">${rows}</div>
-            </div>
-        `;
-    },
     renderBudgetExecution(data) {
         if (!data.budgetExecution || data.budgetExecution.length === 0) return '';
         const items = data.budgetExecution.map(b => {
-            const over = b.actual > b.budget;
+            const actual = parseFloat(b.actual || 0);
+            const budget = parseFloat(b.budget || 0);
+            const over = actual > budget;
+            const remaining = budget - actual;
+            let statusCls = 'safe';
+            if (budget <= 0) statusCls = 'na';
+            else if (actual > budget) statusCls = 'over';
+            else if (b.usage >= 80) statusCls = 'warn';
+            const statusText = budget <= 0 ? '未设预算'
+                : actual === 0 ? '未开始'
+                : over ? `超支 ${fmt(Math.abs(remaining))}`
+                : remaining === 0 ? '刚好用完'
+                : `剩余 ${fmt(remaining)}`;
             return `
-                <div class="report-budget-item">
+                <div class="report-budget-item ${statusCls}">
                     <div class="report-budget-header">
                         <span class="report-budget-name">${escapeHtml(b.icon || "📊")} ${escapeHtml(b.name)}</span>
-                        <span class="report-budget-amount ${over ? 'over' : ''}">${fmt(b.actual)} / ${fmt(b.budget)}</span>
+                        <span class="report-budget-status ${statusCls}">${statusText}</span>
                     </div>
+                    <div class="report-budget-amount-line">已用 ${fmt(actual)} / 预算 ${fmt(budget)}</div>
                     <div class="report-progress-wrap">
-                        <div class="report-progress"><div class="report-progress-bar ${over ? 'over' : ''}" style="width:${Math.min(100, b.usage)}%"></div></div>
-                        <span class="report-progress-text">${b.usage.toFixed(1)}%</span>
+                        <div class="report-progress"><div class="report-progress-bar ${statusCls}" style="width:${budget > 0 ? Math.min(100, (actual / budget * 100)) : 0}%"></div></div>
+                        <span class="report-progress-text ${statusCls}">${b.usage.toFixed(1)}%</span>
                     </div>
                 </div>
             `;
@@ -496,7 +473,7 @@ const ReportManager = {
                         </div>
                         <div class="bs-section">
                             <div class="bs-section-title">信用卡 <span class="bs-total">${fmt(bs.liabilities.creditCard.total)}</span></div>
-                            <div class="bs-meta-line">${bs.liabilities.creditCard.note || ''}</div>
+                            <div class="bs-meta-line">${escapeHtml(bs.liabilities.creditCard.note || '')}</div>
                         </div>
                         <div class="bs-section">
                             <div class="bs-section-title">长期负债 <span class="bs-total">${fmt(bs.liabilities.longTerm.total)}</span></div>
@@ -562,7 +539,7 @@ const ReportManager = {
                         <div class="cf-flows"></div>
                         <div class="cf-net ${totalColor}"><strong>${cf.netChange >= 0 ? '+' : ''}${fmt(cf.netChange)}</strong></div>
                     </div>
-                    <div class="cf-note">${cf.note || ''}</div>
+                    <div class="cf-note">${escapeHtml(cf.note || '')}</div>
                 </div>
             </div>
         `;
@@ -628,7 +605,7 @@ const ReportManager = {
         const rows = (data.transactions || []).map(t => `
             <tr>
                 <td>${t.date}</td>
-                <td>${t.category_name || ''}</td>
+                <td>${escapeHtml(t.category_name || '')}</td>
                 <td class="report-amount ${t.type === 'expense' ? 'expense' : 'income'}">${t.type === 'expense' ? '-' : '+'}${fmt(t.amount)}</td>
                 <td>${escapeHtml(t.note || '')}</td>
             </tr>
@@ -661,27 +638,35 @@ const ReportManager = {
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: c.text, usePointStyle: true, boxWidth: 8 } } }, scales: { x: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } }, y: { ticks: { color: c.text, font: { size: 10 } }, grid: { color: c.grid } } } }
             });
         }
-        // 支出饼图
+        // 支出饼图（仅显示一级 parent_id=null；点击扇区下钻子级，数据库已做子级向父级汇总）
         const expPieCtx = document.getElementById('reportExpPieChart');
-        if (expPieCtx && data.expenseByCategory.length > 0) {
-            this.charts.expPie = new Chart(expPieCtx, {
-                type: 'doughnut',
-                data: { labels: data.expenseByCategory.map(e => e.icon + ' ' + e.name), datasets: [{ data: data.expenseByCategory.map(e => e.total), backgroundColor: data.expenseByCategory.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } } } }
-            });
+        if (expPieCtx && data.expenseByCategory && data.expenseByCategory.length > 0) {
+            this._reportPieState = this._reportPieState || {};
+            this._reportPieState.exp = { full: data.expenseByCategory, stack: [] };
+            this._drawReportPie('reportExpPieChart', 'exp');
         }
-        // 收入饼图
+        // 收入饼图（仅显示一级 + 点击下钻子级）
         const incPieCtx = document.getElementById('reportIncPieChart');
-        if (incPieCtx && data.incomeByCategory.length > 0) {
-            this.charts.incPie = new Chart(incPieCtx, {
-                type: 'doughnut',
-                data: { labels: data.incomeByCategory.map(e => e.icon + ' ' + e.name), datasets: [{ data: data.incomeByCategory.map(e => e.total), backgroundColor: data.incomeByCategory.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, cutout: '55%', plugins: { legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } } } }
-            });
+        if (incPieCtx && data.incomeByCategory && data.incomeByCategory.length > 0) {
+            this._reportPieState = this._reportPieState || {};
+            this._reportPieState.inc = { full: data.incomeByCategory, stack: [] };
+            this._drawReportPie('reportIncPieChart', 'inc');
         }
-        // 账户资金流向
+        // 饼图下钻「返回」按钮（每次 render 后 DOM 重建，需重新绑定 onclick）
+        ['exp', 'inc'].forEach(key => {
+            const canvasId = key === 'exp' ? 'reportExpPieChart' : 'reportIncPieChart';
+            const backId = key === 'exp' ? 'reportExpPieBack' : 'reportIncPieBack';
+            const backEl = document.getElementById(backId);
+            if (backEl) {
+                backEl.onclick = () => {
+                    const st = this._reportPieState && this._reportPieState[key];
+                    if (st && st.stack.length) { st.stack.pop(); this._drawReportPie(canvasId, key); }
+                };
+            }
+        });
+        // 账户资金流向（柱状图卡片版）
         const accCtx = document.getElementById('reportAccountChart');
-        if (accCtx && data.accountFlows.length > 0) {
+        if (accCtx && data.accountFlows && data.accountFlows.length > 0) {
             this.charts.accFlow = new Chart(accCtx, {
                 type: 'bar',
                 data: { labels: data.accountFlows.map(a => a.name), datasets: [{ label: '净流入', data: data.accountFlows.map(a => a.net), backgroundColor: data.accountFlows.map(a => a.net >= 0 ? c.inc + '90' : c.exp + '90'), borderRadius: 6 }] },
@@ -689,6 +674,70 @@ const ReportManager = {
             });
         }
     },
+    // 报表饼图绘制（支持按一级 + 点击扇区下钻子级，与仪表盘支出饼图同模式）
+    _drawReportPie(canvasId, key) {
+        const c = ChartManager.colors();
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const state = this._reportPieState && this._reportPieState[key];
+        if (!state) return;
+        const full = state.full;
+        const stack = state.stack;
+        // 当前层级：栈空=一级（parent_id 为 null）；否则取栈顶父级的直接子级
+        const slices = stack.length === 0
+            ? full.filter(e => e.parent_id == null)
+            : full.filter(e => e.parent_id === stack[stack.length - 1]);
+        state.slices = slices;
+
+        const baseTitle = key === 'exp' ? '支出类别占比' : '收入来源占比';
+        const isExp = canvasId === 'reportExpPieChart';
+        const titleEl = document.getElementById(isExp ? 'reportExpPieTitle' : 'reportIncPieTitle');
+        const backEl = document.getElementById(isExp ? 'reportExpPieBack' : 'reportIncPieBack');
+        const hintEl = document.getElementById(isExp ? 'reportExpPieHint' : 'reportIncPieHint');
+        if (titleEl) {
+            if (stack.length === 0) titleEl.textContent = baseTitle;
+            else {
+                const names = stack.map(id => (full.find(x => x.id === id) || {}).name || '');
+                titleEl.textContent = baseTitle + ' › ' + names.join(' › ');
+            }
+        }
+        if (backEl) backEl.style.display = stack.length ? '' : 'none';
+        if (hintEl) hintEl.style.display = stack.length ? 'none' : '';
+
+        const total = slices.reduce((s, e) => s + parseFloat(e.total || 0), 0);
+        if (this.charts[canvasId]) this.charts[canvasId].destroy();
+        this.charts[canvasId] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: slices.map(e => (e.icon || '📌') + ' ' + e.name),
+                datasets: [{ data: slices.map(e => parseFloat(e.total || 0)), backgroundColor: slices.map((_, i) => c.cats[i % c.cats.length]), borderWidth: 0 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '55%',
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const cat = slices[els[0].index];
+                    if (!cat) return;
+                    const hasChildren = full.some(x => x.parent_id === cat.id);
+                    if (hasChildren) { state.stack.push(cat.id); this._drawReportPie(canvasId, key); }
+                },
+                plugins: {
+                    legend: { position: 'right', labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 11 }, padding: 8, boxWidth: 12, usePointStyle: true } },
+                    tooltip: {
+                        callbacks: {
+                            label: cx => {
+                                const v = cx.parsed;
+                                const pct = total > 0 ? (v / total * 100).toFixed(1) : '0.0';
+                                return ` ${cx.label.split(' ').slice(1).join(' ')}: ¥${Number(v).toLocaleString()} (${pct}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
     async exportCSV() {
         if (!this.currentData) { showToast('请先生成报表', 'warning'); return; }
         const d = this.currentData;
@@ -701,9 +750,9 @@ const ReportManager = {
         csv += `净结余,${s.balance.toFixed(2)},\n`;
         csv += `储蓄率,${s.savingsRate.toFixed(2)}%,\n\n`;
         csv += '支出类别,金额,占比\n';
-        d.expenseByCategory.forEach(e => { csv += `${e.name},${e.total.toFixed(2)},${d.summary.expense > 0 ? (e.total / d.summary.expense * 100).toFixed(2) : 0}%\n`; });
+        this.rollupCategories(d.expenseByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.expense > 0 ? (e.rolledTotal / d.summary.expense * 100).toFixed(2) : 0}%\n`; });
         csv += '\n收入类别,金额,占比\n';
-        d.incomeByCategory.forEach(e => { csv += `${e.name},${e.total.toFixed(2)},${d.summary.income > 0 ? (e.total / d.summary.income * 100).toFixed(2) : 0}%\n`; });
+        this.rollupCategories(d.incomeByCategory).forEach(e => { csv += `${e.name},${e.rolledTotal.toFixed(2)},${d.summary.income > 0 ? (e.rolledTotal / d.summary.income * 100).toFixed(2) : 0}%\n`; });
         csv += '\n日期,收入,支出\n';
         d.dailyTrend.forEach(t => { csv += `${fmtDateTime(t.date)},${t.income.toFixed(2)},${t.expense.toFixed(2)}\n`; });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

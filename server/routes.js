@@ -8,6 +8,7 @@ const express = require('express');
 const { authMiddleware } = require('./auth');
 const { validate, rules } = require('./validate');
 const quoteCache = require('./services/quote-cache');
+const { apiLimiter, writeLimiter, aiLimiter } = require('./rate-limit-user');
 
 const router = express.Router();
 
@@ -26,6 +27,20 @@ router.use((req, res, next) => {
 });
 
 // ==========================================
+// M5 · 用户级速率限制（按 userId 限速，防刷接口 / 防 AI 成本失控）
+//   apiLimiter: 已认证接口 200 次/分；writeLimiter: 写操作 60 次/分
+// /auth 已在 app 层用 authLimiter(IP) 限流，此处跳过避免重复计数。
+// ==========================================
+router.use((req, res, next) => {
+    if (req.path.startsWith('/auth')) return next();
+    return apiLimiter(req, res, next);
+});
+router.use((req, res, next) => {
+    if (req.path.startsWith('/auth') || req.method === 'GET') return next();
+    return writeLimiter(req, res, next);
+});
+
+// ==========================================
 // M4 · 通用参数防护（受保护路由统一接入 validate 中间件）
 // 仅校验“存在的值”，不强制字段必填，故不影响无参路由的正常行为：
 //   - :id / :rid 必须为正整数（挡 NaN / 负数 / 0，防越权与错误查询）
@@ -41,7 +56,7 @@ router.use(validate({
 // 业务路由模块（按域拆分的路由）
 // ==========================================
 router.use('/accounts', require('./routes/accounts'));
-router.use('/ai', require('./routes/ai'));
+router.use('/ai', aiLimiter, require('./routes/ai'));
 router.use('/transfers', require('./routes/transfers'));
 router.use('/transactions', require('./routes/transactions'));   // /transactions, /transactions/months, /transactions/summary, /ledger
 router.use('/budgets', require('./routes/budgets'));
