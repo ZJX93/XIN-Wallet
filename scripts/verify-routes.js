@@ -30,12 +30,12 @@ function extractMountedRoutes(filePath) {
         vars.set(m[1], `server/routes/${m[2]}.js`);
     }
 
-    const inlineRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)\s*\)/g;
+    const inlineRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*(?:[^,]+,\s*)*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)\s*\)/g;
     while ((m = inlineRe.exec(code)) !== null) {
         mounts.push({ prefix: m[1], file: `server/routes/${m[2]}.js` });
     }
 
-    const varRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*(\w+)\s*\)/g;
+    const varRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*(?:\w+\s*,\s*)*(\w+)\s*\)/g;
     while ((m = varRe.exec(code)) !== null) {
         const file = vars.get(m[2]);
         if (file) mounts.push({ prefix: m[1], file });
