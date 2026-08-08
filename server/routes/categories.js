@@ -11,11 +11,26 @@ router.get('/', async (req, res) => {
         const { type, flat } = req.query;
         // 多用户隔离：返回「系统预设 + 当前用户私有」分类
         const params = [req.userId];
-        let where = 'WHERE (user_id IS NULL OR user_id = ?)';
-        if (type) { where += ' AND type = ?'; params.push(type); }
+        let where = 'WHERE (c.user_id IS NULL OR c.user_id = ?)';
+        if (type) { where += ' AND c.type = ?'; params.push(type); }
 
+        // 排序规则（顶级位置必须由 sort_order 决定，而非自增 id）：
+        //   1. type            —— expense / income / transfer 分组，保持既有展示顺序
+        //   2. 父级 sort_order  —— 顶级分类自身，或子分类所属父级的 sort_order
+        //   3. 父级 id          —— sort_order 相同时的稳定兜底，保证父子不被拆散
+        //   4. 是否子分类       —— FALSE(父) 排在 TRUE(子) 之前
+        //   5. 自身 sort_order / id —— 同一父级下的子分类顺序
         const rows = await db.query(
-            `SELECT * FROM categories ${where} ORDER BY COALESCE(parent_id, id), parent_id IS NOT NULL, sort_order`,
+            `SELECT c.*
+               FROM categories c
+               LEFT JOIN categories p ON p.id = c.parent_id
+             ${where}
+              ORDER BY c.type,
+                       COALESCE(p.sort_order, c.sort_order),
+                       COALESCE(c.parent_id, c.id),
+                       (c.parent_id IS NOT NULL),
+                       c.sort_order,
+                       c.id`,
             params
         );
 
