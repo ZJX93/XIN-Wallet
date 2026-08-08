@@ -194,8 +194,7 @@ const AccountManager = {
     async hardDeleteAccount() {
         const id = this._delId;
         if (!id) return;
-        const res = await api(`/accounts/${id}`, 'DELETE');
-        if (!res) return; // api() 已显示错误 toast（含 409 关联数据提示）
+        await api(`/accounts/${id}`, 'DELETE'); // 失败会抛错，api() 已显示错误 toast（含 409 关联数据提示）
         showToast('账户已彻底删除', 'success');
         // 旧 AI 洞察/建议缓存可能仍引用该账户余额，立即失效
         try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
@@ -206,8 +205,7 @@ const AccountManager = {
     async closeAccount() {
         const id = this._delId;
         if (!id) return;
-        const res = await api(`/accounts/${id}/close`, 'POST');
-        if (!res) return;
+        await api(`/accounts/${id}/close`, 'POST'); // 失败会抛错
         showToast('账户已关闭（历史保留）', 'warning');
         try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
         this.closeDeleteModal();
