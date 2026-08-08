@@ -7,6 +7,7 @@ const DebtManager = {
     _currentDir: 'payable',     // 模态框选中的方向
     _filter: 'all',              // 列表筛选
     _listCache: [],              // 最近一次拉到的全量列表（供 repay 模态查 direction）
+    _autoCalcLock: false,        // 日期/期数自动推导互锁，防循环
 
     init() {
         document.getElementById('addDebtBtn').addEventListener('click', () => this.openAddModal());
@@ -30,6 +31,11 @@ const DebtManager = {
         document.getElementById('repayHistoryModal').addEventListener('click', (e) => { if (e.target === document.getElementById('repayHistoryModal')) this.closeRepayHistory(); });
         // 科目类别 → 信用卡字段显隐
         document.getElementById('debtType').addEventListener('change', () => this.onTypeChange());
+        // 起息日 / 到期日 / 贷款期数 三选二自动推第三
+        ['debtStart', 'debtDue', 'debtTerm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', () => this._autoCalcDates(id));
+        });
     },
 
     async refresh() {
@@ -161,6 +167,60 @@ const DebtManager = {
         const type = document.getElementById('debtType').value;
         const ccBlock = document.querySelector('.debt-cc-fields');
         if (ccBlock) ccBlock.style.display = type === 'credit_card' ? '' : 'none';
+    },
+
+    // 起息日 / 到期日 / 贷款期数：知道任意两个，自动算第三个
+    _autoCalcDates(changedId) {
+        if (this._autoCalcLock) return;
+        const startEl = document.getElementById('debtStart');
+        const dueEl = document.getElementById('debtDue');
+        const termEl = document.getElementById('debtTerm');
+        if (!startEl || !dueEl || !termEl) return;
+
+        const start = startEl.value ? new Date(startEl.value + 'T00:00:00') : null;
+        const due = dueEl.value ? new Date(dueEl.value + 'T00:00:00') : null;
+        const term = termEl.value === '' ? null : parseInt(termEl.value, 10);
+        if (start && !isNaN(start.getTime()) && due && !isNaN(due.getTime())) {
+            // 起息 + 到期 -> 期数（按整月差；跨日不足一月按自然月边界计）
+            const months = (due.getFullYear() - start.getFullYear()) * 12 + (due.getMonth() - start.getMonth());
+            if (months >= 0 && changedId !== 'debtTerm') {
+                this._autoCalcLock = true;
+                termEl.value = months;
+                this._autoCalcLock = false;
+            }
+            return;
+        }
+        if (start && term != null && term >= 0 && (changedId === 'debtStart' || changedId === 'debtTerm')) {
+            // 起息 + 期数 -> 到期
+            const y = start.getFullYear();
+            const m = start.getMonth() + term;
+            const d = start.getDate();
+            const next = new Date(y, m, d);
+            // 若目标月没有该日期（如 1.31 + 1 月），回退到目标月最后一天
+            if (next.getDate() !== d) next.setDate(0);
+            this._autoCalcLock = true;
+            dueEl.value = this._fmtDate(next);
+            this._autoCalcLock = false;
+            return;
+        }
+        if (due && term != null && term >= 0 && (changedId === 'debtDue' || changedId === 'debtTerm')) {
+            // 到期 - 期数 -> 起息
+            const y = due.getFullYear();
+            const m = due.getMonth() - term;
+            const d = due.getDate();
+            const prev = new Date(y, m, d);
+            if (prev.getDate() !== d) prev.setDate(0);
+            this._autoCalcLock = true;
+            startEl.value = this._fmtDate(prev);
+            this._autoCalcLock = false;
+        }
+    },
+
+    _fmtDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
     },
 
     // 填充账户下拉（新增/编辑债务时可选关联账户）
