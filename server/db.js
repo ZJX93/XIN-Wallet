@@ -390,10 +390,10 @@ async function initDatabase() {
     // 15) 幂等迁移：投资理财分类体系（一级 投资理财 + 二级 投资买入/理财保险）
     //     买入分类按产品类型拆分：保险类→理财保险，其余→投资买入，均挂在「投资理财」下。
     try {
-      // 一级 投资理财（支出），sort_order 置于其他支出之后
+      // 一级 投资理财（支出），sort_order = 10（接在 育儿亲子=9 之后，其他支出=99 之前）
       await pool.query(`
         INSERT INTO categories (code, name, type, icon, color, sort_order, is_system)
-        SELECT 'E1100', '投资理财', 'expense', '💹', '#22c55e', 100, TRUE
+        SELECT 'E1100', '投资理财', 'expense', '💹', '#22c55e', 10, TRUE
         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE code = 'E1100')
       `);
       // 历史动态创建的「投资买入」(parent_id 为 NULL) 挂回投资理财下
@@ -428,6 +428,19 @@ async function initDatabase() {
         CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex','insurance'))`);
     } catch (err) {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财分类迁移警告:', err.message);
+    }
+
+    // 16) 幂等迁移：修正「投资理财」一级排序号（100 → 10，落在第 10 位）
+    //     仅补刷已部署库（#15 早期版本曾写入 100），全新库已由 #15 直接写入 10。
+    try {
+      await pool.query(`
+        UPDATE categories
+           SET sort_order = 10
+         WHERE code = 'E1100'
+           AND (sort_order IS NULL OR sort_order <> 10)
+      `);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财排序修正迁移警告:', err.message);
     }
 
     console.log('✅ 数据库表结构已初始化');
