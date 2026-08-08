@@ -8,6 +8,7 @@
 #   fix/refactor:   → patch bump (0.2.3 → 0.2.4)
 #   BREAKING CHANGE → major bump (0.2.3 → 1.0.0)
 #   docs/chore/ci:  → 跳过（不触发发布）
+#   style:          → patch bump（前端样式进镜像，需重建，避免"代码改了容器没更新"）
 # 注意：major 跳变只认「会发布的类型」(feat/fix/refactor/perf/build) 中的破坏性变更，
 #       ci/docs 等非发布提交的 BREAKING CHANGE 不会触发大版本跳变（避免误判）。
 # ============================================
@@ -67,10 +68,10 @@ jobs:
           echo "$COMMITS"
           echo ""
 
-          # 如果只有 docs/chore/style/ci 类型的 commit，跳过打标签
-          if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!?:"; then
+          # 如果只有 docs/chore/ci 类型的 commit，跳过打标签；style 视为可发布（patch bump）
+          if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build|style)(\(.+\))?!?:"; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Only docs/chore/style/ci commits since last tag, skipping"
+            echo "Only docs/chore/ci commits since last tag, skipping"
             exit 0
           fi
 
