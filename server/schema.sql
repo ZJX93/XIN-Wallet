@@ -260,128 +260,128 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================
 
 -- ◆ 支出类别（一级 10 个，code 以 00 结尾表示一级本身仅展示）
-INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
-(1,  'E0100', '餐饮',     'expense', '🍜', 1,  TRUE),
-(2,  'E0200', '交通出行', 'expense', '🚗', 2,  TRUE),
-(3,  'E0300', '购物消费', 'expense', '🛒', 3,  TRUE),
-(4,  'E0400', '居家生活', 'expense', '🏠', 4,  TRUE),
-(5,  'E0500', '休闲娱乐', 'expense', '🎮', 5,  TRUE),
-(6,  'E0600', '医疗健康', 'expense', '💊', 6,  TRUE),
-(7,  'E0700', '学习进修', 'expense', '📚', 7,  TRUE),
-(9,  'E0800', '人情往来', 'expense', '🎁', 8,  TRUE),
-(14, 'E1000', '其他支出', 'expense', '📌', 99, TRUE)
+INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
+(1,  'E0100', '餐饮',     'expense', '🍜', '#ef4444', 1,  TRUE),
+(2,  'E0200', '交通出行', 'expense', '🚗', '#ef4444', 2,  TRUE),
+(3,  'E0300', '购物消费', 'expense', '🛒', '#ef4444', 3,  TRUE),
+(4,  'E0400', '居家生活', 'expense', '🏠', '#ef4444', 4,  TRUE),
+(5,  'E0500', '休闲娱乐', 'expense', '🎮', '#ef4444', 5,  TRUE),
+(6,  'E0600', '医疗健康', 'expense', '💊', '#ef4444', 6,  TRUE),
+(7,  'E0700', '学习进修', 'expense', '📚', '#ef4444', 7,  TRUE),
+(9,  'E0800', '人情往来', 'expense', '🎁', '#ef4444', 8,  TRUE),
+(14, 'E1000', '其他支出', 'expense', '📌', '#ef4444', 99, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 育儿亲子（固定 ID=11）
-INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
-(11, 'E0900', '育儿亲子', 'expense', '👶', 9, TRUE)
+INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
+(11, 'E0900', '育儿亲子', 'expense', '👶', '#ef4444', 9, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 支出二级分类（44 个，code E+一级序号+二级序号）
-INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 餐饮 E01（6 子类）
-(23, 'E0101', 1, '早午晚餐', 'expense', '🌅', 1, TRUE),
-(24, 'E0102', 1, '外卖小吃', 'expense', '🥡', 2, TRUE),
-(25, 'E0103', 1, '零食饮料', 'expense', '🧋', 3, TRUE),
-(26, 'E0104', 1, '烟酒',     'expense', '🍷', 4, TRUE),
-(27, 'E0105', 1, '聚餐请客', 'expense', '🍻', 5, TRUE),
-(28, 'E0106', 1, '生鲜食材', 'expense', '🥬', 6, TRUE),
-(281, 'E0107', 1, '粮油调味', 'expense', '🌾', 7, TRUE),
+(23, 'E0101', 1, '早午晚餐', 'expense', '🌅', '#ef4444', 1, TRUE),
+(24, 'E0102', 1, '外卖小吃', 'expense', '🥡', '#ef4444', 2, TRUE),
+(25, 'E0103', 1, '零食饮料', 'expense', '🧋', '#ef4444', 3, TRUE),
+(26, 'E0104', 1, '烟酒',     'expense', '🍷', '#ef4444', 4, TRUE),
+(27, 'E0105', 1, '聚餐请客', 'expense', '🍻', '#ef4444', 5, TRUE),
+(28, 'E0106', 1, '生鲜食材', 'expense', '🥬', '#ef4444', 6, TRUE),
+(281, 'E0107', 1, '粮油调味', 'expense', '🌾', '#ef4444', 7, TRUE),
 -- 交通出行 E02（6 子类）
-(29, 'E0201', 2, '公交地铁', 'expense', '🚌', 1, TRUE),
-(30, 'E0202', 2, '打车拼车', 'expense', '🚕', 2, TRUE),
-(31, 'E0203', 2, '加油充电', 'expense', '⛽', 3, TRUE),
-(32, 'E0204', 2, '停车过路', 'expense', '🅿️', 4, TRUE),
-(33, 'E0205', 2, '火车飞机', 'expense', '🚄', 5, TRUE),
-(34, 'E0206', 2, '维保车险', 'expense', '🔧', 6, TRUE),
+(29, 'E0201', 2, '公交地铁', 'expense', '🚌', '#ef4444', 1, TRUE),
+(30, 'E0202', 2, '打车拼车', 'expense', '🚕', '#ef4444', 2, TRUE),
+(31, 'E0203', 2, '加油充电', 'expense', '⛽', '#ef4444', 3, TRUE),
+(32, 'E0204', 2, '停车过路', 'expense', '🅿️', '#ef4444', 4, TRUE),
+(33, 'E0205', 2, '火车飞机', 'expense', '🚄', '#ef4444', 5, TRUE),
+(34, 'E0206', 2, '维保车险', 'expense', '🔧', '#ef4444', 6, TRUE),
 -- 购物消费 E03（4 子类）
-(35, 'E0301', 3, '日用百货', 'expense', '🧴', 1, TRUE),
-(36, 'E0302', 3, '服饰美容', 'expense', '👗', 2, TRUE),
-(37, 'E0303', 3, '数码电器', 'expense', '📱', 3, TRUE),
-(38, 'E0304', 3, '家居家具', 'expense', '🛋️', 4, TRUE),
+(35, 'E0301', 3, '日用百货', 'expense', '🧴', '#ef4444', 1, TRUE),
+(36, 'E0302', 3, '服饰美容', 'expense', '👗', '#ef4444', 2, TRUE),
+(37, 'E0303', 3, '数码电器', 'expense', '📱', '#ef4444', 3, TRUE),
+(38, 'E0304', 3, '家居家具', 'expense', '🛋️', '#ef4444', 4, TRUE),
 -- 居家生活 E04（7 子类）
-(39, 'E0401', 4, '房租月供', 'expense', '🏘️', 1, TRUE),
-(40, 'E0402', 4, '水电燃气', 'expense', '💡', 2, TRUE),
-(41, 'E0403', 4, '物业维修', 'expense', '🛠️', 3, TRUE),
-(42, 'E0404', 4, '话费宽带', 'expense', '📶', 4, TRUE),
-(43, 'E0405', 4, '社保保险', 'expense', '🛡️', 5, TRUE),
-(44, 'E0406', 4, '日用杂货', 'expense', '🧹', 6, TRUE),
-(45, 'E0407', 4, '快递邮寄', 'expense', '📦', 7, TRUE),
+(39, 'E0401', 4, '房租月供', 'expense', '🏘️', '#ef4444', 1, TRUE),
+(40, 'E0402', 4, '水电燃气', 'expense', '💡', '#ef4444', 2, TRUE),
+(41, 'E0403', 4, '物业维修', 'expense', '🛠️', '#ef4444', 3, TRUE),
+(42, 'E0404', 4, '话费宽带', 'expense', '📶', '#ef4444', 4, TRUE),
+(43, 'E0405', 4, '社保保险', 'expense', '🛡️', '#ef4444', 5, TRUE),
+(44, 'E0406', 4, '日用杂货', 'expense', '🧹', '#ef4444', 6, TRUE),
+(45, 'E0407', 4, '快递邮寄', 'expense', '📦', '#ef4444', 7, TRUE),
 -- 休闲娱乐 E05（6 子类）
-(46, 'E0501', 5, '电影演出', 'expense', '🎬', 1, TRUE),
-(47, 'E0502', 5, '游戏电竞', 'expense', '🎮', 2, TRUE),
-(48, 'E0503', 5, '运动健身', 'expense', '🏋️', 3, TRUE),
-(49, 'E0504', 5, '旅游度假', 'expense', '✈️', 4, TRUE),
-(50, 'E0505', 5, '宠物开销', 'expense', '🐾', 5, TRUE),
-(51, 'E0506', 5, '会员订阅', 'expense', '📺', 6, TRUE),
+(46, 'E0501', 5, '电影演出', 'expense', '🎬', '#ef4444', 1, TRUE),
+(47, 'E0502', 5, '游戏电竞', 'expense', '🎮', '#ef4444', 2, TRUE),
+(48, 'E0503', 5, '运动健身', 'expense', '🏋️', '#ef4444', 3, TRUE),
+(49, 'E0504', 5, '旅游度假', 'expense', '✈️', '#ef4444', 4, TRUE),
+(50, 'E0505', 5, '宠物开销', 'expense', '🐾', '#ef4444', 5, TRUE),
+(51, 'E0506', 5, '会员订阅', 'expense', '📺', '#ef4444', 6, TRUE),
 -- 医疗健康 E06（4 子类）
-(52, 'E0601', 6, '门诊药品', 'expense', '💊', 1, TRUE),
-(53, 'E0602', 6, '体检住院', 'expense', '🏥', 2, TRUE),
-(54, 'E0603', 6, '牙科眼科', 'expense', '🦷', 3, TRUE),
-(55, 'E0604', 6, '保健养生', 'expense', '🌿', 4, TRUE),
+(52, 'E0601', 6, '门诊药品', 'expense', '💊', '#ef4444', 1, TRUE),
+(53, 'E0602', 6, '体检住院', 'expense', '🏥', '#ef4444', 2, TRUE),
+(54, 'E0603', 6, '牙科眼科', 'expense', '🦷', '#ef4444', 3, TRUE),
+(55, 'E0604', 6, '保健养生', 'expense', '🌿', '#ef4444', 4, TRUE),
 -- 学习进修 E07（3 子类）
-(56, 'E0701', 7, '培训考试', 'expense', '📝', 1, TRUE),
-(57, 'E0702', 7, '书本文具', 'expense', '📚', 2, TRUE),
-(58, 'E0703', 7, '知识付费', 'expense', '🎧', 3, TRUE),
+(56, 'E0701', 7, '培训考试', 'expense', '📝', '#ef4444', 1, TRUE),
+(57, 'E0702', 7, '书本文具', 'expense', '📚', '#ef4444', 2, TRUE),
+(58, 'E0703', 7, '知识付费', 'expense', '🎧', '#ef4444', 3, TRUE),
 -- 人情往来 E08（4 子类）
-(59, 'E0801', 9, '孝敬父母', 'expense', '👴', 1, TRUE),
-(60, 'E0802', 9, '送礼红包', 'expense', '🧧', 2, TRUE),
-(61, 'E0803', 9, '慈善捐赠', 'expense', '💝', 3, TRUE),
-(62, 'E0804', 9, '请客招待', 'expense', '🍻', 4, TRUE)
+(59, 'E0801', 9, '孝敬父母', 'expense', '👴', '#ef4444', 1, TRUE),
+(60, 'E0802', 9, '送礼红包', 'expense', '🧧', '#ef4444', 2, TRUE),
+(61, 'E0803', 9, '慈善捐赠', 'expense', '💝', '#ef4444', 3, TRUE),
+(62, 'E0804', 9, '请客招待', 'expense', '🍻', '#ef4444', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 育儿亲子二级分类（E09，固定 ID 67-70，parent_id=11）
-INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
-(67, 'E0901', 11, '奶粉尿布', 'expense', '🍼', 1, TRUE),
-(68, 'E0902', 11, '玩具童书', 'expense', '🧸', 2, TRUE),
-(69, 'E0903', 11, '学费培训', 'expense', '🎓', 3, TRUE),
-(70, 'E0904', 11, '医疗保健', 'expense', '🏥', 4, TRUE)
+INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
+(67, 'E0901', 11, '奶粉尿布', 'expense', '🍼', '#ef4444', 1, TRUE),
+(68, 'E0902', 11, '玩具童书', 'expense', '🧸', '#ef4444', 2, TRUE),
+(69, 'E0903', 11, '学费培训', 'expense', '🎓', '#ef4444', 3, TRUE),
+(70, 'E0904', 11, '医疗保健', 'expense', '🏥', '#ef4444', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 收入类别（一级 4 个）
-INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
-(15, 'I0100', '职业收入', 'income',   '💼', 1,  TRUE),
-(17, 'I0200', '被动收入', 'income',   '📈', 2,  TRUE),
-(18, 'I0300', '兼职副业', 'income',   '💻', 3,  TRUE),
-(21, 'I0400', '其他收入', 'income',   '📌', 99, TRUE)
+INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
+(15, 'I0100', '职业收入', 'income',   '💼', '#22c55e', 1,  TRUE),
+(17, 'I0200', '被动收入', 'income',   '📈', '#22c55e', 2,  TRUE),
+(18, 'I0300', '兼职副业', 'income',   '💻', '#22c55e', 3,  TRUE),
+(21, 'I0400', '其他收入', 'income',   '📌', '#22c55e', 99, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 转账类别（一般转账 / 贷款债务 带二级明细；其他转账 为一级可选叶子，type 统一为 transfer）
 --   一般转账（银行转账 / 信用卡还款 / 存款取款）
 --   贷款债务（借入 / 借出 / 还款 / 收债）
 --   其他转账
-INSERT INTO categories (id, code, name, type, icon, sort_order, is_system) VALUES
-(22, 'T0100', '一般转账', 'transfer', '🏦', 1, TRUE)
+INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
+(22, 'T0100', '一般转账', 'transfer', '🏦', '#3b82f6', 1, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 一般转账 T01（3 子类）
-(91, 'T0200', NULL, '贷款债务', 'transfer', '💸', 2, TRUE),
-(92, 'T0300', NULL, '其他转账', 'transfer', '↔️', 99, TRUE),
-(93, 'T0101', 22,   '银行转账', 'transfer', '🏦', 1, TRUE),
-(94, 'T0102', 22,   '信用卡还款', 'transfer', '💳', 2, TRUE),
-(95, 'T0103', 22,   '存款取款', 'transfer', '🏧', 3, TRUE),
-(96, 'T0201', 91,   '借入',     'transfer', '🏦', 1, TRUE),
-(97, 'T0202', 91,   '借出',     'transfer', '🤝', 2, TRUE),
-(98, 'T0203', 91,   '还款',     'transfer', '💸', 3, TRUE),
-(99, 'T0204', 91,   '收债',     'transfer', '💰', 4, TRUE)
+(91, 'T0200', NULL, '贷款债务', 'transfer', '💸', '#3b82f6', 2, TRUE),
+(92, 'T0300', NULL, '其他转账', 'transfer', '↔️', '#3b82f6', 99, TRUE),
+(93, 'T0101', 22,   '银行转账', 'transfer', '🏦', '#3b82f6', 1, TRUE),
+(94, 'T0102', 22,   '信用卡还款', 'transfer', '💳', '#3b82f6', 2, TRUE),
+(95, 'T0103', 22,   '存款取款', 'transfer', '🏧', '#3b82f6', 3, TRUE),
+(96, 'T0201', 91,   '借入',     'transfer', '🏦', '#3b82f6', 1, TRUE),
+(97, 'T0202', 91,   '借出',     'transfer', '🤝', '#3b82f6', 2, TRUE),
+(98, 'T0203', 91,   '还款',     'transfer', '💸', '#3b82f6', 3, TRUE),
+(99, 'T0204', 91,   '收债',     'transfer', '💰', '#3b82f6', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- ◆ 收入二级分类（10 个）
-INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_system) VALUES
+INSERT INTO categories (id, code, parent_id, name, type, icon, color, sort_order, is_system) VALUES
 -- 职业收入 I01（3 子类）
-(71, 'I0101', 15, '工资薪水',   'income', '💰', 1, TRUE),
-(72, 'I0102', 15, '奖金绩效',   'income', '🏆', 2, TRUE),
-(73, 'I0103', 15, '补贴报销',   'income', '📋', 3, TRUE),
+(71, 'I0101', 15, '工资薪水',   'income', '💰', '#22c55e', 1, TRUE),
+(72, 'I0102', 15, '奖金绩效',   'income', '🏆', '#22c55e', 2, TRUE),
+(73, 'I0103', 15, '补贴报销',   'income', '📋', '#22c55e', 3, TRUE),
 -- 被动收入 I02（3 子类）
-(74, 'I0201', 17, '理财收益',   'income', '📊', 1, TRUE),
-(75, 'I0202', 17, '房租收入',   'income', '🏠', 2, TRUE),
-(76, 'I0203', 17, '分红利息',   'income', '💹', 3, TRUE),
+(74, 'I0201', 17, '理财收益',   'income', '📊', '#22c55e', 1, TRUE),
+(75, 'I0202', 17, '房租收入',   'income', '🏠', '#22c55e', 2, TRUE),
+(76, 'I0203', 17, '分红利息',   'income', '💹', '#22c55e', 3, TRUE),
 -- 兼职副业 I03（4 子类）
-(77, 'I0301', 18, '自由职业',   'income', '🎨', 1, TRUE),
-(78, 'I0302', 18, '咨询服务',   'income', '🗣️', 2, TRUE),
-(79, 'I0303', 18, '自媒体创作', 'income', '🎬', 3, TRUE),
-(80, 'I0304', 18, '电商微商',   'income', '🛍️', 4, TRUE)
+(77, 'I0301', 18, '自由职业',   'income', '🎨', '#22c55e', 1, TRUE),
+(78, 'I0302', 18, '咨询服务',   'income', '🗣️', '#22c55e', 2, TRUE),
+(79, 'I0303', 18, '自媒体创作', 'income', '🎬', '#22c55e', 3, TRUE),
+(80, 'I0304', 18, '电商微商',   'income', '🛍️', '#22c55e', 4, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 理财产品类型

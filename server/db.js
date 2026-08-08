@@ -393,7 +393,7 @@ async function initDatabase() {
       // 一级 投资理财（支出），sort_order = 10（接在 育儿亲子=9 之后，其他支出=99 之前）
       await pool.query(`
         INSERT INTO categories (code, name, type, icon, color, sort_order, is_system)
-        SELECT 'E1100', '投资理财', 'expense', '💹', '#22c55e', 10, TRUE
+        SELECT 'E1100', '投资理财', 'expense', '💹', '#ef4444', 10, TRUE
         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE code = 'E1100')
       `);
       // 历史动态创建的「投资买入」(parent_id 为 NULL) 挂回投资理财下
@@ -406,13 +406,13 @@ async function initDatabase() {
       // 二级 投资买入（若不存在则建在投资理财下）
       await pool.query(`
         INSERT INTO categories (code, name, type, icon, color, parent_id, is_system)
-        SELECT 'E1101', '投资买入', 'expense', '📈', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
+        SELECT 'E1101', '投资买入', 'expense', '📈', '#ef4444', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = '投资买入' AND type = 'expense')
       `);
       // 二级 理财保险（保险类买入归此类）
       await pool.query(`
         INSERT INTO categories (code, name, type, icon, color, parent_id, is_system)
-        SELECT 'E1102', '理财保险', 'expense', '🛡️', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
+        SELECT 'E1102', '理财保险', 'expense', '🛡️', '#ef4444', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
         WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = '理财保险' AND type = 'expense')
       `);
       // investment_types 支持 insurance 品类（保险类理财可正确归入理财保险）
@@ -441,6 +441,29 @@ async function initDatabase() {
       `);
     } catch (err) {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财排序修正迁移警告:', err.message);
+    }
+
+    // 17) 幂等迁移：系统分类颜色按 type 统一（支出红 / 收入绿 / 转账蓝）
+    //     仅刷新系统预设（is_system=TRUE），不覆盖用户自定义分类颜色。
+    try {
+      await pool.query(`
+        UPDATE categories
+           SET color = CASE type
+                         WHEN 'expense'  THEN '#ef4444'
+                         WHEN 'income'   THEN '#22c55e'
+                         WHEN 'transfer' THEN '#3b82f6'
+                         ELSE color
+                       END
+         WHERE is_system = TRUE
+           AND color IS DISTINCT FROM CASE type
+                                        WHEN 'expense'  THEN '#ef4444'
+                                        WHEN 'income'   THEN '#22c55e'
+                                        WHEN 'transfer' THEN '#3b82f6'
+                                        ELSE color
+                                      END
+      `);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 系统分类颜色统一迁移警告:', err.message);
     }
 
     console.log('✅ 数据库表结构已初始化');
