@@ -330,7 +330,14 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ savings_goals.source_account_id 迁移警告:', err.message);
     }
 
-    // 11) 幂等迁移：investment_types.is_system（系统预置类型保护）
+    // 11) 幂等迁移：investments.create_transaction_id（创建持仓时同步生成的台账交易，用于删除/编辑回滚）
+    try {
+      await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS create_transaction_id INT DEFAULT NULL`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.create_transaction_id 迁移警告:', err.message);
+    }
+
+    // 12) 幂等迁移：investment_types.is_system（系统预置类型保护）
     //     investment_types 是全局共享表（无 user_id），schema 预置 11 条基础类型。
     //     此前 PUT/DELETE 无任何归属校验 → 任意登录用户可改删全局类型，影响所有人
     //     （与审核报告 C4「系统分类可被篡改」同构，报告未覆盖此表）。
@@ -343,7 +350,7 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.is_system 迁移警告:', err.message);
     }
 
-    // 12) 幂等迁移：扩展 investment_types.category CHECK 约束，支持新增品类
+    // 13) 幂等迁移：扩展 investment_types.category CHECK 约束，支持新增品类
     //     旧约束仅允许 fund/stock/deposit/other，需替换为包含 hk_stock/us_stock/commodity/crypto/forex
     try {
       // 删除旧约束（名称可能为 investment_types_category_check 或系统自动生成）
@@ -362,7 +369,7 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ category CHECK 约束更新警告:', err.message);
     }
 
-    // 13) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
+    // 14) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
     try {
       await pool.query(`
         INSERT INTO investment_types (id, name, icon, risk_level, description, sort_order, category, is_system)

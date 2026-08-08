@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS investments (
   nav_date DATE DEFAULT NULL,                         -- 净值日期
   status VARCHAR(10) DEFAULT 'holding' CHECK (status IN ('holding','sold','expired')),
   note VARCHAR(200) DEFAULT '',
+  create_transaction_id INT DEFAULT NULL,             -- 创建持仓时同步生成的台账交易（买入扣款），用于删除/编辑时回滚
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

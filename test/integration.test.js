@@ -278,3 +278,55 @@ dbTest('sumLedgerEffects 跨账户流水正确归属', async () => {
         await cleanupTestUser(user.id);
     }
 });
+
+// ==========================================
+// 理财持仓：创建/删除时关联账户余额联动
+// ==========================================
+const { createInvestmentCreateTxn, rollbackInvestmentCreateTxn } = require('../server/routes/investments');
+
+dbTest('createInvestmentCreateTxn: 创建持仓时扣减关联账户余额', async () => {
+    const user = await createTestUser();
+    try {
+        const accId = await createTestAccount(user.id, '证券账户', 10000);
+        const txId = await db.transaction(async (conn) => {
+            return await createInvestmentCreateTxn(conn, user.id, accId, 5000, '沪深300ETF', '2026-08-08');
+        });
+        assert.ok(txId, '应生成台账交易');
+
+        // 余额应由账本推导为 5000
+        const bal = await computeAccountBalance(db, user.id, accId);
+        assert.strictEqual(bal, 5000);
+
+        // 应存在一笔买入支出交易
+        const tx = await db.queryOne('SELECT * FROM transactions WHERE id = ?', [txId]);
+        assert.strictEqual(tx.type, 'expense');
+        assert.strictEqual(parseFloat(tx.amount), 5000);
+        assert.strictEqual(tx.account_id, accId);
+        assert.strictEqual(tx.source_account_id, accId);
+    } finally {
+        await cleanupTestUser(user.id);
+    }
+});
+
+dbTest('rollbackInvestmentCreateTxn: 删除持仓时恢复关联账户余额', async () => {
+    const user = await createTestUser();
+    try {
+        const accId = await createTestAccount(user.id, '证券账户', 10000);
+        const txId = await db.transaction(async (conn) => {
+            return await createInvestmentCreateTxn(conn, user.id, accId, 3000, '国债ETF', '2026-08-08');
+        });
+        assert.ok(txId);
+        assert.strictEqual(await computeAccountBalance(db, user.id, accId), 7000);
+
+        await db.transaction(async (conn) => {
+            await rollbackInvestmentCreateTxn(conn, user.id, txId, accId);
+        });
+
+        // 交易已删除，余额恢复
+        const tx = await db.queryOne('SELECT * FROM transactions WHERE id = ?', [txId]);
+        assert.strictEqual(tx, null);
+        assert.strictEqual(await computeAccountBalance(db, user.id, accId), 10000);
+    } finally {
+        await cleanupTestUser(user.id);
+    }
+});

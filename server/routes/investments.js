@@ -6,7 +6,7 @@
 const express = require('express');
 const db = require('../db');
 const { toNumber } = require('../validate');
-const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, ensureWeeklySnapshots } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, ensureWeeklySnapshots, computeAccountBalance } = require('./_helpers');
 const quoteCache = require('../services/quote-cache');
 const {
   httpGet, detectCodeType, getQuoteStrategy,
@@ -57,6 +57,46 @@ async function assertTypeEditable(id) {
     if (!t) return { ok: false, code: 404, msg: '理财类型不存在' };
     if (t.is_system) return { ok: false, code: 403, msg: '系统预置类型不可修改或删除' };
     return { ok: true };
+}
+
+// ==========================================
+// 持仓创建时同步生成台账交易，保持账本一致
+// ==========================================
+
+// 创建持仓时：资金从关联账户流出（支出），扣减余额
+async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr) {
+    if (!accId || !(cost > 0)) return null;
+    const catName = '投资买入';
+    const catType = 'expense';
+    const catIcon = '📈';
+    let cat = await conn.queryOne('SELECT id FROM categories WHERE name = ? AND type = ?', [catName, catType]);
+    if (!cat) {
+        const catResult = await conn.query(
+            'INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)',
+            [catName, catType, catIcon, '#22c55e']
+        );
+        cat = { id: catResult.insertId };
+    }
+    const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
+    const txResult = await conn.query(
+        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
+         VALUES (?, ?, ?, 'expense', ?, ?, ?, ?, NULL)`,
+        [userId, accId, cat.id, cost, `买入·${name}`, txDate, accId]
+    );
+    // 以账本为准重算关联账户余额
+    const newBalance = await computeAccountBalance(conn, userId, accId);
+    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+    return txResult.insertId;
+}
+
+// 回滚创建持仓时生成的台账交易（删除交易并按账本重算账户余额）
+async function rollbackInvestmentCreateTxn(conn, userId, txId, accId) {
+    if (!txId) return;
+    await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ?', [txId, userId]);
+    if (accId) {
+        const newBalance = await computeAccountBalance(conn, userId, accId);
+        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
+    }
 }
 
 // 更新理财类型
@@ -179,24 +219,37 @@ router.post('/investments', async (req, res) => {
         const feeVal = parseFloat(fee) || 0;
         const costVal = parseFloat(total_cost) || 0;
         const valueVal = parseFloat(current_value) || costVal || 0;
+        const accId = parseInt(account_id) || null;
+        const buyDate = buy_date || new Date().toISOString().split('T')[0];
 
-        const result = await db.query(
-            `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, parseInt(account_id) || null, parseInt(investment_type_id), name, code || '',
-                parseFloat(buy_price) || 0, parseFloat(current_price) || parseFloat(buy_price) || 0,
-                parseFloat(quantity) || 0, costVal,
-                valueVal,
-                feeVal,
-                buy_date || new Date().toISOString().split('T')[0], parseFloat(expected_rate) || 0, note || '']
-        );
+        const result = await db.transaction(async (conn) => {
+            const invResult = await conn.query(
+                `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, note)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, accId, parseInt(investment_type_id), name, code || '',
+                    parseFloat(buy_price) || 0, parseFloat(current_price) || parseFloat(buy_price) || 0,
+                    parseFloat(quantity) || 0, costVal,
+                    valueVal,
+                    feeVal,
+                    buyDate, parseFloat(expected_rate) || 0, note || '']
+            );
+            const invId = invResult.insertId;
 
-        // 记录买入操作
-        await db.query(
-            `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
-       VALUES (?, ?, 'buy', ?, ?, ?, ?, '初始买入')`,
-            [req.userId, result.insertId, costVal, parseFloat(buy_price) || 0, parseFloat(quantity) || 0, buy_date || new Date().toISOString().split('T')[0]]
-        );
+            // 记录买入操作
+            await conn.query(
+                `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
+                 VALUES (?, ?, 'buy', ?, ?, ?, ?, '初始买入')`,
+                [req.userId, invId, costVal, parseFloat(buy_price) || 0, parseFloat(quantity) || 0, buyDate]
+            );
+
+            // 关联账户：买入扣款，保持账本一致
+            const createTxnId = await createInvestmentCreateTxn(conn, req.userId, accId, costVal, name, buyDate);
+            if (createTxnId) {
+                await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [createTxnId, invId]);
+            }
+
+            return invResult;
+        });
 
         res.json(success({ id: result.insertId }, '理财持仓已添加'));
     } catch (err) {
@@ -218,23 +271,45 @@ router.put('/investments/:id', async (req, res) => {
                 'UPDATE investments SET current_price=?, current_value=?, actual_rate=? WHERE id=? AND user_id=?',
                 [parseFloat(current_price) || 0, parseFloat(current_value) || 0, parseFloat(actual_rate) || 0, id, req.userId]
             );
-        } else {
-            await db.query(
+            res.json(success(null, '持仓已更新'));
+            return;
+        }
+
+        const newAccId = parseInt(account_id) || null;
+        const newCost = parseFloat(total_cost) || 0;
+        const newName = name || '';
+        const newBuyDate = buy_date || new Date().toISOString().split('T')[0];
+
+        await db.transaction(async (conn) => {
+            // 取出旧持仓，用于回滚旧台账交易
+            const old = await conn.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ?', [id, req.userId]);
+
+            // 回滚旧的创建交易（避免账本残留）
+            if (old && old.create_transaction_id) {
+                await rollbackInvestmentCreateTxn(conn, req.userId, old.create_transaction_id, old.account_id);
+            }
+
+            await conn.query(
                 `UPDATE investments SET
                     account_id=?, investment_type_id=?, name=?, code=?,
                     buy_price=?, current_price=?, quantity=?, total_cost=?, current_value=?, fee=?,
                     buy_date=?, expected_rate=?, actual_rate=?, note=?, status=?
                  WHERE id=? AND user_id=?`,
                 [
-                    parseInt(account_id) || null, parseInt(investment_type_id), name, code || '',
+                    newAccId, parseInt(investment_type_id), newName, code || '',
                     parseFloat(buy_price) || 0, parseFloat(current_price) || 0,
-                    parseFloat(quantity) || 0, parseFloat(total_cost) || 0, parseFloat(current_value) || 0, parseFloat(fee) || 0,
-                    buy_date || new Date().toISOString().split('T')[0],
+                    parseFloat(quantity) || 0, newCost, parseFloat(current_value) || 0, parseFloat(fee) || 0,
+                    newBuyDate,
                     parseFloat(expected_rate) || 0, parseFloat(actual_rate) || 0,
                     note || '', status || 'holding', id, req.userId
                 ]
             );
-        }
+
+            // 按新参数重建创建交易（账户/成本/名称/日期变化时）
+            const newTxnId = await createInvestmentCreateTxn(conn, req.userId, newAccId, newCost, newName, newBuyDate);
+            await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [newTxnId, id]);
+        });
+
         res.json(success(null, '持仓已更新'));
     } catch (err) {
         handleServerError(res, err);
@@ -420,8 +495,15 @@ router.post('/investments/:id/reduce', async (req, res) => {
 // 删除理财持仓
 router.delete('/investments/:id', async (req, res) => {
     try {
-        await db.query('DELETE FROM investment_transactions WHERE investment_id = ? AND user_id = ?', [req.params.id, req.userId]);
-        await db.query('DELETE FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        await db.transaction(async (conn) => {
+            const inv = await conn.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+            // 回滚创建持仓时生成的台账交易（恢复账户余额）
+            if (inv && inv.create_transaction_id) {
+                await rollbackInvestmentCreateTxn(conn, req.userId, inv.create_transaction_id, inv.account_id);
+            }
+            await conn.query('DELETE FROM investment_transactions WHERE investment_id = ? AND user_id = ?', [req.params.id, req.userId]);
+            await conn.query('DELETE FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        });
         res.json(success(null, '持仓已删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -535,3 +617,6 @@ router.post('/refresh-all', async (req, res) => {
 });
 
 module.exports = router;
+// 导出内部 helper 供集成测试验证台账一致性
+module.exports.createInvestmentCreateTxn = createInvestmentCreateTxn;
+module.exports.rollbackInvestmentCreateTxn = rollbackInvestmentCreateTxn;
