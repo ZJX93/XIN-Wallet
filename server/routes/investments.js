@@ -69,7 +69,8 @@ async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateSt
     const catName = '投资买入';
     const catType = 'expense';
     const catIcon = '📈';
-    let cat = await conn.queryOne('SELECT id FROM categories WHERE name = ? AND type = ?', [catName, catType]);
+    const catRows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', [catName, catType]);
+    let cat = catRows[0] || null;
     if (!cat) {
         const catResult = await conn.query(
             'INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)',
@@ -282,7 +283,8 @@ router.put('/investments/:id', async (req, res) => {
 
         await db.transaction(async (conn) => {
             // 取出旧持仓，用于回滚旧台账交易
-            const old = await conn.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ?', [id, req.userId]);
+            const oldRows = await conn.query('SELECT * FROM investments WHERE id = ? AND user_id = ?', [id, req.userId]);
+            const old = oldRows[0] || null;
 
             // 回滚旧的创建交易（避免账本残留）
             if (old && old.create_transaction_id) {
@@ -496,7 +498,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
 router.delete('/investments/:id', async (req, res) => {
     try {
         await db.transaction(async (conn) => {
-            const inv = await conn.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+            const invRows = await conn.query('SELECT * FROM investments WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+            const inv = invRows[0] || null;
             // 回滚创建持仓时生成的台账交易（恢复账户余额）
             if (inv && inv.create_transaction_id) {
                 await rollbackInvestmentCreateTxn(conn, req.userId, inv.create_transaction_id, inv.account_id);
