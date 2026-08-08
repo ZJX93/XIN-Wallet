@@ -123,6 +123,11 @@ const AccountManager = {
         try {
             await api(`/accounts/${id}`, 'DELETE');
             showToast('账户已关闭', 'warning');
+            // 关闭账户后，旧 AI 洞察/建议缓存可能仍引用该账户余额，立即失效
+            try {
+                localStorage.removeItem('xin_ai_insights');
+                localStorage.removeItem('xin_ai_advice');
+            } catch (e) {}
             await initCache();
             await this.refresh();
         } catch (err) {

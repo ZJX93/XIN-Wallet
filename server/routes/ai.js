@@ -148,7 +148,7 @@ router.post('/advice', async (req, res) => {
                 [req.userId]
             ),
             db.query(
-                'SELECT name, balance, type FROM accounts WHERE user_id = ? ORDER BY balance DESC',
+                "SELECT name, balance, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY balance DESC",
                 [req.userId]
             ),
             db.query(
@@ -244,7 +244,7 @@ router.post('/insight', async (req, res) => {
             db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = TO_CHAR(CAST(? AS DATE) - INTERVAL '1 month', 'YYYY-MM')`, [req.userId, month + '-01']),
             db.query('SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId]),
             db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = ? AND status = 'active'", [req.userId]),
-            db.query('SELECT name, balance, type FROM accounts WHERE user_id = ? ORDER BY balance DESC', [req.userId]),
+            db.query("SELECT name, balance, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY balance DESC", [req.userId]),
             db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = ? AND status != 'paid_off'", [req.userId])
         ]);
 
