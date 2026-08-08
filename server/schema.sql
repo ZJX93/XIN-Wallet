@@ -239,13 +239,13 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON investment_snapshots (user
 -- 默认账户
 -- code 编码规则：A + 2位类型 + 2位序号
 --   A01=cash A02=bank_card A03=credit_card A04=electronic_payment A05=financial A06=digital A99=other
-INSERT INTO accounts (id, code, user_id, name, type, icon, balance, is_default, sort_order) VALUES
-(1, 'A0101', 1, '现金',       'cash',                '💵', 500.00,  FALSE, 1),
-(2, 'A0201', 1, '工商银行',   'bank_card',           '🏦', 25000.00, TRUE,  2),
-(3, 'A0202', 1, '招商银行',   'bank_card',           '🏦', 18000.00, FALSE, 3),
-(4, 'A0401', 1, '微信支付',   'electronic_payment',  '💚', 3200.00,  FALSE, 4),
-(5, 'A0402', 1, '支付宝',     'electronic_payment',  '🔵', 5000.00,  FALSE, 5),
-(6, 'A0301', 1, '信用卡',     'credit_card',         '💳', 0.00,     FALSE, 6)
+INSERT INTO accounts (id, code, user_id, name, type, icon, balance, opening_balance, credit_limit, is_default, sort_order) VALUES
+(1, 'A0101', 1, '现金',       'cash',                '💵', 500.00,   500.00,   0.00,     FALSE, 1),
+(2, 'A0201', 1, '工商银行',   'bank_card',           '🏦', 25000.00, 25000.00, 0.00,     TRUE,  2),
+(3, 'A0202', 1, '招商银行',   'bank_card',           '🏦', 18000.00, 18000.00, 0.00,     FALSE, 3),
+(4, 'A0401', 1, '微信支付',   'electronic_payment',  '💚', 3200.00,  3200.00,  0.00,     FALSE, 4),
+(5, 'A0402', 1, '支付宝',     'electronic_payment',  '🔵', 5000.00,  5000.00,  0.00,     FALSE, 5),
+(6, 'A0301', 1, '信用卡',     'credit_card',         '💳', 0.00,     0.00,     10000.00, FALSE, 6)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================

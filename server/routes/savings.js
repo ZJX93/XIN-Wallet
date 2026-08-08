@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
+const { success, fail, handleServerError, computeAccountBalance, enforceBalanceLimit } = require('./_helpers');
 const { toAmount } = require('../validate');
 const { ensureCategory } = require('./utils');
 
@@ -89,7 +89,7 @@ router.post('/:id/allocate', async (req, res) => {
         if (!goal.account_id) return res.status(400).json(fail('该目标未关联储蓄账户，无法存入'));
         if (srcId === goal.account_id) return res.status(400).json(fail('来源账户不能与储蓄账户相同'));
         const src = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [srcId, req.userId]);
-        if (!src || parseFloat(src.balance) < amount) return res.status(400).json(fail('来源账户余额不足'));
+        if (!src) return res.status(400).json(fail('来源账户不存在'));
         await db.transaction(async (conn) => {
             const catId = await ensureCategory(conn, req.userId, '储蓄存入', 'expense', '🏦');
             // 转账记录（来源 -> 储蓄账户）
@@ -107,8 +107,10 @@ router.post('/:id/allocate', async (req, res) => {
                 [req.userId, goal.account_id, catId, amount, `存入「${goal.name}」`, tid, goal.account_id]
             );
             const srcBal = await computeAccountBalance(conn, req.userId, srcId);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [srcBal, srcId]);
             const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
+            await enforceBalanceLimit(conn, req.userId, srcId, srcBal);
+            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [srcBal, srcId]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'deposit\', ?, CURRENT_DATE, ?)',
@@ -131,7 +133,7 @@ router.post('/:id/withdraw', async (req, res) => {
         if (!goal.account_id) return res.status(400).json(fail('该目标未关联储蓄账户，无法取回'));
         if (destId === goal.account_id) return res.status(400).json(fail('目标账户不能与储蓄账户相同'));
         const sav = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [goal.account_id, req.userId]);
-        if (!sav || parseFloat(sav.balance) < amount) return res.status(400).json(fail('储蓄账户余额不足'));
+        if (!sav) return res.status(400).json(fail('储蓄账户不存在'));
         await db.transaction(async (conn) => {
             const catId = await ensureCategory(conn, req.userId, '储蓄取出', 'income', '🏦');
             // 转账记录（储蓄账户 -> 目标账户）
@@ -149,8 +151,10 @@ router.post('/:id/withdraw', async (req, res) => {
                 [req.userId, destId, catId, amount, `取回「${goal.name}」`, tid, destId]
             );
             const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
             const destBal = await computeAccountBalance(conn, req.userId, destId);
+            await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
+            await enforceBalanceLimit(conn, req.userId, destId, destBal);
+            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [destBal, destId]);
             await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
             await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'withdraw\', ?, CURRENT_DATE, ?)',

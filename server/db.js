@@ -466,6 +466,14 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 系统分类颜色统一迁移警告:', err.message);
     }
 
+    // 18) 幂等迁移：accounts.credit_limit（信用卡/电子支付信用额度）
+    //     旧部署可能没有该列；全新库已由 schema.sql 直接创建。
+    try {
+      await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15,2) DEFAULT 0`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ accounts.credit_limit 迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {

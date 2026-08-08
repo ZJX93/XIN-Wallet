@@ -90,16 +90,18 @@ const AccountManager = {
         const label = document.getElementById('accCreditLimitLabel');
         if (type === 'credit_card' || type === 'electronic_payment') {
             row.style.display = '';
+            input.min = '0';
             if (type === 'credit_card') {
-                label.textContent = '信用额度 (¥) *';
+                label.childNodes[0].textContent = '信用额度 (¥) * ';
                 input.required = true;
             } else {
-                label.textContent = '信用额度 (¥)';
+                label.childNodes[0].textContent = '信用额度 (¥) ';
                 input.required = false;
             }
         } else {
             row.style.display = 'none';
             input.required = false;
+            input.value = '0';
         }
     },
     async openModal(id = null) {
@@ -131,18 +133,20 @@ const AccountManager = {
     async save() {
         const id = document.getElementById('accEditId').value;
         const type = document.getElementById('accType').value;
-        const creditLimitRaw = document.getElementById('accCreditLimit').value;
+        const limitVal = document.getElementById('accCreditLimit').value;
+        const limit = limitVal === '' ? 0 : parseFloat(limitVal);
+        if (type === 'credit_card' && (isNaN(limit) || limit <= 0)) {
+            showToast('信用卡必须设置大于 0 的信用额度', 'warning');
+            return;
+        }
         const body = {
             name: document.getElementById('accName').value,
-            type,
+            type: type,
             icon: document.getElementById('accIcon').value,
             // 用户编辑的是「初始余额」，实时余额由服务端按流水重算
-            opening_balance: parseFloat(document.getElementById('accBalance').value)
+            opening_balance: parseFloat(document.getElementById('accBalance').value),
+            credit_limit: limit
         };
-        // 只有信用卡/电子支付才向后端传递信用额度
-        if (type === 'credit_card' || type === 'electronic_payment') {
-            body.credit_limit = parseFloat(creditLimitRaw || 0);
-        }
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
             showToast('账户已更新', 'success');

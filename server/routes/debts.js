@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance } = require('./_helpers');
+const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, computeAccountBalance, enforceBalanceLimit } = require('./_helpers');
 
 // 创建债务时同步生成台账交易，保持账本一致：
 // - 应收/借出：资金从关联账户流出（支出），扣减余额
@@ -31,6 +31,7 @@ async function createDebtCreateTxn(db, userId, accId, direction, principal, name
   );
   // 以账本为准重算关联账户余额
   const newBalance = await computeAccountBalance(db, userId, accId);
+  await enforceBalanceLimit(db, userId, accId, newBalance);
   await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
   return txResult.insertId;
 }
@@ -41,6 +42,7 @@ async function rollbackDebtCreateTxn(db, userId, txId, accId) {
   await db.query('DELETE FROM transactions WHERE id = ? AND user_id = ?', [txId, userId]);
   if (accId) {
     const newBalance = await computeAccountBalance(db, userId, accId);
+    await enforceBalanceLimit(db, userId, accId, newBalance);
     await db.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, accId]);
   }
 }
@@ -362,6 +364,7 @@ router.post('/:id/repayments', async (req, res) => {
         await conn.query('UPDATE debt_repayments SET transaction_id = ? WHERE id = ?', [txResult.insertId, repId]);
         // 4) 账户余额重算（以账本为准）
         const newAccBalance = await computeAccountBalance(conn, req.userId, accId);
+        await enforceBalanceLimit(conn, req.userId, accId, newAccBalance);
         await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newAccBalance, accId]);
         // 5) 更新剩余本金 + 状态
         const newRemain = isReceivable
@@ -386,6 +389,7 @@ router.delete('/:id/repayments/:rid', async (req, res) => {
             await conn.query('DELETE FROM transactions WHERE id = ? AND user_id = ?', [rep.transaction_id, req.userId]);
             if (rep.account_id) {
                 const restoredBalance = await computeAccountBalance(conn, req.userId, rep.account_id);
+                await enforceBalanceLimit(conn, req.userId, rep.account_id, restoredBalance);
                 await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [restoredBalance, rep.account_id]);
             }
         }

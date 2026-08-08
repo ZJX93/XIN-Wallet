@@ -7,7 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { toNumber, toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
-    success, fail, handleServerError, fmtDateTime, computeAccountBalance,
+    success, fail, handleServerError, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
@@ -224,6 +224,7 @@ router.post('/', async (req, res) => {
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
             const newBalance = await computeAccountBalance(conn, req.userId, parseInt(account_id));
+            await enforceBalanceLimit(conn, req.userId, parseInt(account_id), newBalance);
             await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, parseInt(account_id)]);
 
             // 自动同步信用卡债务
@@ -278,9 +279,15 @@ router.put('/:id', async (req, res) => {
 
             // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移
             const affected = new Set([parseInt(old.account_id), parseInt(account_id)]);
+            const newBalances = {};
             for (const aid of affected) {
-                const bal = await computeAccountBalance(conn, req.userId, aid);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [bal, aid]);
+                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+            }
+            for (const aid of affected) {
+                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+            }
+            for (const aid of affected) {
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                 // 自动同步信用卡债务
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -316,9 +323,15 @@ router.delete('/:id', async (req, res) => {
                 await conn.query('DELETE FROM transactions WHERE id = ?', [id]);
             }
             // 余额由账本重算，避免增量回滚的漂移
+            const newBalances = {};
             for (const aid of affectedAccounts) {
-                const bal = await computeAccountBalance(conn, req.userId, aid);
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [bal, aid]);
+                newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+            }
+            for (const aid of affectedAccounts) {
+                await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+            }
+            for (const aid of affectedAccounts) {
+                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
                 // 自动同步信用卡债务（删除交易后余额变化）
                 await syncCreditCardDebt(conn, req.userId, aid);
             }

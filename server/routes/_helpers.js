@@ -153,6 +153,22 @@ async function computeAccountBalance(conn, userId, accountId) {
     return addAmounts(opening || 0, effects);
 }
 
+// 校验账户余额不能低于 -credit_limit（无信用额度则不允许负数）
+// 用于交易/转账/还款/储蓄等可能改变余额的操作
+async function enforceBalanceLimit(conn, userId, accountId, balance) {
+    const rows = await conn.query(
+        'SELECT name, type, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
+        [accountId, userId]
+    );
+    const acc = rows[0];
+    if (!acc) return;
+    const limit = parseFloat(acc.credit_limit) || 0;
+    const bal = balance !== undefined ? parseFloat(balance) : 0;
+    if (bal < -limit - 0.005) {
+        throw new Error(`账户「${acc.name}」余额不能低于 -${limit.toFixed(2)}（当前将变为 ${bal.toFixed(2)}）`);
+    }
+}
+
 /**
  * 理财净值周快照补齐
  *
@@ -229,10 +245,10 @@ async function ensureWeeklySnapshots(userId, investments) {
 
 module.exports = {
     success, fail, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
-    extractJson, sumLedgerEffects, computeAccountBalance, ensureWeeklySnapshots,
+    extractJson, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
     tryDecrypt,
-    // 金额精度工具（M3）：路由统一从 _helpers 取用，避免各处重复 require
+    // 金额精度工具（M3）：路由统一从 _helpers 取用，避免各处重复使用
     sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf
 };
