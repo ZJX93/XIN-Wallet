@@ -58,15 +58,17 @@ const AccountManager = {
                 <div class="account-content">
                     <div class="account-row">
                         <div class="account-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</div>
+                    </div>
+                    <div class="account-row">
+                        <div class="account-type">${typeLabels[a.type] || a.type}</div>
+                        <div class="account-balance">${fmt(a.balance)}</div>
+                    </div>
+                    <div class="account-row account-actions-row">
                         <div class="account-actions">
                             <button class="btn btn-ghost btn-sm" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
                             <button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
                             <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="删除">🗑️</button>
                         </div>
-                    </div>
-                    <div class="account-row">
-                        <div class="account-type">${typeLabels[a.type] || a.type}</div>
-                        <div class="account-balance">${fmt(a.balance)}</div>
                     </div>
                 </div>
             </div>
