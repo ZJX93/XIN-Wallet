@@ -19,6 +19,8 @@
 // ============================================================
 
 const DataManager = {
+    _collapsedCats: new Set(),
+
     init() {
         // Tab 切换
         document.querySelectorAll('.dc-tab').forEach(tab => {
@@ -55,6 +57,7 @@ const DataManager = {
             if (action === 'edit-cat') this.openCatModal(parseInt(btn.dataset.id));
             else if (action === 'add-subcat') this.openCatModal(null, parseInt(btn.dataset.pid));
             else if (action === 'del-cat') this.deleteCat(parseInt(btn.dataset.id), btn.dataset.name);
+            else if (action === 'toggle-cat') this.toggleCat(parseInt(btn.dataset.id));
         });
 
         // 理财类型表格操作委托
@@ -84,10 +87,19 @@ const DataManager = {
         }
         const typeLabel = { expense: '支出', income: '收入', transfer: '转账' };
 
-        const renderRow = (c, depth) => `
-            <tr class="${depth > 0 ? 'dc-sub-row' : 'dc-parent-row'}">
-                <td><span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth * 20}px;display:inline-block">${depth > 0 ? '└ ' : ''}${escapeHtml(c.icon || "📌")}</span></td>
-                <td>${escapeHtml(c.name)}${c.children && c.children.length > 0 ? ` <span class="dc-child-count">(${c.children.length}个子类)</span>` : ''}</td>
+        const renderRow = (c, depth, hidden) => {
+            const hasChildren = c.children && c.children.length > 0;
+            const collapsed = hasChildren && this._collapsedCats.has(c.id);
+            const childHidden = hidden || collapsed;
+            return `
+            <tr class="${depth > 0 ? 'dc-sub-row' : 'dc-parent-row'}" style="${hidden ? 'display:none;' : ''}">
+                <td>
+                    ${hasChildren
+                        ? `<button class="cat-toggle ${collapsed ? 'collapsed' : ''}" data-action="toggle-cat" data-id="${c.id}" aria-label="${collapsed ? '展开' : '折叠'}" aria-expanded="${!collapsed}">${collapsed ? '▶' : '▼'}</button>`
+                        : (depth === 0 ? '<span class="cat-toggle-spacer"></span>' : '')}
+                    <span style="font-size:${depth > 0 ? '16' : '20'}px;padding-left:${depth > 0 ? depth * 20 : 0}px;display:inline-block">${depth > 0 ? '└ ' : ''}${escapeHtml(c.icon || "📌")}</span>
+                </td>
+                <td>${escapeHtml(c.name)}${hasChildren ? ` <span class="dc-child-count">(${c.children.length}个子类)</span>` : ''}</td>
                 <td><span class="badge ${c.type === 'income' ? 'badge-income' : c.type === 'transfer' ? 'badge-transfer' : 'badge-expense'}">${typeLabel[c.type] || c.type}</span></td>
                 <td><span class="color-dot" style="background:${c.color}"></span></td>
                 <td>${c.sort_order}</td>
@@ -97,10 +109,10 @@ const DataManager = {
                     <button class="btn-ghost-sm btn-danger-sm" data-action="del-cat" data-id="${c.id}" data-name="${escapeHtml(c.name)}">🗑️</button>
                 </td>
             </tr>
-            ${(c.children || []).map(ch => renderRow(ch, depth + 1)).join('')}
-        `;
+            ${hasChildren ? c.children.map(ch => renderRow(ch, depth + 1, childHidden)).join('') : ''}
+        `;};
 
-        tbody.innerHTML = data.tree.map(c => renderRow(c, 0)).join('');
+        tbody.innerHTML = data.tree.map(c => renderRow(c, 0, false)).join('');
     },
 
     openCatModal(id, parentId) {
@@ -148,6 +160,12 @@ const DataManager = {
         } catch (err) {
             // api() 已显示错误 toast
         }
+    },
+
+    toggleCat(id) {
+        if (this._collapsedCats.has(id)) this._collapsedCats.delete(id);
+        else this._collapsedCats.add(id);
+        this.refreshCats();
     },
 
     // ---- 理财类型 ----

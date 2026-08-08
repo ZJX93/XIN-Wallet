@@ -1483,6 +1483,19 @@ button { font-family: inherit; cursor: pointer; }
 .dc-parent-row { font-weight: var(--fw-semibold); }
 .dc-sub-row td { font-size: var(--text-caption); color: var(--text-secondary); }
 .dc-child-count { font-size: var(--text-caption); color: var(--text-tertiary); font-weight: var(--fw-normal); }
+.cat-toggle,
+.cat-toggle-spacer {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-right: 4px;
+  vertical-align: middle;
+}
+.cat-toggle {
+  border: none; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text-tertiary); font-size: 12px; cursor: pointer;
+  transition: transform var(--duration-150), color var(--duration-150);
+}
+.cat-toggle:hover { color: var(--text-primary); background: var(--surface-hover); }
+.cat-toggle.collapsed { transform: rotate(-90deg); }
 
 .dc-actions { display: flex; gap: var(--space-1); }
 .btn-ghost-sm {
