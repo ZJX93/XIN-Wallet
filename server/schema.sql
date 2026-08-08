@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS investment_transactions (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL DEFAULT 1,
   investment_id INT NOT NULL,
-  type VARCHAR(10) NOT NULL CHECK (type IN ('buy','sell','dividend','interest','fee')),
+  type VARCHAR(10) NOT NULL CHECK (type IN ('buy','sell','dividend','interest','fee','reinvest')),
   amount DECIMAL(15,2) NOT NULL,
   price DECIMAL(15,4) DEFAULT 0,
   quantity DECIMAL(15,4) DEFAULT 0,

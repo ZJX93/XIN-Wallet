@@ -474,6 +474,25 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ accounts.credit_limit 迁移警告:', err.message);
     }
 
+    // 19) 幂等迁移：扩展 investment_transactions.type CHECK 约束，支持红利再投(reinvest)
+    //     v0.3.23 新增「记一笔利息」红利再投分支会写入 type='reinvest'，
+    //     但旧约束仅允许 buy/sell/dividend/interest/fee → 触发 CHECK 违例返回 500。
+    //     删除旧约束（名称可能为 investment_transactions_type_check 或系统自动生成）并重建含 reinvest。
+    try {
+      const { rows: txCons } = await pool.query(`
+        SELECT conname FROM pg_constraint
+        WHERE conrelid = 'investment_transactions'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%type IN%'
+      `);
+      for (const { conname } of txCons) {
+        await pool.query(`ALTER TABLE investment_transactions DROP CONSTRAINT IF EXISTS "${conname}"`);
+      }
+      await pool.query(`ALTER TABLE investment_transactions ADD CONSTRAINT investment_transactions_type_check
+        CHECK (type IN ('buy','sell','dividend','interest','fee','reinvest'))`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_transactions.type CHECK 约束更新警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {
