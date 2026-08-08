@@ -131,7 +131,7 @@ router.get('/:id/transactions', async (req, res) => {
         // 2) 该账户作为还款来源的还款流水
         const reps = await db.query(
             `SELECT r.id, r.amount, r.principal_part, r.interest_part, r.note, r.paid_at,
-                    d.name as debt_name, d.icon as debt_icon
+                    d.name as debt_name, ('💳') as debt_icon
              FROM debt_repayments r
              LEFT JOIN debts d ON r.debt_id = d.id
              WHERE r.user_id = ? AND r.account_id = ?
