@@ -63,15 +63,44 @@ async function assertTypeEditable(id) {
 // 持仓创建时同步生成台账交易，保持账本一致
 // ==========================================
 
-// 投资买入分类（支出）：持仓创建与加仓共用，保证分类口径一致
-async function getOrCreateInvestmentBuyCategory(conn) {
-    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['投资买入', 'expense']);
+// 投资理财一级（支出）：名下挂「投资买入」「理财保险」二级
+async function getInvestmentTopCategoryId(conn) {
+    const rows = await conn.query('SELECT id FROM categories WHERE code = ? AND type = ?', ['E1100', 'expense']);
     if (rows[0]) return rows[0].id;
-    const result = await conn.query(
-        'INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)',
-        ['投资买入', 'expense', '📈', '#22c55e']
+    const r = await conn.query(
+        'INSERT INTO categories (code, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, ?, TRUE)',
+        ['E1100', '投资理财', 'expense', '💹', '#22c55e']
     );
-    return result.insertId;
+    return r.insertId;
+}
+
+// 判断是否保险类理财产品（买入应归入「理财保险」而非「投资买入」）
+async function isInsuranceType(conn, typeId) {
+    if (!typeId) return false;
+    const t = await conn.query('SELECT category, name FROM investment_types WHERE id = ?', [typeId]);
+    if (!t[0]) return false;
+    return t[0].category === 'insurance' || (t[0].name && t[0].name.indexOf('保险') !== -1);
+}
+
+// 买入分类（支出）：保险类→理财保险，其余→投资买入；均为「投资理财」二级
+async function getOrCreateInvestmentBuyCategory(conn, isInsurance) {
+    const name = isInsurance ? '理财保险' : '投资买入';
+    const rows = await conn.query('SELECT id, parent_id FROM categories WHERE name = ? AND type = ?', [name, 'expense']);
+    if (rows[0]) {
+        // 历史动态创建的「投资买入」可能无 parent，挂回投资理财下
+        if (rows[0].parent_id == null) {
+            const topId = await getInvestmentTopCategoryId(conn);
+            await conn.query('UPDATE categories SET parent_id = ? WHERE id = ?', [topId, rows[0].id]);
+        }
+        return rows[0].id;
+    }
+    const topId = await getInvestmentTopCategoryId(conn);
+    const icon = isInsurance ? '🛡️' : '📈';
+    const r = await conn.query(
+        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, TRUE)',
+        [name, 'expense', icon, '#22c55e', topId]
+    );
+    return r.insertId;
 }
 
 // 理财收益分类（收入，隶属于被动收入）：卖出/减仓/清仓共用
@@ -89,9 +118,10 @@ async function getInvestmentSellCategoryId(conn) {
 }
 
 // 创建持仓时：资金从关联账户流出（支出），扣减余额
-async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr) {
+async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr, investmentTypeId) {
     if (!accId || !(cost > 0)) return null;
-    const catId = await getOrCreateInvestmentBuyCategory(conn);
+    const isIns = await isInsuranceType(conn, investmentTypeId);
+    const catId = await getOrCreateInvestmentBuyCategory(conn, isIns);
     const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
     const txResult = await conn.query(
         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
@@ -258,7 +288,7 @@ router.post('/investments', async (req, res) => {
             );
 
             // 关联账户：买入扣款，保持账本一致
-            const createTxnId = await createInvestmentCreateTxn(conn, req.userId, accId, costVal, name, buyDate);
+            const createTxnId = await createInvestmentCreateTxn(conn, req.userId, accId, costVal, name, buyDate, parseInt(investment_type_id));
             if (createTxnId) {
                 await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [createTxnId, invId]);
             }
@@ -322,7 +352,7 @@ router.put('/investments/:id', async (req, res) => {
             );
 
             // 按新参数重建创建交易（账户/成本/名称/日期变化时）
-            const newTxnId = await createInvestmentCreateTxn(conn, req.userId, newAccId, newCost, newName, newBuyDate);
+            const newTxnId = await createInvestmentCreateTxn(conn, req.userId, newAccId, newCost, newName, newBuyDate, parseInt(investment_type_id));
             await conn.query('UPDATE investments SET create_transaction_id = ? WHERE id = ?', [newTxnId, id]);
         });
 
@@ -467,7 +497,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [newQty, newTotalCost, newCurrentValue, avgCost, 'holding', id, req.userId]
                 );
                 if (investment.account_id) {
-                    const buyCatId = await getOrCreateInvestmentBuyCategory(conn);
+                    const isIns = await isInsuranceType(conn, investment.investment_type_id);
+                    const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
                     await conn.query(
                         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
                          VALUES (?, ?, ?, 'expense', ?, ?, ?)`,

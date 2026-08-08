@@ -387,6 +387,49 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types 品类扩展警告:', err.message);
     }
 
+    // 15) 幂等迁移：投资理财分类体系（一级 投资理财 + 二级 投资买入/理财保险）
+    //     买入分类按产品类型拆分：保险类→理财保险，其余→投资买入，均挂在「投资理财」下。
+    try {
+      // 一级 投资理财（支出），sort_order 置于其他支出之后
+      await pool.query(`
+        INSERT INTO categories (code, name, type, icon, color, sort_order, is_system)
+        SELECT 'E1100', '投资理财', 'expense', '💹', '#22c55e', 100, TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM categories WHERE code = 'E1100')
+      `);
+      // 历史动态创建的「投资买入」(parent_id 为 NULL) 挂回投资理财下
+      await pool.query(`
+        UPDATE categories
+           SET parent_id = (SELECT id FROM categories WHERE code = 'E1100')
+         WHERE name = '投资买入' AND type = 'expense'
+           AND (parent_id IS NULL OR parent_id <> (SELECT id FROM categories WHERE code = 'E1100'))
+      `);
+      // 二级 投资买入（若不存在则建在投资理财下）
+      await pool.query(`
+        INSERT INTO categories (code, name, type, icon, color, parent_id, is_system)
+        SELECT 'E1101', '投资买入', 'expense', '📈', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = '投资买入' AND type = 'expense')
+      `);
+      // 二级 理财保险（保险类买入归此类）
+      await pool.query(`
+        INSERT INTO categories (code, name, type, icon, color, parent_id, is_system)
+        SELECT 'E1102', '理财保险', 'expense', '🛡️', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = '理财保险' AND type = 'expense')
+      `);
+      // investment_types 支持 insurance 品类（保险类理财可正确归入理财保险）
+      const { rows: itCons } = await pool.query(`
+        SELECT conname FROM pg_constraint
+        WHERE conrelid = 'investment_types'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) LIKE '%category%'
+      `);
+      for (const { conname } of itCons) {
+        await pool.query(`ALTER TABLE investment_types DROP CONSTRAINT IF EXISTS "${conname}"`);
+      }
+      await pool.query(`ALTER TABLE investment_types ADD CONSTRAINT investment_types_category_check
+        CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex','insurance'))`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财分类迁移警告:', err.message);
+    }
+
     console.log('✅ 数据库表结构已初始化');
     return true;
   } catch (err) {
