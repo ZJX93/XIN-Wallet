@@ -42,7 +42,7 @@ const InvestmentManager = {
         document.getElementById('refreshAllBtn').addEventListener('click', () => this.refreshAllQuotes());
         // 类型下拉
         const typeSel = document.getElementById('investType');
-        cache.investmentTypes.forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)} (${escapeHtml(t.risk_level)})</option>`; });
+        cache.investmentTypes.forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</option>`; });
         // 账户下拉
         const accSel = document.getElementById('investAccount');
         cache.accounts.forEach(a => { accSel.innerHTML += `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)}</option>`; });
