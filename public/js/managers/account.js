@@ -46,15 +46,17 @@ const AccountManager = {
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
         const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
         container.innerHTML = data.accounts.map(a => `
-            <div class="account-item">
-                <div class="account-item-icon">${escapeHtml(a.icon)}</div>
-                <div class="account-item-name">${escapeHtml(a.name)}</div>
-                <span class="account-type-label">${typeLabels[a.type] || a.type}</span>
-                <div class="account-item-balance">${fmt(a.balance)}</div>
-                <div class="account-item-actions">
-                    <button data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
-                    <button data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
-                    <button data-action="delete-acc" data-id="${a.id}" title="关闭">🗑️</button>
+            <div class="account-card">
+                <div class="account-icon">${escapeHtml(a.icon)}</div>
+                <div class="account-info">
+                    <div class="account-name">${escapeHtml(a.name)}</div>
+                    <div class="account-type">${typeLabels[a.type] || a.type}</div>
+                </div>
+                <div class="account-balance">${fmt(a.balance)}</div>
+                <div class="account-actions">
+                    <button class="btn btn-ghost btn-sm" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
+                    <button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
+                    <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="关闭">🗑️</button>
                 </div>
             </div>
         `).join('');
