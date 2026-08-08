@@ -59,7 +59,7 @@ router.post('/', async (req, res) => {
     try {
         const { parent_id, name, icon, type, color } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
-        const TYPE_COLOR = { expense: '#ef4444', income: '#22c55e', transfer: '#3b82f6' };
+        const TYPE_COLOR = { expense: '#22c55e', income: '#ef4444', transfer: '#3b82f6' };
         const defaultColor = TYPE_COLOR[type] || '#6366f1';
         const maxSort = await db.queryOne(
             'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NOT DISTINCT FROM ? AND (user_id IS NULL OR user_id = ?)',
