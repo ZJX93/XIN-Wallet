@@ -28,11 +28,28 @@ router.post('/', async (req, res) => {
         const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
 
+        // 信用卡必须填写信用额度；电子支付可选填写信用额度
+        let parsedCreditLimit = 0;
+        if (type === 'credit_card') {
+            if (credit_limit === undefined || credit_limit === null || credit_limit === '') {
+                return res.status(400).json(fail('信用卡必须填写信用额度'));
+            }
+            parsedCreditLimit = parseFloat(credit_limit);
+            if (isNaN(parsedCreditLimit) || parsedCreditLimit <= 0) {
+                return res.status(400).json(fail('信用卡信用额度必须大于 0'));
+            }
+        } else if (type === 'electronic_payment' && credit_limit !== undefined && credit_limit !== null && credit_limit !== '') {
+            parsedCreditLimit = parseFloat(credit_limit);
+            if (isNaN(parsedCreditLimit) || parsedCreditLimit < 0) {
+                return res.status(400).json(fail('信用额度不能为负数'));
+            }
+        }
+
         // 以 opening_balance 为基准；兼容旧客户端仍传 balance 的情况
         const initialOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
         const result = await db.query(
             `INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, name, type, icon || '💰', initialOpening, initialOpening, parseFloat(credit_limit) || 0]
+            [req.userId, name, type, icon || '💰', initialOpening, initialOpening, parsedCreditLimit]
         );
         res.json(success({ id: result.insertId, balance: initialOpening, opening_balance: initialOpening }, '账户已创建'));
     } catch (err) {
@@ -44,6 +61,25 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
+        if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
+
+        // 信用卡必须填写信用额度；电子支付可选填写信用额度
+        let parsedCreditLimit = 0;
+        if (type === 'credit_card') {
+            if (credit_limit === undefined || credit_limit === null || credit_limit === '') {
+                return res.status(400).json(fail('信用卡必须填写信用额度'));
+            }
+            parsedCreditLimit = parseFloat(credit_limit);
+            if (isNaN(parsedCreditLimit) || parsedCreditLimit <= 0) {
+                return res.status(400).json(fail('信用卡信用额度必须大于 0'));
+            }
+        } else if (type === 'electronic_payment' && credit_limit !== undefined && credit_limit !== null && credit_limit !== '') {
+            parsedCreditLimit = parseFloat(credit_limit);
+            if (isNaN(parsedCreditLimit) || parsedCreditLimit < 0) {
+                return res.status(400).json(fail('信用额度不能为负数'));
+            }
+        }
+
         // 用户编辑的是「初始余额」，实时余额由账本流水动态算出
         const newOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
         const effects = await sumLedgerEffects(db, req.userId, parseInt(req.params.id));
@@ -51,7 +87,7 @@ router.put('/:id', async (req, res) => {
         const newBalance = addAmounts(newOpening, effects);
         await db.query(
             `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=?`,
-            [name, type, icon, newBalance, newOpening, parseFloat(credit_limit || 0), req.params.id, req.userId]
+            [name, type, icon, newBalance, newOpening, parsedCreditLimit, req.params.id, req.userId]
         );
         res.json(success({ balance: newBalance, opening_balance: newOpening }, '账户已更新'));
     } catch (err) {

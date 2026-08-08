@@ -21,6 +21,7 @@ const AccountManager = {
         document.getElementById('accModalClose').addEventListener('click', () => this.closeModal());
         document.getElementById('accCancelBtn').addEventListener('click', () => this.closeModal());
         document.getElementById('accForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
+        document.getElementById('accType').addEventListener('change', () => this.toggleCreditLimit());
         document.getElementById('reconcileBtn').addEventListener('click', () => this.reconcile());
         // 账户资金明细模态框
         document.getElementById('accountDetailModalClose').addEventListener('click', () => this.closeDetail());
@@ -82,6 +83,25 @@ const AccountManager = {
             btn.addEventListener('click', () => this.openDeleteModal(parseInt(btn.dataset.id)));
         });
     },
+    toggleCreditLimit() {
+        const type = document.getElementById('accType').value;
+        const row = document.getElementById('accCreditLimitRow');
+        const input = document.getElementById('accCreditLimit');
+        const label = document.getElementById('accCreditLimitLabel');
+        if (type === 'credit_card' || type === 'electronic_payment') {
+            row.style.display = '';
+            if (type === 'credit_card') {
+                label.textContent = '信用额度 (¥) *';
+                input.required = true;
+            } else {
+                label.textContent = '信用额度 (¥)';
+                input.required = false;
+            }
+        } else {
+            row.style.display = 'none';
+            input.required = false;
+        }
+    },
     async openModal(id = null) {
         document.getElementById('accountModal').classList.add('show');
         if (id) {
@@ -93,6 +113,7 @@ const AccountManager = {
             // 初始余额可改，实时余额只读展示
             document.getElementById('accBalance').value = a.opening_balance ?? a.balance ?? 0;
             document.getElementById('accRealBalance').value = a.balance ?? 0;
+            document.getElementById('accCreditLimit').value = a.credit_limit ?? 0;
             document.getElementById('accModalTitle').textContent = '编辑账户';
         } else {
             document.getElementById('accEditId').value = '';
@@ -101,19 +122,27 @@ const AccountManager = {
             document.getElementById('accIcon').value = '💰';
             document.getElementById('accBalance').value = 0;
             document.getElementById('accRealBalance').value = 0;
+            document.getElementById('accCreditLimit').value = 0;
             document.getElementById('accModalTitle').textContent = '新增账户';
         }
+        this.toggleCreditLimit();
     },
     closeModal() { document.getElementById('accountModal').classList.remove('show'); },
     async save() {
         const id = document.getElementById('accEditId').value;
+        const type = document.getElementById('accType').value;
+        const creditLimitRaw = document.getElementById('accCreditLimit').value;
         const body = {
             name: document.getElementById('accName').value,
-            type: document.getElementById('accType').value,
+            type,
             icon: document.getElementById('accIcon').value,
             // 用户编辑的是「初始余额」，实时余额由服务端按流水重算
             opening_balance: parseFloat(document.getElementById('accBalance').value)
         };
+        // 只有信用卡/电子支付才向后端传递信用额度
+        if (type === 'credit_card' || type === 'electronic_payment') {
+            body.credit_limit = parseFloat(creditLimitRaw || 0);
+        }
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
             showToast('账户已更新', 'success');
