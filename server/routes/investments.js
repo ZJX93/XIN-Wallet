@@ -63,26 +63,40 @@ async function assertTypeEditable(id) {
 // 持仓创建时同步生成台账交易，保持账本一致
 // ==========================================
 
+// 投资买入分类（支出）：持仓创建与加仓共用，保证分类口径一致
+async function getOrCreateInvestmentBuyCategory(conn) {
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['投资买入', 'expense']);
+    if (rows[0]) return rows[0].id;
+    const result = await conn.query(
+        'INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)',
+        ['投资买入', 'expense', '📈', '#22c55e']
+    );
+    return result.insertId;
+}
+
+// 理财收益分类（收入，隶属于被动收入）：卖出/减仓/清仓共用
+async function getInvestmentSellCategoryId(conn) {
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['理财收益', 'income']);
+    if (rows[0]) return rows[0].id;
+    // 理财收益缺失时自动补建到「被动收入」下，保证卖出分类口径正确
+    const parent = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['被动收入', 'income']);
+    const parentId = parent[0] ? parent[0].id : null;
+    const result = await conn.query(
+        'INSERT INTO categories (name, type, icon, color, parent_id, is_system) VALUES (?, ?, ?, ?, ?, ?, TRUE)',
+        ['理财收益', 'income', '📊', '#22c55e', parentId]
+    );
+    return result.insertId;
+}
+
 // 创建持仓时：资金从关联账户流出（支出），扣减余额
 async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr) {
     if (!accId || !(cost > 0)) return null;
-    const catName = '投资买入';
-    const catType = 'expense';
-    const catIcon = '📈';
-    const catRows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', [catName, catType]);
-    let cat = catRows[0] || null;
-    if (!cat) {
-        const catResult = await conn.query(
-            'INSERT INTO categories (name, type, icon, color, is_system) VALUES (?, ?, ?, ?, TRUE)',
-            [catName, catType, catIcon, '#22c55e']
-        );
-        cat = { id: catResult.insertId };
-    }
+    const catId = await getOrCreateInvestmentBuyCategory(conn);
     const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
     const txResult = await conn.query(
         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
          VALUES (?, ?, ?, 'expense', ?, ?, ?, ?, NULL)`,
-        [userId, accId, cat.id, cost, `买入·${name}`, txDate, accId]
+        [userId, accId, catId, cost, `买入·${name}`, txDate, accId]
     );
     // 以账本为准重算关联账户余额
     const newBalance = await computeAccountBalance(conn, userId, accId);
@@ -353,10 +367,11 @@ router.post('/investments/:id/transactions', async (req, res) => {
             const investment = ownedInv;
             if (investment && investment.account_id) {
                 await db.transaction(async (conn) => {
+                    const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
                         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-             VALUES (?, ?, 17, 'income', ?, ?, ?)`,
-                        [req.userId, investment.account_id, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date]
+             VALUES (?, ?, ?, 'income', ?, ?, ?)`,
+                        [req.userId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date]
                     );
                     await conn.query(
                         'UPDATE accounts SET balance = balance + ? WHERE id = ?',
@@ -399,10 +414,11 @@ router.put('/investments/:id/sell', async (req, res) => {
             // 记录到主交易（如果关联了账户）
             if (investment.account_id) {
                 const profit = sellAmount - parseFloat(investment.total_cost);
+                const sellCatId = await getInvestmentSellCategoryId(conn);
                 await conn.query(
                     `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-           VALUES (?, ?, 17, 'income', ?, ?, ?)`,
-                    [req.userId, investment.account_id, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
+           VALUES (?, ?, ?, 'income', ?, ?, ?)`,
+                    [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
                 );
                 await conn.query('UPDATE accounts SET balance = balance + ? WHERE id = ?', [sellAmount, investment.account_id]);
             }
@@ -451,10 +467,11 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [newQty, newTotalCost, newCurrentValue, avgCost, 'holding', id, req.userId]
                 );
                 if (investment.account_id) {
+                    const buyCatId = await getOrCreateInvestmentBuyCategory(conn);
                     await conn.query(
                         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-                         VALUES (?, ?, 17, 'expense', ?, ?, ?)`,
-                        [req.userId, investment.account_id, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0]]
+                         VALUES (?, ?, ?, 'expense', ?, ?, ?)`,
+                        [req.userId, investment.account_id, buyCatId, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0]]
                     );
                     await conn.query('UPDATE accounts SET balance = balance - ? WHERE id = ?', [buyAmount, investment.account_id]);
                 }
@@ -479,10 +496,11 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 );
                 if (investment.account_id) {
                     const profit = sellAmount - reducedCost;
+                    const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
                         `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-                         VALUES (?, ?, 17, 'income', ?, ?, ?)`,
-                        [req.userId, investment.account_id, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
+           VALUES (?, ?, ?, 'income', ?, ?, ?)`,
+                        [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
                     );
                     await conn.query('UPDATE accounts SET balance = balance + ? WHERE id = ?', [sellAmount, investment.account_id]);
                 }
