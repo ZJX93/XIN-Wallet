@@ -569,7 +569,7 @@ router.get('/quote', async (req, res) => {
         const c = String(code).trim();
         // category 可以是 fund/stock/deposit/other，默认 fund
         const invCategory = category || 'fund';
-        const data = await fetchQuoteByCategory(invCategory, c);
+        const data = await fetchQuoteByCategory(invCategory, c, { withName: true });
         return res.json(success({ type: data.source, ...data }));
     } catch (err) {
         console.error('[行情查询]', err.message);

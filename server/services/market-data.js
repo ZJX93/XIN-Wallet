@@ -212,9 +212,27 @@ function getQuoteStrategy(invTypeCategory, code) {
 // ==========================================
 
 /**
- * 查询基金最新净值
+ * 查询基金名称（东方财富 pingzhongdata 接口，含 fS_name 字段）
+ * 用于补充东方财富 lsjz 净值接口缺失的名称，使基金也能像 A股一样自动填名称。
  */
-async function fetchFundQuote(code) {
+async function fetchFundName(code) {
+  const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js`;
+  const buf = await httpGet(url, {
+    timeout: 8000,
+    headers: { 'Referer': 'https://fund.eastmoney.com/', 'User-Agent': 'Mozilla/5.0' }
+  });
+  const text = buf.toString('utf8');
+  const m = text.match(/fS_name\s*=\s*"([^"]+)"/);
+  if (!m) throw new Error('基金名称解析失败');
+  return m[1];
+}
+
+/**
+ * 查询基金最新净值
+ * @param {string} code 6位基金代码
+ * @param {boolean} withName 是否额外拉取基金名称（仅手动查行情时开启，避免刷新全部时重复下载大文件）
+ */
+async function fetchFundQuote(code, withName = false) {
   const url = `https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=1`;
   const buf = await httpGet(url, {
     timeout: 8000,
@@ -227,9 +245,14 @@ async function fetchFundQuote(code) {
   }
 
   const d = data.Data.LSJZList[0];
+  // 名称来自东方财富 pingzhongdata（best-effort）；失败不影响净值查询
+  let name = '';
+  if (withName) {
+    try { name = await fetchFundName(code); } catch (_) { /* 名称缺失时留空 */ }
+  }
   return {
     code,
-    name: '',
+    name,
     nav: parseFloat(d.DWJZ) || 0,
     navDate: d.FSRQ || '',
     estimatedNav: parseFloat(d.DWJZ) || 0,
@@ -375,7 +398,8 @@ async function fetchCryptoQuote(code) {
  * - 股票/商品/外汇走腾讯证券；加密货币走币安
  * 返回字段对前端两种渲染分支（nav / price）均兼容。
  */
-async function fetchQuoteByCategory(invTypeCategory, code) {
+async function fetchQuoteByCategory(invTypeCategory, code, opts = {}) {
+  const withName = !!opts.withName;
   const strategy = getQuoteStrategy(invTypeCategory, code);
   if (!strategy) throw new Error('该品类不支持行情查询');
 
@@ -393,7 +417,7 @@ async function fetchQuoteByCategory(invTypeCategory, code) {
   // 基金 → 东方财富净值；失败（ETF/场内基金无净值）回退腾讯证券实时价
   if (strategy.type === 'fund') {
     try {
-      const q = await fetchFundQuote(strategy.code);
+      const q = await fetchFundQuote(strategy.code, withName);
       return {
         source: 'fund', code: q.code, name: q.name,
         nav: q.nav, estimatedNav: q.estimatedNav, estimatedChange: q.estimatedChange,
@@ -436,6 +460,7 @@ module.exports = {
   normalizeCode,
   getQuoteStrategy,
   fetchFundQuote,
+  fetchFundName,
   fetchStockQuote,
   fetchCryptoQuote,
   fetchQuoteByCategory,
