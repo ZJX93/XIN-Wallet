@@ -11,9 +11,9 @@ const { success, fail, handleServerError } = require('./_helpers');
 const { ensureUserSeed } = require('../seed-data');
 const { validate, rules } = require('../validate');
 
-// 登录失败次数阈值 + 锁定期
-const MAX_FAIL_COUNT = 5;
-const LOCK_MINUTES = 15;
+// 登录失败次数阈值 + 锁定期（可通过环境变量调整，默认较宽松）
+const MAX_FAIL_COUNT = parseInt(process.env.AUTH_LOCK_MAX_FAIL || '10', 10);
+const LOCK_MINUTES = parseInt(process.env.AUTH_LOCK_MINUTES || '5', 10);
 
 // 密码强度校验：≥8 位 + 字母 + 数字（避免弱密码）
 function validatePasswordStrength(pw) {

@@ -158,7 +158,7 @@ const spec = {
           type: 'object', required: ['username', 'password'],
           properties: { username: { type: 'string' }, password: { type: 'string' } },
         }}}},
-        responses: { 200: { description: '返回 token + refreshToken' }, 401: { description: '用户名或密码错误' }, 423: { description: '账号已锁定（5次失败锁定15分钟）' } },
+        responses: { 200: { description: '返回 token + refreshToken' }, 401: { description: '用户名或密码错误' }, 423: { description: '账号已锁定（多次失败登录后锁定）' } },
       },
     },
     '/api/auth/demo': {
