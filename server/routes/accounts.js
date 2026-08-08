@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, subtractAmounts } = require('./_helpers');
+const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, addAmounts, subtractAmounts } = require('./_helpers');
 
 // 获取所有账户
 router.get('/', async (req, res) => {
@@ -25,14 +25,16 @@ router.get('/', async (req, res) => {
 // 新增账户
 router.post('/', async (req, res) => {
     try {
-        const { name, type, icon, balance, credit_limit } = req.body;
+        const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
 
+        // 以 opening_balance 为基准；兼容旧客户端仍传 balance 的情况
+        const initialOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
         const result = await db.query(
             `INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, name, type, icon || '💰', parseFloat(balance) || 0, parseFloat(balance) || 0, parseFloat(credit_limit) || 0]
+            [req.userId, name, type, icon || '💰', initialOpening, initialOpening, parseFloat(credit_limit) || 0]
         );
-        res.json(success({ id: result.insertId }, '账户已创建'));
+        res.json(success({ id: result.insertId, balance: initialOpening, opening_balance: initialOpening }, '账户已创建'));
     } catch (err) {
         handleServerError(res, err);
     }
@@ -41,17 +43,17 @@ router.post('/', async (req, res) => {
 // 更新账户
 router.put('/:id', async (req, res) => {
     try {
-        const { name, type, icon, balance, credit_limit } = req.body;
-        const newBalance = parseFloat(balance) || 0;
+        const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
+        // 用户编辑的是「初始余额」，实时余额由账本流水动态算出
+        const newOpening = parseFloat(opening_balance !== undefined ? opening_balance : balance) || 0;
         const effects = await sumLedgerEffects(db, req.userId, parseInt(req.params.id));
-        // 金额精度（M3）：newOpening 会落库为 opening_balance，
-        // 是后续每次余额重算的基数，浮点误差会在此永久固化 → 用整数分精确减法
-        const newOpening = subtractAmounts(newBalance, effects);
+        // 金额精度（M3）：newBalance 是展示给用户的实时余额，用整数分精确加法
+        const newBalance = addAmounts(newOpening, effects);
         await db.query(
             `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=?`,
             [name, type, icon, newBalance, newOpening, parseFloat(credit_limit || 0), req.params.id, req.userId]
         );
-        res.json(success(null, '账户已更新'));
+        res.json(success({ balance: newBalance, opening_balance: newOpening }, '账户已更新'));
     } catch (err) {
         handleServerError(res, err);
     }

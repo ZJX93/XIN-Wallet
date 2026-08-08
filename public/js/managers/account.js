@@ -78,7 +78,9 @@ const AccountManager = {
             document.getElementById('accName').value = a.name;
             document.getElementById('accType').value = a.type;
             document.getElementById('accIcon').value = a.icon;
-            document.getElementById('accBalance').value = a.balance;
+            // 初始余额可改，实时余额只读展示
+            document.getElementById('accBalance').value = a.opening_balance ?? a.balance ?? 0;
+            document.getElementById('accRealBalance').value = a.balance ?? 0;
             document.getElementById('accModalTitle').textContent = '编辑账户';
         } else {
             document.getElementById('accEditId').value = '';
@@ -86,6 +88,7 @@ const AccountManager = {
             document.getElementById('accType').value = 'bank_card';
             document.getElementById('accIcon').value = '💰';
             document.getElementById('accBalance').value = 0;
+            document.getElementById('accRealBalance').value = 0;
             document.getElementById('accModalTitle').textContent = '新增账户';
         }
     },
@@ -96,7 +99,8 @@ const AccountManager = {
             name: document.getElementById('accName').value,
             type: document.getElementById('accType').value,
             icon: document.getElementById('accIcon').value,
-            balance: parseFloat(document.getElementById('accBalance').value)
+            // 用户编辑的是「初始余额」，实时余额由服务端按流水重算
+            opening_balance: parseFloat(document.getElementById('accBalance').value)
         };
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
