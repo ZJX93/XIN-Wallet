@@ -286,6 +286,7 @@ INSERT INTO categories (id, code, parent_id, name, type, icon, sort_order, is_sy
 (26, 'E0104', 1, '烟酒',     'expense', '🍷', 4, TRUE),
 (27, 'E0105', 1, '聚餐请客', 'expense', '🍻', 5, TRUE),
 (28, 'E0106', 1, '生鲜食材', 'expense', '🥬', 6, TRUE),
+(281, 'E0107', 1, '粮油调味', 'expense', '🌾', 7, TRUE),
 -- 交通出行 E02（6 子类）
 (29, 'E0201', 2, '公交地铁', 'expense', '🚌', 1, TRUE),
 (30, 'E0202', 2, '打车拼车', 'expense', '🚕', 2, TRUE),
