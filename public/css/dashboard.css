@@ -72,9 +72,9 @@
 .kpi-badge.bad { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 .kpi-badge.neutral { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
 
-/* KPI 变化指示 */
-.kpi-change.income { color: #22c55e; }
-.kpi-change.expense { color: #ef4444; }
+/* KPI 变化指示：收红支绿 */
+.kpi-change.income { color: var(--income); }
+.kpi-change.expense { color: var(--expense); }
 
 /* ===== 风险预警条 ===== */
 .dash-alert-bar {

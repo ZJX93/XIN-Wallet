@@ -216,8 +216,8 @@
   transition: color var(--duration-150);
 }
 
-.profile-msg.success { color: var(--income, #22c55e); }
-.profile-msg.error { color: var(--expense, #ef4444); }
+.profile-msg.success { color: var(--income, #dc2626); }
+.profile-msg.error { color: var(--expense, #16a34a); }
 .profile-msg.info { color: var(--interactive-default); }
 
 .form-hint {
