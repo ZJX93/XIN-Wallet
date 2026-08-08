@@ -55,13 +55,30 @@ function httpGet(url, options = {}) {
 // ==========================================
 
 /**
- * 自动识别代码类型（纯数字=基金，sh/sz前缀=股票）
+ * 自动识别代码类型（sh/sz/bj 前缀=股票；纯 6 位数字=基金，保持与旧逻辑一致）
  */
 function detectCodeType(code) {
   const c = String(code).trim();
-  if (/^s[hz]\d{6}$/i.test(c)) return { type: 'stock', code: c };
+  if (/^s[hz]\d{6}$/i.test(c)) return { type: 'stock', code: c.toLowerCase() };
+  if (/^bj\d{6}$/i.test(c)) return { type: 'stock', code: c.toLowerCase() };
   if (/^\d{6}$/.test(c)) return { type: 'fund', code: c };
   return { type: 'unknown', code: c };
+}
+
+/**
+ * 根据 A 股代码前几位推断交易所前缀
+ * - sh：600/601/603/605/688/689/900...
+ * - sz：000/001/002/003/300/301/200...
+ * - bj：43/83/87/88/82/92...
+ */
+function inferAsharePrefix(numCode) {
+  const c = String(numCode).trim();
+  if (!/^\d{6}$/.test(c)) return 'sh';
+  if (/^(60[0-35-9]|688|689|900)\d{3}$/.test(c)) return 'sh';
+  if (/^(00[0-3]|30[0-1]|200)\d{3}$/.test(c)) return 'sz';
+  if (/^(43|83|87|88|82|92)\d{4}$/.test(c)) return 'bj';
+  // 兜底：旧逻辑默认 sh，避免行为断裂
+  return 'sh';
 }
 
 /**
@@ -118,9 +135,18 @@ function getQuoteStrategy(invTypeCategory, code) {
 
   // A股 → 腾讯证券
   if (invTypeCategory === 'stock') {
-    const prefix = /^s[hz]/i.test(c) ? c.substring(0, 2).toLowerCase() : 'sh';
-    const numCode = c.replace(/^s[hz]/i, '');
-    return { type: 'stock', code: prefix + numCode };
+    const normalized = c.toLowerCase();
+    if (/^s[hz]\d{6}$/i.test(c)) {
+      return { type: 'stock', code: normalized };
+    }
+    if (/^bj\d{6}$/i.test(c)) {
+      return { type: 'stock', code: normalized };
+    }
+    if (/^\d{6}$/.test(c)) {
+      return { type: 'stock', code: inferAsharePrefix(c) + c };
+    }
+    // 兜底，保留原样（如用户输入了其他格式）
+    return { type: 'stock', code: c };
   }
 
   // 港股 → 腾讯证券
@@ -140,8 +166,8 @@ function getQuoteStrategy(invTypeCategory, code) {
       const prefix = c.substring(0, 2).toLowerCase();
       return { type: 'stock', code: prefix + c.replace(/^s[hz]/i, '') };
     }
-    // 纯数字也走股票（如518880）
-    if (/^\d+$/.test(c)) return { type: 'stock', code: 'sh' + c };
+    // 纯数字也走股票（如 518880/159934），按 A 股规则推断交易所
+    if (/^\d{6}$/.test(c)) return { type: 'stock', code: inferAsharePrefix(c) + c };
     // 其他走商品行情（hf_GC等）
     return { type: 'commodity', code: normalizeCode('commodity', c) };
   }
