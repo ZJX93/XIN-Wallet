@@ -56,6 +56,13 @@ const InvestmentManager = {
         document.querySelectorAll('input[name="reduceAction"]').forEach(radio => {
             radio.addEventListener('change', (e) => this.updateReduceUI(e.target.value));
         });
+        // 记一笔利息弹窗事件
+        document.getElementById('interestForm').addEventListener('submit', (e) => { e.preventDefault(); this.recordInterest(); });
+        document.getElementById('interestModalClose').addEventListener('click', () => this.closeInterestModal());
+        document.getElementById('interestCancelBtn').addEventListener('click', () => this.closeInterestModal());
+        document.querySelectorAll('input[name="interestMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => this.updateInterestUI(e.target.value));
+        });
         document.getElementById('investBuyDate').value = fmtDate();
         // 新增持仓按钮
         const addBtn = document.getElementById('addInvestBtn');
@@ -264,6 +271,63 @@ const InvestmentManager = {
         document.getElementById('reduceModal').classList.remove('show');
         this.reduceId = null;
     },
+    // 记一笔利息弹窗
+    openInterestModal(id) {
+        this.interestId = id;
+        const inv = (cache.investments || []).find(i => i.id === id);
+        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        document.getElementById('interestInvestId').value = id;
+        document.getElementById('interestModalTitle').textContent = `📊 记一笔利息 · ${inv.name}`;
+        document.getElementById('interestMeta').innerHTML = `当前持有 <b>${inv.quantity}</b> 份，市值 ${fmt(inv.current_value)}`;
+        const reinvestRadio = document.querySelector('input[name="interestMode"][value="reinvest"]');
+        if (reinvestRadio) reinvestRadio.checked = true;
+        this.updateInterestUI('reinvest');
+        document.getElementById('interestAmount').value = '';
+        document.getElementById('interestNav').value = inv.current_price || inv.buy_price || '';
+        document.getElementById('interestDate').value = fmtDate();
+        document.getElementById('interestNote').value = '';
+        document.getElementById('interestModal').classList.add('show');
+    },
+    // 切换计息方式（红利再投需要填净值，现金入账不需要）
+    updateInterestUI(mode) {
+        const navGroup = document.getElementById('interestNavGroup');
+        if (navGroup) navGroup.style.display = mode === 'reinvest' ? '' : 'none';
+        document.querySelectorAll('#interestModal .radio-label').forEach(el => {
+            const isActive = el.dataset.mode === mode;
+            el.style.background = isActive ? 'var(--accent-500)' : 'var(--surface-card)';
+            el.style.color = isActive ? '#fff' : 'var(--text-primary)';
+            el.style.borderColor = isActive ? 'var(--accent-500)' : 'var(--border)';
+        });
+    },
+    closeInterestModal() {
+        document.getElementById('interestModal').classList.remove('show');
+        this.interestId = null;
+    },
+    async recordInterest() {
+        const id = this.interestId;
+        if (!id) return;
+        const mode = document.querySelector('input[name="interestMode"]:checked')?.value || 'reinvest';
+        const amount = parseFloat(document.getElementById('interestAmount').value);
+        if (!(amount > 0)) { showToast('请填写大于 0 的利息金额', 'error'); return; }
+        const date = document.getElementById('interestDate').value;
+        const note = document.getElementById('interestNote').value;
+        let body;
+        if (mode === 'reinvest') {
+            const nav = parseFloat(document.getElementById('interestNav').value);
+            if (!(nav > 0)) { showToast('红利再投需填写有效的当前净值', 'error'); return; }
+            body = { type: 'reinvest', amount, price: nav, date, note };
+        } else {
+            body = { type: 'interest', amount, date, note };
+        }
+        try {
+            const result = await api(`/investments/investments/${id}/transactions`, 'POST', body);
+            showToast(result?.message || (mode === 'reinvest' ? '红利再投已记录' : '利息已记录'), 'success');
+            this.closeInterestModal();
+            await this.refresh();
+        } catch (err) {
+            // api() 已显示错误 toast
+        }
+    },
     async reduce() {
         const id = this.reduceId;
         if (!id) return;
@@ -364,6 +428,7 @@ const InvestmentManager = {
                     <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>
                     <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}" title="编辑">✏️</button>
                     <button class="btn btn-ghost" data-action="reduce-inv" data-id="${i.id}" title="加仓/减仓">💰</button>
+                    <button class="btn btn-ghost" data-action="interest-inv" data-id="${i.id}" title="记一笔利息">📊</button>
                     <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}" title="删除">🗑️</button>
                 </div>
             </div>`;
@@ -378,6 +443,9 @@ const InvestmentManager = {
         });
         container.querySelectorAll('[data-action="reduce-inv"]').forEach(btn => {
             btn.addEventListener('click', () => this.openReduceModal(parseInt(btn.dataset.id)));
+        });
+        container.querySelectorAll('[data-action="interest-inv"]').forEach(btn => {
+            btn.addEventListener('click', () => this.openInterestModal(parseInt(btn.dataset.id)));
         });
         container.querySelectorAll('[data-action="delete-inv"]').forEach(btn => {
             btn.addEventListener('click', () => this.delete(parseInt(btn.dataset.id)));

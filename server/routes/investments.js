@@ -362,7 +362,7 @@ router.put('/investments/:id', async (req, res) => {
     }
 });
 
-// 理财交易记录（卖出/分红等）
+// 理财交易记录（卖出/分红/红利再投等）
 router.post('/investments/:id/transactions', async (req, res) => {
     try {
         const { type, amount, price, quantity, date, note } = req.body;
@@ -377,11 +377,25 @@ router.post('/investments/:id/transactions', async (req, res) => {
             [investmentId, req.userId]
         );
         if (!ownedInv) return res.status(404).json(fail('持仓不存在'));
+        if (!['buy', 'sell', 'dividend', 'interest', 'reinvest'].includes(type)) {
+            return res.status(400).json(fail('不支持的交易类型'));
+        }
 
+        // 红利再投：先算新增份额（金额 / 单位净值），用于流水与持仓更新
+        let addedQty = parseFloat(quantity) || 0;
+        if (type === 'reinvest') {
+            const nav = parseFloat(price) || parseFloat(ownedInv.current_price) || 0;
+            const amt = parseFloat(amount) || 0;
+            if (!(nav > 0)) return res.status(400).json(fail('红利再投需要有效的单位净值，请在「当前净值」填写'));
+            if (!(amt > 0)) return res.status(400).json(fail('红利再投金额需大于 0'));
+            addedQty = amt / nav;
+        }
+
+        let msg = '操作已记录';
         await db.query(
             `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, parseFloat(quantity) || 0, date, note || '']
+            [req.userId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, note || '']
         );
 
         // 如果是卖出，更新持仓
@@ -392,7 +406,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
             );
         }
 
-        // 如果是分红/利息，记录到主交易
+        // 如果是分红/利息，记录到主交易（现金入账）
         if (type === 'dividend' || type === 'interest') {
             const investment = ownedInv;
             if (investment && investment.account_id) {
@@ -409,9 +423,22 @@ router.post('/investments/:id/transactions', async (req, res) => {
                     );
                 });
             }
+            msg = type === 'dividend' ? '分红已记录' : '利息已记录';
         }
 
-        res.json(success(null, '操作已记录'));
+        // 如果是红利再投，增加持有份额（不进现金、不动账户余额）
+        if (type === 'reinvest') {
+            const nav = parseFloat(price) || parseFloat(ownedInv.current_price) || 0;
+            const newQty = parseFloat(ownedInv.quantity) + addedQty;
+            const newCurrentValue = newQty * nav;
+            await db.query(
+                'UPDATE investments SET quantity = ?, current_value = ? WHERE id = ? AND user_id = ?',
+                [newQty, newCurrentValue, investmentId, req.userId]
+            );
+            msg = '红利再投已记录，持有份额已增加';
+        }
+
+        res.json(success(null, msg));
     } catch (err) {
         handleServerError(res, err);
     }

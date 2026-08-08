@@ -81,6 +81,33 @@
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="reduceCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="reduceSubmitBtn">确认卖出</button></div>
                     </form>
                 </div></div>
+
+                <!-- 记一笔利息弹窗 -->
+                <div class="modal-overlay" id="interestModal"><div class="modal glass-card modal-quick">
+                    <div class="modal-header"><h3 id="interestModalTitle">📊 记一笔利息</h3><button class="modal-close" id="interestModalClose">✕</button></div>
+                    <form class="trans-form" id="interestForm"><input type="hidden" id="interestInvestId">
+                        <div class="reduce-meta" id="interestMeta"></div>
+                        <div class="form-row" style="margin-bottom:12px">
+                            <div class="form-group" style="flex:1">
+                                <label>计息方式</label>
+                                <div class="radio-group" style="display:flex;gap:8px;margin-top:4px">
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="reinvest"><input type="radio" name="interestMode" value="reinvest" checked style="accent-color:var(--accent-500)"> <span>🔁 红利再投</span></label>
+                                    <label class="radio-label" style="flex:1;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .2s" data-mode="cash"><input type="radio" name="interestMode" value="cash" style="accent-color:var(--accent-500)"> <span>💰 现金入账</span></label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>利息金额 (¥)</label><input type="number" id="interestAmount" step="0.01" min="0" required></div>
+                            <div class="form-group" id="interestNavGroup"><label>当前净值 (¥)</label><input type="number" id="interestNav" step="0.0001" min="0" placeholder="单位净值"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>计息日期</label><input type="date" id="interestDate" required></div>
+                            <div class="form-group"><label>备注</label><input type="text" id="interestNote" placeholder="备注..."></div>
+                        </div>
+                        <div class="form-actions"><button type="button" class="btn btn-ghost" id="interestCancelBtn">取消</button><button type="submit" class="btn btn-primary" id="interestSubmitBtn">确认记录</button></div>
+                    </form>
+                </div></div>
+
                 <div class="modal-overlay" id="goalModal"><div class="modal glass-card">
                     <div class="modal-header"><h3 id="goalModalTitle">新建储蓄目标</h3><button class="modal-close" id="goalModalClose">✕</button></div>
                     <form class="trans-form" id="goalForm"><input type="hidden" id="goalEditId">
