@@ -59,14 +59,75 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// 关闭账户
-router.delete('/:id', async (req, res) => {
+// 查询账户的关联数据量（用于「彻底删除」前的可行性判断）
+router.get('/:id/usage', async (req, res) => {
+    try {
+        const accId = parseInt(req.params.id);
+        if (!accId) return res.status(400).json(fail('账户ID无效'));
+        const row = await db.queryOne(
+            `SELECT
+                (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND (account_id = ? OR source_account_id = ? OR destination_account_id = ?)) AS transactions,
+                (SELECT COUNT(*) FROM transfers WHERE user_id = ? AND (from_account_id = ? OR to_account_id = ?)) AS transfers,
+                (SELECT COUNT(*) FROM debt_repayments WHERE user_id = ? AND account_id = ?) AS repayments,
+                (SELECT COUNT(*) FROM savings_goals WHERE user_id = ? AND (account_id = ? OR source_account_id = ?)) AS goals,
+                (SELECT COUNT(*) FROM savings_transactions WHERE user_id = ? AND account_id = ?) AS savings_txns,
+                (SELECT COUNT(*) FROM debts WHERE user_id = ? AND account_id = ?) AS debts,
+                (SELECT COUNT(*) FROM investments WHERE user_id = ? AND account_id = ?) AS investments`,
+            [req.userId, accId, accId, accId, req.userId, accId, accId, req.userId, accId, req.userId, accId, accId, req.userId, accId, req.userId, accId, req.userId, accId]
+        );
+        const total = Object.values(row || {}).reduce((s, v) => s + parseInt(v || 0), 0);
+        res.json(success({ usage: row, total }));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// 关闭账户（软删除，保留历史，仅从列表隐藏）
+router.post('/:id/close', async (req, res) => {
     try {
         await db.query(
             'UPDATE accounts SET status = \'closed\' WHERE id = ? AND user_id = ?',
             [req.params.id, req.userId]
         );
         res.json(success(null, '账户已关闭'));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// 彻底删除账户（仅在无关联数据时可执行）
+router.delete('/:id', async (req, res) => {
+    try {
+        const accId = parseInt(req.params.id);
+        if (!accId) return res.status(400).json(fail('账户ID无效'));
+        const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
+        if (!acc) return res.status(404).json(fail('账户不存在'));
+
+        // 关联检查：任一表有记录即拒绝彻底删除
+        const row = await db.queryOne(
+            `SELECT
+                (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND (account_id = ? OR source_account_id = ? OR destination_account_id = ?)) AS transactions,
+                (SELECT COUNT(*) FROM transfers WHERE user_id = ? AND (from_account_id = ? OR to_account_id = ?)) AS transfers,
+                (SELECT COUNT(*) FROM debt_repayments WHERE user_id = ? AND account_id = ?) AS repayments,
+                (SELECT COUNT(*) FROM savings_goals WHERE user_id = ? AND (account_id = ? OR source_account_id = ?)) AS goals,
+                (SELECT COUNT(*) FROM savings_transactions WHERE user_id = ? AND account_id = ?) AS savings_txns,
+                (SELECT COUNT(*) FROM debts WHERE user_id = ? AND account_id = ?) AS debts,
+                (SELECT COUNT(*) FROM investments WHERE user_id = ? AND account_id = ?) AS investments`,
+            [req.userId, accId, accId, accId, req.userId, accId, accId, req.userId, accId, req.userId, accId, accId, req.userId, accId, req.userId, accId, req.userId, accId]
+        );
+        const parts = [
+            ['交易', row.transactions], ['转账', row.transfers], ['还款', row.repayments],
+            ['储蓄目标', row.goals], ['储蓄流水', row.savings_txns], ['债务', row.debts], ['理财持仓', row.investments]
+        ].filter(([, n]) => parseInt(n) > 0);
+        const total = parts.reduce((s, [, n]) => s + parseInt(n), 0);
+
+        if (total > 0) {
+            const detail = parts.map(([label, n]) => `${label} ${n} 笔`).join('、');
+            return res.status(409).json(fail(`该账户存在关联数据（${detail}），无法彻底删除。请先清理相关记录，或使用「关闭账户」保留历史。`));
+        }
+
+        await db.query('DELETE FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
+        res.json(success(null, '账户已彻底删除'));
     } catch (err) {
         handleServerError(res, err);
     }

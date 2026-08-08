@@ -661,6 +661,21 @@
         <div class="repay-history" id="accountDetailBody"></div>
     </div></div>
 
+    <!-- 账户删除确认弹窗 -->
+    <div class="modal-overlay" id="accountDeleteModal"><div class="modal glass-card">
+        <div class="modal-header"><h3>删除账户</h3><button class="modal-close" id="accDelModalClose">✕</button></div>
+        <div class="modal-body">
+            <p class="acc-del-name" id="accDelName"></p>
+            <div class="acc-del-usage" id="accDelUsage"></div>
+            <p class="acc-del-hint">「彻底删除」会永久移除该账户；若已有关联记录则不可删除，可改用「关闭账户」仅隐藏。</p>
+        </div>
+        <div class="form-actions">
+            <button type="button" class="btn btn-ghost" id="accDelCancelBtn">取消</button>
+            <button type="button" class="btn btn-ghost" id="accDelCloseBtn">关闭账户</button>
+            <button type="button" class="btn btn-danger" id="accDelHardBtn">彻底删除</button>
+        </div>
+    </div></div>
+
     <!-- 个人资料弹窗 -->
     <div class="modal-overlay" id="profileModal"><div class="modal glass-card modal-profile">
         <div class="modal-header"><h3>个人资料</h3><button class="modal-close" id="profileModalClose">✕</button></div>

@@ -413,6 +413,10 @@ button { font-family: inherit; cursor: pointer; }
 }
 .btn-ghost:hover { background: var(--surface-hover); color: var(--text-primary); }
 
+.btn-danger { background: var(--expense); color: #fff; border-color: transparent; }
+.btn-danger:hover { filter: brightness(1.08); }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
 .btn-sm { height: 32px; padding: 0 var(--space-3); font-size: var(--text-label); }
 .btn-ai { padding: 0 var(--space-5); }
 .btn-block { width: 100%; }
@@ -647,6 +651,13 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .modal-header h3 { font-size: var(--text-heading-sm); font-weight: var(--fw-semibold); }
+
+.modal-body { padding: var(--space-1) 0 var(--space-3); }
+.acc-del-name { font-size: var(--text-body); font-weight: var(--fw-semibold); margin: 0 0 var(--space-3); }
+.acc-del-usage { font-size: var(--text-body-sm); margin-bottom: var(--space-3); min-height: 1.4em; }
+.acc-del-ok { color: var(--expense); }
+.acc-del-warn { color: var(--warning-500); }
+.acc-del-hint { font-size: var(--text-caption); color: var(--text-tertiary); margin: 0; line-height: 1.6; }
 
 .modal-close {
   border: none; background: var(--surface-hover); color: var(--text-tertiary);

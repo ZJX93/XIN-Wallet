@@ -64,3 +64,39 @@ test('账户资金明细接口返回 200（回归 column d.icon does not exist 5
     assert.ok(r.json.success, '响应应标记为成功');
     assert.ok(Array.isArray(r.json.data.transactions), '应返回 transactions 数组');
 });
+
+test('无关联数据的账户可彻底删除，有关联数据则拒绝（409）', async () => {
+    // 1) usage 接口对空账户应返回 total=0
+    const usageBefore = await req('GET', `/api/accounts/${accId}/usage`);
+    assert.strictEqual(usageBefore.status, 200);
+    assert.strictEqual(usageBefore.json.data.total, 0, '新账户不应有关联数据');
+
+    // 2) 无关联数据 -> 彻底删除成功
+    const del = await req('DELETE', `/api/accounts/${accId}`);
+    assert.strictEqual(del.status, 200, '无关联数据应可彻底删除');
+    assert.ok(del.json.success, '应返回成功');
+
+    // 3) 重新建账户并写入一笔交易，usage 应统计到，删除应被 409 拒绝
+    const create2 = await req('POST', '/api/accounts', {
+        name: '有关联的账户', type: 'cash', icon: '💵', balance: 0, opening_balance: 0
+    });
+    const acc2 = create2.json.data && create2.json.data.id;
+    assert.ok(acc2, '第二个测试账户应创建成功');
+
+    // 借用投资/交易表需要完整结构，这里用 savings_goals 作为"关联数据"代理（结构简单且无外键约束）
+    await db.query(
+        'INSERT INTO savings_goals (user_id, name, target_amount, current_amount, account_id) VALUES (?, ?, 100, 0, ?)',
+        [TEST_USER_ID, '关联储蓄目标', acc2]
+    );
+    const usageAfter = await req('GET', `/api/accounts/${acc2}/usage`);
+    assert.strictEqual(usageAfter.status, 200);
+    assert.ok(usageAfter.json.data.total > 0, '有关联储蓄目标时 usage.total 应 > 0');
+
+    const del2 = await req('DELETE', `/api/accounts/${acc2}`);
+    assert.strictEqual(del2.status, 409, '有关联数据应拒绝彻底删除');
+    assert.ok(!del2.json.success, '应返回失败');
+    assert.ok(/关联数据/.test(del2.json.message || ''), '错误信息应提示存在关联数据');
+
+    // 清理：删除关联目标与账户（避免遗留），账户此时仍可被关闭/保留
+    await db.query('DELETE FROM savings_goals WHERE user_id = ? AND account_id = ?', [TEST_USER_ID, acc2]);
+});

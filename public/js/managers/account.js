@@ -25,6 +25,12 @@ const AccountManager = {
         // 账户资金明细模态框
         document.getElementById('accountDetailModalClose').addEventListener('click', () => this.closeDetail());
         document.getElementById('accountDetailModal').addEventListener('click', (e) => { if (e.target === document.getElementById('accountDetailModal')) this.closeDetail(); });
+        // 账户删除确认模态框
+        document.getElementById('accDelModalClose').addEventListener('click', () => this.closeDeleteModal());
+        document.getElementById('accDelCancelBtn').addEventListener('click', () => this.closeDeleteModal());
+        document.getElementById('accountDeleteModal').addEventListener('click', (e) => { if (e.target === document.getElementById('accountDeleteModal')) this.closeDeleteModal(); });
+        document.getElementById('accDelCloseBtn').addEventListener('click', () => this.closeAccount());
+        document.getElementById('accDelHardBtn').addEventListener('click', () => this.hardDeleteAccount());
     },
     // 复式记账对账：以账本为唯一真相，重算并修正账户余额
     async reconcile() {
@@ -54,7 +60,7 @@ const AccountManager = {
                         <div class="account-actions">
                             <button class="btn btn-ghost btn-sm" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
                             <button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
-                            <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="关闭">🗑️</button>
+                            <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="删除">🗑️</button>
                         </div>
                     </div>
                     <div class="account-row">
@@ -73,7 +79,7 @@ const AccountManager = {
             btn.addEventListener('click', () => this.openModal(parseInt(btn.dataset.id)));
         });
         container.querySelectorAll('[data-action="delete-acc"]').forEach(btn => {
-            btn.addEventListener('click', () => this.deleteAccount(parseInt(btn.dataset.id)));
+            btn.addEventListener('click', () => this.openDeleteModal(parseInt(btn.dataset.id)));
         });
     },
     async openModal(id = null) {
@@ -119,20 +125,61 @@ const AccountManager = {
         await initCache();
         await this.refresh();
     },
-    async deleteAccount(id) {
-        try {
-            await api(`/accounts/${id}`, 'DELETE');
-            showToast('账户已关闭', 'warning');
-            // 关闭账户后，旧 AI 洞察/建议缓存可能仍引用该账户余额，立即失效
-            try {
-                localStorage.removeItem('xin_ai_insights');
-                localStorage.removeItem('xin_ai_advice');
-            } catch (e) {}
-            await initCache();
-            await this.refresh();
-        } catch (err) {
-            // api() 已显示错误 toast
+    // 删除确认弹窗：先查关联数据，决定「彻底删除」是否可用
+    async openDeleteModal(id) {
+        const acc = getAcc(id);
+        if (!acc) return;
+        this._delId = id;
+        document.getElementById('accDelName').textContent = `${acc.icon || ''} ${acc.name}（余额 ${fmt(acc.balance)}）`;
+        const usageEl = document.getElementById('accDelUsage');
+        const hardBtn = document.getElementById('accDelHardBtn');
+        usageEl.textContent = '正在检查关联数据…';
+        hardBtn.disabled = true;
+        document.getElementById('accountDeleteModal').classList.add('show');
+        const res = await api(`/accounts/${id}/usage`);
+        if (!res) { this.closeDeleteModal(); return; }
+        const u = res.usage || {};
+        const parts = [
+            ['交易', u.transactions], ['转账', u.transfers], ['还款', u.repayments],
+            ['储蓄目标', u.goals], ['储蓄流水', u.savings_txns], ['债务', u.debts], ['理财持仓', u.investments]
+        ].filter(([, n]) => parseInt(n) > 0);
+        if (parts.length === 0) {
+            usageEl.innerHTML = '<span class="acc-del-ok">无关联数据，可彻底删除。</span>';
+            hardBtn.disabled = false;
+            hardBtn.title = '';
+        } else {
+            const detail = parts.map(([label, n]) => `${label} ${n} 笔`).join('、');
+            usageEl.innerHTML = `<span class="acc-del-warn">存在关联数据（${detail}），不可彻底删除。</span>`;
+            hardBtn.disabled = true;
+            hardBtn.title = '该账户有关联数据，请先清理或使用「关闭账户」';
         }
+    },
+    closeDeleteModal() {
+        document.getElementById('accountDeleteModal').classList.remove('show');
+        this._delId = null;
+    },
+    async hardDeleteAccount() {
+        const id = this._delId;
+        if (!id) return;
+        const res = await api(`/accounts/${id}`, 'DELETE');
+        if (!res) return; // api() 已显示错误 toast（含 409 关联数据提示）
+        showToast('账户已彻底删除', 'success');
+        // 旧 AI 洞察/建议缓存可能仍引用该账户余额，立即失效
+        try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
+        this.closeDeleteModal();
+        await initCache();
+        await this.refresh();
+    },
+    async closeAccount() {
+        const id = this._delId;
+        if (!id) return;
+        const res = await api(`/accounts/${id}/close`, 'POST');
+        if (!res) return;
+        showToast('账户已关闭（历史保留）', 'warning');
+        try { localStorage.removeItem('xin_ai_insights'); localStorage.removeItem('xin_ai_advice'); } catch (e) {}
+        this.closeDeleteModal();
+        await initCache();
+        await this.refresh();
     },
     async openDetail(id) {
         const modal = document.getElementById('accountDetailModal');
