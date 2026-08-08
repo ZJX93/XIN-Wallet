@@ -477,12 +477,16 @@ async function initDatabase() {
     // 19) 幂等迁移：扩展 investment_transactions.type CHECK 约束，支持红利再投(reinvest)
     //     v0.3.23 新增「记一笔利息」红利再投分支会写入 type='reinvest'，
     //     但旧约束仅允许 buy/sell/dividend/interest/fee → 触发 CHECK 违例返回 500。
-    //     删除旧约束（名称可能为 investment_transactions_type_check 或系统自动生成）并重建含 reinvest。
+    //     删除旧约束并重建含 reinvest。
+    //     ⚠️ 关键陷阱：PostgreSQL 会把 `CHECK (type IN (...))` 自动改写成
+    //        `CHECK (type = ANY (ARRAY[...]))`，字面量 `IN (...)` 不会出现在约束定义里。
+    //        因此匹配条件必须用 `%type%`（命中改写后的 `type = ANY (ARRAY[...])`），
+    //        绝不能用 `%type IN%`（永远匹配不到，导致旧约束删不掉、ADD 报 already exists 被静默吞掉）。
     try {
       const { rows: txCons } = await pool.query(`
         SELECT conname FROM pg_constraint
         WHERE conrelid = 'investment_transactions'::regclass AND contype = 'c'
-          AND pg_get_constraintdef(oid) LIKE '%type IN%'
+          AND pg_get_constraintdef(oid) LIKE '%type%'
       `);
       for (const { conname } of txCons) {
         await pool.query(`ALTER TABLE investment_transactions DROP CONSTRAINT IF EXISTS "${conname}"`);
