@@ -45,7 +45,11 @@ router.post('/register', validate({
             'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
             [username, hash, nickname || username]
         );
-        const user = { id: result.insertId, username, nickname: nickname || username };
+        // 回查用户（含 avatar 默认值），避免登录响应缺失 avatar 导致前端回退默认头像
+        const user = await db.queryOne(
+            'SELECT id, username, nickname, avatar FROM users WHERE id = ?',
+            [result.insertId]
+        );
         res.json(success({ token: signToken(user), refreshToken: signRefreshToken(user), user }, '注册成功'));
     } catch (err) {
         handleServerError(res, err);
@@ -63,7 +67,7 @@ router.post('/login', validate({
         const { username, password } = req.body;
 
         const user = await db.queryOne(
-            'SELECT id, username, password_hash, nickname, fail_count, locked_until FROM users WHERE username = ?',
+            'SELECT id, username, password_hash, nickname, avatar, fail_count, locked_until FROM users WHERE username = ?',
             [username]
         );
 
@@ -121,7 +125,7 @@ router.post('/demo', async (req, res) => {
                 'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
                 ['demo', demoHash, '演示用户']
             );
-            user = { id: result.insertId, username: 'demo', nickname: '演示用户' };
+            user = { id: result.insertId, username: 'demo', nickname: '演示用户', avatar: '👤' };
         }
 
         // 智能种子：演示账号如已有数据则复用，否则注入演示数据
