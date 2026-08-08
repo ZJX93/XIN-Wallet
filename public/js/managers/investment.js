@@ -358,7 +358,7 @@ const InvestmentManager = {
                     <span class="goal-status type">${riskLabels[i.risk_level] || i.risk_level}</span>
                 </div>
                 <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
-                <div class="goal-progress"><div class="goal-progress-fill ${i.profit < 0 ? 'danger' : ''}" style="width:${progress}%"></div></div>
+                <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
                 <div class="goal-amounts"><span class="goal-pct ${profitCls}">${profitSign}${i.profit_rate.toFixed(2)}%</span><span>年化 ${annualSign}${i.annualizedRate.toFixed(2)}%</span></div>
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>

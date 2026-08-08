@@ -555,9 +555,12 @@
 
 .goal-progress-fill {
   height: 100%; border-radius: var(--radius-full);
-  background: linear-gradient(90deg, var(--interactive-default), color-mix(in srgb, var(--interactive-default) 55%, var(--income)));
+  background: var(--interactive-default);
   transition: width 0.6s var(--ease-out-quart);
 }
+
+.goal-progress-fill.profit-positive { background: var(--income); }
+.goal-progress-fill.profit-negative { background: var(--expense); }
 
 .goal-note {
   font-size: var(--text-caption); color: var(--text-tertiary);

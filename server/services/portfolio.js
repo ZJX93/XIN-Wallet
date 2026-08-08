@@ -23,6 +23,8 @@ function annualizedRate(totalCost, currentValue, buyDate) {
 
   const days = (Date.now() - start.getTime()) / 86400000;
   if (days <= 0) return 0;
+  // 持有期不足 1 天时不做年化放大，避免极小的 days 导致天文数字收益率
+  if (days < 1) return ((value - cost) / cost) * 100;
 
   return (Math.pow(value / cost, 365 / days) - 1) * 100;
 }
