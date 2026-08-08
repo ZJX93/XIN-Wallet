@@ -74,10 +74,23 @@ function detectCodeType(code) {
 function inferAsharePrefix(numCode) {
   const c = String(numCode).trim();
   if (!/^\d{6}$/.test(c)) return 'sh';
-  if (/^(60[0-35-9]|688|689|900)\d{3}$/.test(c)) return 'sh';
-  if (/^(00[0-3]|30[0-1]|200)\d{3}$/.test(c)) return 'sz';
+
+  // 北交所：43/83/87/88/82/92 开头
   if (/^(43|83|87|88|82|92)\d{4}$/.test(c)) return 'bj';
-  // 兜底：旧逻辑默认 sh，避免行为断裂
+
+  // 上海 A股（主板/科创板/B股）：6 或 9 开头
+  if (/^[69]/.test(c)) return 'sh';
+
+  // 深圳 A股（主板/创业板/B股）：0、2、3 开头
+  if (/^[023]/.test(c)) return 'sz';
+
+  // 上海场内基金 / ETF / LOF：50/51/55/56/58/59 开头
+  if (/^(50|51|55|56|58|59)\d{4}$/.test(c)) return 'sh';
+
+  // 深圳场内基金 / ETF / LOF：15/16/18 开头
+  if (/^(15|16|18)\d{4}$/.test(c)) return 'sz';
+
+  // 兜底：默认沪市（保持旧逻辑行为）
   return 'sh';
 }
 
@@ -357,25 +370,64 @@ async function fetchCryptoQuote(code) {
 // ==========================================
 
 /**
+ * 统一行情查询：根据品类 + 代码返回归一化行情对象
+ * - 基金（fund）优先走东方财富净值；若该代码无净值（ETF/场内基金），回退腾讯证券实时价
+ * - 股票/商品/外汇走腾讯证券；加密货币走币安
+ * 返回字段对前端两种渲染分支（nav / price）均兼容。
+ */
+async function fetchQuoteByCategory(invTypeCategory, code) {
+  const strategy = getQuoteStrategy(invTypeCategory, code);
+  if (!strategy) throw new Error('该品类不支持行情查询');
+
+  // 加密货币 → 币安
+  if (strategy.type === 'crypto') {
+    const q = await fetchCryptoQuote(strategy.code);
+    return {
+      source: 'crypto', code: q.code, name: q.name,
+      price: q.price, nav: q.price, navDate: new Date().toISOString().slice(0, 10),
+      change: q.change, changePercent: q.changePercent,
+      high: q.high, low: q.low, open: q.open
+    };
+  }
+
+  // 基金 → 东方财富净值；失败（ETF/场内基金无净值）回退腾讯证券实时价
+  if (strategy.type === 'fund') {
+    try {
+      const q = await fetchFundQuote(strategy.code);
+      return {
+        source: 'fund', code: q.code, name: q.name,
+        nav: q.nav, estimatedNav: q.estimatedNav, estimatedChange: q.estimatedChange,
+        price: q.estimatedNav || q.nav, navDate: q.navDate,
+        change: 0, changePercent: q.estimatedChange || 0
+      };
+    } catch (_) {
+      const stock = await fetchStockQuote(inferAsharePrefix(strategy.code) + strategy.code);
+      return {
+        source: 'stock', code: stock.code, name: stock.name,
+        price: stock.price, nav: stock.price, navDate: new Date().toISOString().slice(0, 10),
+        change: stock.change, changePercent: stock.changePercent,
+        high: stock.high, low: stock.low, open: stock.open
+      };
+    }
+  }
+
+  // 股票 / 商品 / 外汇 → 腾讯证券
+  const q = await fetchStockQuote(strategy.code);
+  return {
+    source: invTypeCategory === 'commodity' ? 'commodity' : 'stock',
+    code: q.code, name: q.name,
+    price: q.price, nav: q.price, navDate: new Date().toISOString().slice(0, 10),
+    change: q.change, changePercent: q.changePercent,
+    high: q.high, low: q.low, open: q.open
+  };
+}
+
+/**
  * 根据投资记录获取行情数据，返回 price / navDate / name
  */
 async function fetchPriceForInvestment(inv) {
-  const strategy = getQuoteStrategy(inv.type_category, inv.code);
-  if (!strategy) throw new Error('该品类不支持行情查询');
-
-  if (strategy.type === 'fund') {
-    const q = await fetchFundQuote(strategy.code);
-    return { price: q.estimatedNav || q.nav, navDate: q.navDate, name: q.name };
-  }
-
-  if (strategy.type === 'crypto') {
-    const q = await fetchCryptoQuote(strategy.code);
-    return { price: q.price, navDate: new Date().toISOString().slice(0, 10), name: q.name };
-  }
-
-  // stock / commodity / forex 都走腾讯接口
-  const q = await fetchStockQuote(strategy.code);
-  return { price: q.price, navDate: new Date().toISOString().slice(0, 10), name: q.name };
+  const q = await fetchQuoteByCategory(inv.type_category, inv.code);
+  return { price: q.price, navDate: q.navDate, name: q.name };
 }
 
 module.exports = {
@@ -386,5 +438,6 @@ module.exports = {
   fetchFundQuote,
   fetchStockQuote,
   fetchCryptoQuote,
+  fetchQuoteByCategory,
   fetchPriceForInvestment
 };

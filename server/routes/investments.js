@@ -9,8 +9,8 @@ const { toNumber } = require('../validate');
 const { success, fail, handleServerError, fmtDateOnly, fmtDateTime, ensureWeeklySnapshots, computeAccountBalance } = require('./_helpers');
 const quoteCache = require('../services/quote-cache');
 const {
-  httpGet, detectCodeType, getQuoteStrategy,
-  fetchFundQuote, fetchStockQuote, fetchCryptoQuote,
+  getQuoteStrategy,
+  fetchQuoteByCategory,
   fetchPriceForInvestment
 } = require('../services/market-data');
 
@@ -518,21 +518,10 @@ router.get('/quote', async (req, res) => {
         const { code, category } = req.query;
         if (!code) return res.status(400).json(fail('请提供产品代码'));
         const c = String(code).trim();
-        // category 可以是 fund/stock/deposit/other，默认自动识别
+        // category 可以是 fund/stock/deposit/other，默认 fund
         const invCategory = category || 'fund';
-        const strategy = getQuoteStrategy(invCategory, c);
-        if (!strategy) return res.status(400).json(fail('无法识别代码格式或该品类不支持行情查询'));
-
-        if (strategy.type === 'fund') {
-            const data = await fetchFundQuote(strategy.code);
-            return res.json(success({ type: 'fund', ...data }));
-        } else if (strategy.type === 'crypto') {
-            const data = await fetchCryptoQuote(strategy.code);
-            return res.json(success({ type: 'crypto', ...data }));
-        } else {
-            const data = await fetchStockQuote(strategy.code);
-            return res.json(success({ type: strategy.type === 'commodity' ? 'commodity' : 'stock', ...data }));
-        }
+        const data = await fetchQuoteByCategory(invCategory, c);
+        return res.json(success({ type: data.source, ...data }));
     } catch (err) {
         console.error('[行情查询]', err.message);
         res.status(502).json(fail('行情查询失败：' + err.message));

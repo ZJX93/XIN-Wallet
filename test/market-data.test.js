@@ -32,6 +32,22 @@ test('getQuoteStrategy: 已带前缀的代码保持原样', () => {
     assert.deepStrictEqual(getQuoteStrategy('stock', 'BJ430047'), { type: 'stock', code: 'bj430047' });
 });
 
+test('getQuoteStrategy: 深交所场内基金/ETF 纯数字补 sz 前缀（含 159363）', () => {
+    assert.deepStrictEqual(getQuoteStrategy('stock', '159363'), { type: 'stock', code: 'sz159363' });
+    assert.deepStrictEqual(getQuoteStrategy('stock', '150001'), { type: 'stock', code: 'sz150001' });
+    assert.deepStrictEqual(getQuoteStrategy('stock', '161725'), { type: 'stock', code: 'sz161725' });
+});
+
+test('getQuoteStrategy: 上交所场内基金/ETF 纯数字补 sh 前缀', () => {
+    assert.deepStrictEqual(getQuoteStrategy('stock', '510300'), { type: 'stock', code: 'sh510300' });
+    assert.deepStrictEqual(getQuoteStrategy('stock', '518880'), { type: 'stock', code: 'sh518880' });
+    assert.deepStrictEqual(getQuoteStrategy('stock', '588000'), { type: 'stock', code: 'sh588000' });
+});
+
+test('getQuoteStrategy: 沪市主板 605 段也归 sh', () => {
+    assert.deepStrictEqual(getQuoteStrategy('stock', '605499'), { type: 'stock', code: 'sh605499' });
+});
+
 test('getQuoteStrategy: 基金代码不受交易所推断影响', () => {
     assert.deepStrictEqual(getQuoteStrategy('fund', '005827'), { type: 'fund', code: '005827' });
 });
