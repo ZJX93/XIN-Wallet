@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -31,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,6 +54,7 @@ fun AddTransactionScreen(navController: NavHostController) {
     })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var type by remember { mutableStateOf("expense") }
     var amount by remember { mutableStateOf("") }
@@ -77,16 +80,16 @@ fun AddTransactionScreen(navController: NavHostController) {
             Button(
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
-                    if (amt <= 0) { snackbar.showSnackbar("请输入有效金额"); return@Button }
+                    if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return@Button }
                     when (type) {
                         "transfer" -> {
-                            if (fromId == null || toId == null) { snackbar.showSnackbar("请选择转出和转入账户"); return@Button }
-                            if (fromId == toId) { snackbar.showSnackbar("转出和转入账户不能相同"); return@Button }
+                            if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return@Button }
+                            if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return@Button }
                             vm.submitTransfer(fromId!!, toId!!, amt, note)
                         }
                         else -> {
-                            if (accountId == null) { snackbar.showSnackbar("请选择账户"); return@Button }
-                            if (categoryId == null) { snackbar.showSnackbar("请选择分类"); return@Button }
+                            if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@Button }
+                            if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@Button }
                             vm.submitExpense(accountId!!, categoryId!!, amt, note, type)
                         }
                     }
@@ -104,9 +107,9 @@ fun AddTransactionScreen(navController: NavHostController) {
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 item {
                     SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(selected = type == "expense", onClick = { type = "expense" }) { Text("支出") }
-                        SegmentedButton(selected = type == "income", onClick = { type = "income" }) { Text("收入") }
-                        SegmentedButton(selected = type == "transfer", onClick = { type = "transfer" }) { Text("转账") }
+                        SegmentedButton(selected = type == "expense", onClick = { type = "expense" }, shape = SegmentedButtonDefaults.itemShape(0, 3)) { Text("支出") }
+                        SegmentedButton(selected = type == "income", onClick = { type = "income" }, shape = SegmentedButtonDefaults.itemShape(1, 3)) { Text("收入") }
+                        SegmentedButton(selected = type == "transfer", onClick = { type = "transfer" }, shape = SegmentedButtonDefaults.itemShape(2, 3)) { Text("转账") }
                     }
                     Spacer(Modifier.height(16.dp))
                     OutlinedTextField(

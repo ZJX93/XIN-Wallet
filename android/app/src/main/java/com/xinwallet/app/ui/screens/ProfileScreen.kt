@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -69,8 +70,8 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             SectionTitle("外观主题")
             SingleChoiceSegmentedButtonRow {
-                themeOptions.forEach { (value, label) ->
-                    SegmentedButton(selected = state.themeMode == value, onClick = { vm.setTheme(value) }) {
+                themeOptions.forEachIndexed { index, (value, label) ->
+                    SegmentedButton(selected = state.themeMode == value, onClick = { vm.setTheme(value) }, shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size)) {
                         Text(label)
                     }
                 }

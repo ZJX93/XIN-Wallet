@@ -67,9 +67,9 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun BalanceCard(title: String, amount: Double, subtitle: String? = null, onClick: (() -> Unit)? = null) {
+fun BalanceCard(title: String, amount: Double, subtitle: String? = null, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     Card(
-        modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        modifier = Modifier.fillMaxWidth().then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
