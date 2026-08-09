@@ -100,10 +100,14 @@ const AccountManager = {
             <div class="acc-stack">
                 <button class="acc-deck-cover" type="button" data-action="view-all" title="查看全部账户">
                     <span class="acc-cover-icon">${escapeHtml(icon)}</span>
-                    <span class="acc-cover-name">${escapeHtml(label)}</span>
-                    <span class="acc-cover-count">${accounts.length} 个账户</span>
-                    <span class="acc-cover-total">${fmt(total)}</span>
-                    <span class="acc-cover-viewall">查看全部 →</span>
+                    <span class="acc-cover-meta">
+                        <span class="acc-cover-name">${escapeHtml(label)}</span>
+                        <span class="acc-cover-row">
+                            <span class="acc-cover-count">${accounts.length} 个账户</span>
+                            <span class="acc-cover-total">${fmt(total)}</span>
+                            <span class="acc-cover-viewall">查看全部 →</span>
+                        </span>
+                    </span>
                 </button>
                 <div class="acc-stack-cards" style="--n:${accounts.length}">${cards}</div>
             </div>`;

@@ -494,10 +494,14 @@ const InvestmentManager = {
             <div class="inv-stack">
                 <button class="inv-deck-cover" type="button" data-action="view-all" title="查看全部持仓">
                     <span class="inv-cover-icon">${escapeHtml(icon)}</span>
-                    <span class="inv-cover-name">${escapeHtml(typeName)}</span>
-                    <span class="inv-cover-count">${items.length} 个产品</span>
-                    <span class="inv-cover-total">${fmt(total)}</span>
-                    <span class="inv-cover-viewall">查看全部 →</span>
+                    <span class="inv-cover-meta">
+                        <span class="inv-cover-name">${escapeHtml(typeName)}</span>
+                        <span class="inv-cover-row">
+                            <span class="inv-cover-count">${items.length} 个产品</span>
+                            <span class="inv-cover-total">${fmt(total)}</span>
+                            <span class="inv-cover-viewall">查看全部 →</span>
+                        </span>
+                    </span>
                 </button>
                 <div class="inv-stack-cards" style="--n:${items.length}">${cards}</div>
             </div>`;
