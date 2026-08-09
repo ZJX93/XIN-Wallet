@@ -4,6 +4,6 @@ import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
 
-class CategoryRepository(private val api: ApiService) {
-    suspend fun getCategories() = safeApiCall { api.getCategories() }
+class CategoryRepository(private val apiProvider: () -> ApiService) {
+    suspend fun getCategories() = safeApiCall { apiProvider().getCategories() }
 }

@@ -12,6 +12,7 @@
         android:roundIcon="@android:drawable/ic_menu_compass"
         android:supportsRtl="true"
         android:theme="@style/Theme.XINWallet"
+        android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
         <activity

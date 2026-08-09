@@ -58,16 +58,18 @@ object AppContainer {
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
 
-        val baseUrl = runBlocking { session.baseUrl() }.ifBlank { "http://127.0.0.1:18888/api/" }
+        // 首次未配置地址时使用占位符，避免 Retrofit baseUrl 为空崩溃；UI 会强制用户填写真实地址。
+        val baseUrl = runBlocking { session.baseUrl() }.ifBlank { "http://localhost/" }
         retrofit = buildRetrofit(baseUrl, gson)
         api = retrofit.create(ApiService::class.java)
 
-        authRepository = AuthRepository(session, api)
-        accountRepository = AccountRepository(api)
-        transactionRepository = TransactionRepository(api)
-        investmentRepository = InvestmentRepository(api)
-        dashboardRepository = DashboardRepository(api)
-        categoryRepository = CategoryRepository(api)
+        // Repository 通过 provider 获取当前 api，运行时 setBaseUrl 重建 api 后立即生效。
+        authRepository = AuthRepository(session) { api }
+        accountRepository = AccountRepository { api }
+        transactionRepository = TransactionRepository { api }
+        investmentRepository = InvestmentRepository { api }
+        dashboardRepository = DashboardRepository { api }
+        categoryRepository = CategoryRepository { api }
     }
 
     private fun buildRetrofit(baseUrl: String, gson: com.google.gson.Gson): Retrofit {

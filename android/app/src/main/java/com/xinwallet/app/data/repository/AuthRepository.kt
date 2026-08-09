@@ -10,10 +10,10 @@ import com.xinwallet.app.data.remote.safeApiCall
 
 class AuthRepository(
     private val session: SessionManager,
-    private val api: ApiService
+    private val apiProvider: () -> ApiService
 ) {
     suspend fun login(username: String, password: String): ApiResult<AuthResponse> {
-        return when (val r = safeApiCall { api.login(LoginRequest(username, password)) }) {
+        return when (val r = safeApiCall { apiProvider().login(LoginRequest(username, password)) }) {
             is ApiResult.Success -> {
                 r.data?.let { session.saveTokens(it.token, it.refreshToken); session.saveUsername(username) }
                 r
@@ -23,7 +23,7 @@ class AuthRepository(
     }
 
     suspend fun demoLogin(): ApiResult<AuthResponse> {
-        return when (val r = safeApiCall { api.demoLogin() }) {
+        return when (val r = safeApiCall { apiProvider().demoLogin() }) {
             is ApiResult.Success -> {
                 r.data?.let { session.saveTokens(it.token, it.refreshToken); session.saveUsername("demo") }
                 r
@@ -34,7 +34,7 @@ class AuthRepository(
 
     suspend fun refresh(): ApiResult<AuthResponse> {
         val rt = session.refreshToken() ?: return ApiResult.Error("未登录")
-        return when (val r = safeApiCall { api.refresh(RefreshRequest(rt)) }) {
+        return when (val r = safeApiCall { apiProvider().refresh(RefreshRequest(rt)) }) {
             is ApiResult.Success -> { r.data?.let { session.saveTokens(it.token, it.refreshToken) }; r }
             else -> r
         }

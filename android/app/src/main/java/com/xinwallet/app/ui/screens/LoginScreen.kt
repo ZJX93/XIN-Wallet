@@ -25,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,9 @@ import com.xinwallet.app.ui.viewmodel.LoginViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import kotlinx.coroutines.launch
 
+private fun isPlaceholderUrl(url: String): Boolean =
+    url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
+
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
     val vm: LoginViewModel = viewModel(factory = viewModelFactory { LoginViewModel(AppContainer.authRepository) })
@@ -45,10 +49,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var serverUrl by remember { mutableStateOf("") }
     var showServer by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        serverUrl = AppContainer.sessionManager.baseUrl()
-        if (serverUrl.isBlank()) showServer = true
+        val saved = AppContainer.sessionManager.baseUrl()
+        serverUrl = if (isPlaceholderUrl(saved)) "" else saved
+        showServer = serverUrl.isBlank()
     }
     LaunchedEffect(state.success) {
         if (state.success) onLoginSuccess()
@@ -74,14 +80,22 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 OutlinedTextField(
                     value = serverUrl, onValueChange = { serverUrl = it },
                     label = { Text("NAS 服务器地址") },
-                    placeholder = { Text("http://192.168.x.x:18888/api") },
+                    placeholder = { Text("https://xqb.kuaik.top:18888/api") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Button(
                     onClick = {
-                        AppContainer.setBaseUrl(if (serverUrl.isBlank()) "http://127.0.0.1:18888/api/" else serverUrl.trim())
-                        showServer = false
+                        val url = serverUrl.trim()
+                        if (url.isBlank()) {
+                            scope.launch { snackbarHostState.showSnackbar("服务器地址不能为空") }
+                            return@Button
+                        }
+                        scope.launch {
+                            AppContainer.sessionManager.saveBaseUrl(url)
+                            AppContainer.setBaseUrl(url)
+                            showServer = false
+                        }
                     },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) { Text("保存地址") }
@@ -96,11 +110,37 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
-            Button(onClick = { vm.login(username, password) }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = {
+                    val url = serverUrl.trim()
+                    if (url.isBlank()) {
+                        showServer = true
+                        scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
+                        return@Button
+                    }
+                    AppContainer.setBaseUrl(url)
+                    vm.login(username, password)
+                },
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 if (state.loading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp) else Text("登录")
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { vm.demoLogin() }, enabled = !state.loading, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = {
+                    val url = serverUrl.trim()
+                    if (url.isBlank()) {
+                        showServer = true
+                        scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
+                        return@OutlinedButton
+                    }
+                    AppContainer.setBaseUrl(url)
+                    vm.demoLogin()
+                },
+                enabled = !state.loading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("体验 Demo 账号")
             }
         }

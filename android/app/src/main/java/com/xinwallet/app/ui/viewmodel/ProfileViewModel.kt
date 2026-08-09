@@ -16,6 +16,9 @@ data class ProfileUiState(
     val message: String? = null
 )
 
+private fun isPlaceholderUrl(url: String): Boolean =
+    url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
+
 class ProfileViewModel(
     private val session: SessionManager,
     private val authRepo: AuthRepository
@@ -28,7 +31,7 @@ class ProfileViewModel(
         viewModelScope.launch {
             _state.value = ProfileUiState(
                 themeMode = session.themeMode(),
-                baseUrl = session.baseUrl(),
+                baseUrl = session.baseUrl().takeUnless(::isPlaceholderUrl) ?: "",
                 username = session.username()
             )
         }
@@ -43,7 +46,11 @@ class ProfileViewModel(
 
     fun saveServer(url: String) {
         viewModelScope.launch {
-            val fixed = if (url.isBlank()) "http://127.0.0.1:18888/api/" else url.trim()
+            val fixed = url.trim()
+            if (fixed.isBlank()) {
+                _state.value = _state.value.copy(message = "服务器地址不能为空")
+                return@launch
+            }
             session.saveBaseUrl(fixed)
             AppContainer.setBaseUrl(fixed)
             _state.value = _state.value.copy(baseUrl = fixed, message = "服务器地址已保存")

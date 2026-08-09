@@ -18,7 +18,7 @@
 - JDK 17
 - Android SDK Platform 34 + Build-Tools 34.0.0
 - Gradle 8.9（项目已内置 wrapper）
-- 一台运行 XIN-Wallet 后端的 NAS / 服务器（默认 `http://127.0.0.1:18888/api/`，可由用户在 App 内修改）
+- 一台运行 XIN-Wallet 后端的 NAS / 服务器（首次启动需在 App 内填写真实地址）
 
 ## 配置与运行
 
