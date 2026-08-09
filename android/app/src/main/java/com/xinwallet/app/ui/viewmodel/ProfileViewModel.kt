@@ -46,7 +46,7 @@ class ProfileViewModel(
 
     fun saveServer(url: String) {
         viewModelScope.launch {
-            val fixed = url.trim()
+            val fixed = AppContainer.normalizeBaseUrl(url)
             if (fixed.isBlank()) {
                 _state.value = _state.value.copy(message = "服务器地址不能为空")
                 return@launch

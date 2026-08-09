@@ -89,7 +89,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                 value = server,
                 onValueChange = { server = it },
                 label = { Text("服务器地址") },
-                placeholder = { Text("http://192.168.x.x:18888/api") },
+                placeholder = { Text("https://your-nas.com:18888/api") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

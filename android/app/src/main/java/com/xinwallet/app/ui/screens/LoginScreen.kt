@@ -52,7 +52,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
-        val saved = AppContainer.sessionManager.baseUrl()
+        val saved = AppContainer.normalizeBaseUrl(AppContainer.sessionManager.baseUrl())
         serverUrl = if (isPlaceholderUrl(saved)) "" else saved
         showServer = serverUrl.isBlank()
     }
@@ -80,13 +80,13 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 OutlinedTextField(
                     value = serverUrl, onValueChange = { serverUrl = it },
                     label = { Text("NAS 服务器地址") },
-                    placeholder = { Text("https://xqb.kuaik.top:18888/api") },
+                    placeholder = { Text("https://your-nas.com:18888/api") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Button(
                     onClick = {
-                        val url = serverUrl.trim()
+                        val url = AppContainer.normalizeBaseUrl(serverUrl)
                         if (url.isBlank()) {
                             scope.launch { snackbarHostState.showSnackbar("服务器地址不能为空") }
                             return@Button
@@ -94,6 +94,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                         scope.launch {
                             AppContainer.sessionManager.saveBaseUrl(url)
                             AppContainer.setBaseUrl(url)
+                            serverUrl = url
                             showServer = false
                         }
                     },
@@ -112,13 +113,14 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    val url = serverUrl.trim()
+                    val url = AppContainer.normalizeBaseUrl(serverUrl)
                     if (url.isBlank()) {
                         showServer = true
                         scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
                         return@Button
                     }
                     AppContainer.setBaseUrl(url)
+                    serverUrl = url
                     vm.login(username, password)
                 },
                 enabled = !state.loading,
@@ -129,13 +131,14 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
-                    val url = serverUrl.trim()
+                    val url = AppContainer.normalizeBaseUrl(serverUrl)
                     if (url.isBlank()) {
                         showServer = true
                         scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
                         return@OutlinedButton
                     }
                     AppContainer.setBaseUrl(url)
+                    serverUrl = url
                     vm.demoLogin()
                 },
                 enabled = !state.loading,

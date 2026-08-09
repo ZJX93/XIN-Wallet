@@ -59,7 +59,8 @@ object AppContainer {
             .build()
 
         // 首次未配置地址时使用占位符，避免 Retrofit baseUrl 为空崩溃；UI 会强制用户填写真实地址。
-        val baseUrl = runBlocking { session.baseUrl() }.ifBlank { "http://localhost/" }
+        val saved = normalizeBaseUrl(runBlocking { session.baseUrl() })
+        val baseUrl = saved.ifBlank { "http://localhost/api/" }
         retrofit = buildRetrofit(baseUrl, gson)
         api = retrofit.create(ApiService::class.java)
 
@@ -85,5 +86,18 @@ object AppContainer {
     fun setBaseUrl(baseUrl: String) {
         retrofit = buildRetrofit(baseUrl, GsonBuilder().setLenient().create())
         api = retrofit.create(ApiService::class.java)
+    }
+
+    /**
+     * 标准化 NAS 基地址：trim、去末尾斜杠、自动补全 `/api/` 后缀。
+     * 用户可能输入 `https://nas.com:18888` 或 `https://nas.com:18888/`，
+     * 统一输出 `https://nas.com:18888/api/`；空字符串则返回空。
+     */
+    fun normalizeBaseUrl(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) return ""
+        val withoutTrailingSlash = trimmed.trimEnd('/')
+        val withApi = if (withoutTrailingSlash.endsWith("/api")) withoutTrailingSlash else "$withoutTrailingSlash/api"
+        return "$withApi/"
     }
 }
