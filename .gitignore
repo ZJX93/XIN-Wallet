@@ -13,9 +13,10 @@ dist.prebuild-*/
 .npm-cache*/
 inspect-output/
 inspect-build-preview.mjs
-# 排除临时图片，但保留 logo 和 images 目录下的图片
+# 排除临时图片，但保留 logo、images 目录及安卓资源目录下的图片
 *.png
 !images/*.png
+!android/app/src/main/res/**/*.png
 .workbuddy/
 server/routes.js.original
 # 一次性审计报告（应在 docs/ 或被 .gitignore）
