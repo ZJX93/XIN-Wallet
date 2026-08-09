@@ -126,6 +126,7 @@
   --ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
   --duration-150: 150ms;
+  --duration-200: 200ms;
   --duration-300: 300ms;
   --duration-500: 500ms;
   --duration-700: 700ms;
@@ -159,6 +160,7 @@
   --bg-input: var(--surface-hover);
   --border-input: var(--border-default);
   --shadow-glow: var(--shadow-md);
+  --shadow-card: var(--shadow-sm);
 }
 
 /* --------------------------------------------------------------------------
@@ -221,6 +223,7 @@
   --bg-input: var(--surface-hover);
   --border-input: var(--border-default);
   --shadow-glow: var(--shadow-md);
+  --shadow-card: var(--shadow-sm);
 }
 
 /* --------------------------------------------------------------------------
@@ -234,6 +237,7 @@
   --text-heading-md: 1.25rem;
   --text-heading-sm: 1.125rem;
   --text-body: 0.9375rem;
+  --text-body-lg: 1.0625rem;
   --text-body-sm: 0.875rem;
   --text-caption: 0.8125rem;
   --text-label: 0.75rem;
