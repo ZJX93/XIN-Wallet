@@ -3,8 +3,10 @@ package com.xinwallet.app.ui
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.MainScaffold
 import com.xinwallet.app.ui.screens.LoginScreen

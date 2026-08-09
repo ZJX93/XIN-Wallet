@@ -24,6 +24,8 @@ data class AuthResponse(
     val user: User? = null
 )
 
+data class RefreshRequest(val refreshToken: String)
+
 data class UserWrapper(val user: User? = null)
 
 data class IdResponse(val id: Int = 0)

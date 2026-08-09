@@ -4,6 +4,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+
+/** 暴露当前是否为深色主题，供组件内做颜色微调（替代 Material 3 不存在的 colorScheme.isDark） */
+val LocalIsDark = compositionLocalOf { false }
 
 private val LightColors = lightColorScheme(
     primary = md_theme_light_primary,
@@ -40,9 +45,11 @@ fun XWalletTheme(
     darkTheme: Boolean,
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = AppTypography,
-        content = content
-    )
+    CompositionLocalProvider(LocalIsDark provides darkTheme) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColors else LightColors,
+            typography = AppTypography,
+            content = content
+        )
+    }
 }

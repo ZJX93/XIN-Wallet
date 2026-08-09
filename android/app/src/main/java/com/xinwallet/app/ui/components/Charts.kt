@@ -17,6 +17,7 @@ import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
+import com.xinwallet.app.ui.theme.LocalIsDark
 
 /** 近 N 月收支趋势折线图（Canvas 自绘，零依赖） */
 @Composable
@@ -25,7 +26,7 @@ fun TrendLineChart(
     expenses: List<Double>,
     modifier: Modifier = Modifier
 ) {
-    val dark = MaterialTheme.colorScheme.isDark
+    val dark = LocalIsDark.current
     val incomeColor = if (dark) IncomeColorDark else IncomeColor
     val expenseColor = if (dark) ExpenseColorDark else ExpenseColor
     val maxV = ((incomes + expenses).maxOrNull() ?: 1.0).let { if (it <= 0) 1.0 else it }

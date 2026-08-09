@@ -6,6 +6,7 @@ import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.AuthInterceptor
 import com.xinwallet.app.data.repository.AccountRepository
+import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.DashboardRepository
 import com.xinwallet.app.data.repository.InvestmentRepository

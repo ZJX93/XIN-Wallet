@@ -40,6 +40,7 @@ import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
+import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.util.formatMoney
 
 @Composable
@@ -119,7 +120,7 @@ fun AccountListItem(account: Account, onClick: () -> Unit) {
 
 @Composable
 fun TransactionRow(item: TransactionItem) {
-    val dark = MaterialTheme.colorScheme.isDark
+    val dark = LocalIsDark.current
     val isIncome = item.type == "income" || item.type == "transfer_in"
     val isExpense = item.type == "expense" || item.type == "transfer_out"
     val color = when {
@@ -138,7 +139,7 @@ fun TransactionRow(item: TransactionItem) {
             Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
-            (if (isIncome) "+" else if (isExpense) "-") + formatMoney(item.amount),
+            (if (isIncome) "+" else if (isExpense) "-" else "") + formatMoney(item.amount),
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }

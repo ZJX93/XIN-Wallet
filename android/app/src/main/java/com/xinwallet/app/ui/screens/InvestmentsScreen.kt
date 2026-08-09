@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
+import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.InvestmentsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
@@ -90,7 +92,7 @@ fun InvestmentsScreen(navController: NavHostController) {
 
 @Composable
 private fun InvestmentRow(inv: Investment, onClick: () -> Unit) {
-    val dark = MaterialTheme.colorScheme.isDark
+    val dark = LocalIsDark.current
     val gain = inv.profit >= 0
     val profitColor = if (gain) (if (dark) ExpenseColorDark else ExpenseColor) else (if (dark) IncomeColorDark else IncomeColor)
     Row(
