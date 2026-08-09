@@ -608,7 +608,7 @@
 
 /* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
 .inv-stack:not([data-expanded="true"]) .inv-stack-card {
-  margin-top: calc(var(--i) * -72px);
+  margin-top: calc(var(--i) * -110px);
   transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
   transform-origin: center top;
   z-index: calc(var(--n) - var(--i));
@@ -682,7 +682,7 @@
 
 /* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
 .acc-stack:not([data-expanded="true"]) .acc-stack-card {
-  margin-top: calc(var(--i) * -56px);
+  margin-top: calc(var(--i) * -70px);
   transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
   transform-origin: center top;
   z-index: calc(var(--n) - var(--i));
