@@ -83,7 +83,7 @@ const DebtManager = {
         return r * 12 * 100;
     },
 
-    // 实时预览：理论月供 + 银行实际执行利率（当你填的实际月供与公式不符时反推）
+    // 实时预览：理论月供 + 等效利率（当实际月供与公式不符时反推，仅作参考）
     _updateMonthlyPreview() {
         const hint = document.getElementById('debtMonthlyHint');
         if (!hint) return;
@@ -101,7 +101,7 @@ const DebtManager = {
         if (document.getElementById('debtMonthly').value !== '' && actual > 0 && method === 'equal_installment') {
             if (Math.abs(actual - m) > 0.005) {
                 const implied = this._calcImpliedRate(P, term, actual);
-                if (implied != null) txt += ` ｜ 银行实际执行利率 ≈ ${implied.toFixed(4)}%`;
+                if (implied != null) txt += ` ｜ 等效利率 ≈ ${implied.toFixed(4)}%（实际仍按上方利率计息）`;
             } else {
                 txt += '（与公式一致）';
             }

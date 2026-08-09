@@ -350,7 +350,7 @@
                             <div class="form-group"><label>本金 (¥) <span class="req">*</span></label><input type="number" id="debtPrincipal" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>年利率 (%)</label><input type="number" id="debtRate" step="0.0001" min="0" autocomplete="off" placeholder="可精确到小数点后4位，匹配银行实际执行利率"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">银行房贷常带隐藏小数（如 3.2025%），填越精确，月供越贴近账单</small></div>
+                            <div class="form-group"><label>年利率 (%)</label><input type="number" id="debtRate" step="0.0001" min="0" autocomplete="off" placeholder="可精确到小数点后4位"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">按银行公示利率填写即可；若账单月供与公式不符，优先直接填写「每期应还」而非微调利率</small></div>
                             <div class="form-group"><label>贷款期数 (月)</label><input type="number" id="debtTerm" step="1" min="0" autocomplete="off"></div>
                         </div>
                         <div class="form-row">
@@ -362,7 +362,7 @@
                                 <option value="minimum">最低还款额（信用卡）</option>
                                 <option value="lump_sum">一次性还本付息</option>
                             </select></div>
-                            <div class="form-group"><label>每期应还 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">自动类留空按公式生成理论值；若与银行账单不符，请直接填写银行实际月供</small></div>
+                            <div class="form-group"><label>每期应还 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small id="debtMonthlyHint" style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">留空按公式生成理论值；填写银行实际月供后，应用以该月供为准生成计划，末期自动抹平尾差</small></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>起息日</label><input type="date" id="debtStart"></div>
