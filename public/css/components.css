@@ -650,6 +650,68 @@
   background: var(--dot, #888);
 }
 
+/* ============ 账户：按类型真实叠牌（牌堆跟随账户网格列宽，不横跨整行） ============ */
+.acc-stack { margin-bottom: var(--space-4); }
+
+/* 牌堆封面（可点击展开/收起） */
+.acc-deck-cover {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface-card) 82%, var(--interactive-default) 8%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: background .2s var(--ease-out-quart), transform .2s var(--ease-out-quart);
+}
+.acc-deck-cover:hover {
+  background: color-mix(in srgb, var(--surface-card) 70%, var(--interactive-default) 14%);
+  transform: translateY(-1px);
+}
+.acc-cover-icon { font-size: 20px; line-height: 1; }
+.acc-cover-name { font-weight: var(--fw-semibold); color: var(--text-primary); flex: 0 0 auto; }
+.acc-cover-count {
+  font-size: 12px; color: var(--text-tertiary);
+  background: var(--surface-hover); padding: 2px 9px; border-radius: var(--radius-full);
+}
+.acc-cover-total { margin-left: auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.acc-cover-chevron { color: var(--text-tertiary); transition: transform .35s var(--ease-out-quart); }
+.acc-stack[data-expanded="true"] .acc-cover-chevron { transform: rotate(180deg); }
+
+.acc-stack-cards { padding: 0 var(--space-2); }
+
+/* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
+.acc-stack:not([data-expanded="true"]) .acc-stack-card {
+  margin-top: calc(var(--i) * -56px);
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  transform-origin: center top;
+  z-index: calc(var(--n) - var(--i));
+  box-shadow: 0 -2px 0 rgba(255,255,255,.05), 0 10px 22px rgba(0,0,0,.18);
+  pointer-events: none;
+  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
+}
+.acc-stack:not([data-expanded="true"]) .acc-stack-card:first-child {
+  pointer-events: auto;
+  box-shadow: var(--shadow-md);
+}
+/* 规避 .account-card:hover 在收起态把卡片弹出牌堆 */
+.acc-stack:not([data-expanded="true"]) .acc-stack-card:hover {
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  box-shadow: var(--shadow-md);
+}
+
+/* 展开态：摊开成整洁列表，逐张发牌 */
+.acc-stack[data-expanded="true"] .acc-stack-card {
+  margin-top: var(--space-3);
+  transform: none;
+  z-index: auto;
+  box-shadow: var(--shadow-sm);
+  pointer-events: auto;
+  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart),
+    box-shadow .3s var(--ease-out-quart);
+  transition-delay: calc(var(--i) * 35ms);
+}
+
 /* Goal amount / Reduce modal meta */
 .goal-amount-meta,
 .reduce-meta {

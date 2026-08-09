@@ -52,8 +52,20 @@ const AccountManager = {
         cache.accounts = data.accounts;
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
         const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
-        container.innerHTML = data.accounts.map(a => `
-            <div class="account-card">
+        if (!data.accounts || data.accounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
+
+        // 按类型分组（按语义顺序排），同类型叠成一叠牌，点击封面展开/收起
+        const typeOrder = ['cash', 'bank_card', 'credit_card', 'electronic_payment', 'financial_account', 'digital', 'other'];
+        const groups = {};
+        data.accounts.forEach(a => {
+            const key = a.type || 'other';
+            (groups[key] = groups[key] || []).push(a);
+        });
+        const groupList = Object.entries(groups)
+            .sort((a, b) => typeOrder.indexOf(a[0]) - typeOrder.indexOf(b[0]));
+
+        const buildCard = (a, idx, n) => `
+            <div class="account-card acc-stack-card" data-id="${a.id}" style="--i:${idx}; --n:${n}">
                 <div class="account-icon">${escapeHtml(a.icon)}</div>
                 <div class="account-content">
                     <div class="account-row">
@@ -71,8 +83,35 @@ const AccountManager = {
                         </div>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+
+        container.innerHTML = groupList.map(([type, accounts]) => {
+            const label = typeLabels[type] || type;
+            const total = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+            const cards = accounts.map((a, idx) => buildCard(a, idx, accounts.length)).join('');
+            const icon = accounts[0].icon || '🏦';
+            return `
+            <div class="acc-stack" data-expanded="false">
+                <button class="acc-deck-cover" type="button" data-action="toggle-acc-stack" title="点击展开/收起">
+                    <span class="acc-cover-icon">${escapeHtml(icon)}</span>
+                    <span class="acc-cover-name">${escapeHtml(label)}</span>
+                    <span class="acc-cover-count">${accounts.length} 个账户</span>
+                    <span class="acc-cover-total">${fmt(total)}</span>
+                    <span class="acc-cover-chevron">▾</span>
+                </button>
+                <div class="acc-stack-cards">${cards}</div>
+            </div>`;
+        }).join('');
+
+        // 事件委托：叠牌展开/收起
+        container.querySelectorAll('[data-action="toggle-acc-stack"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const stack = btn.closest('.acc-stack');
+                if (!stack) return;
+                const expanded = stack.getAttribute('data-expanded') === 'true';
+                stack.setAttribute('data-expanded', expanded ? 'false' : 'true');
+            });
+        });
 
         // 事件委托：明细、编辑和删除按钮
         container.querySelectorAll('[data-action="acc-detail"]').forEach(btn => {
