@@ -588,6 +588,8 @@
   background: color-mix(in srgb, var(--surface-card) 82%, var(--interactive-default) 8%);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 10;
   transition: background .2s var(--ease-out-quart), transform .2s var(--ease-out-quart);
 }
 .inv-deck-cover:hover {
@@ -740,6 +742,8 @@
   background: color-mix(in srgb, var(--surface-card) 82%, var(--interactive-default) 8%);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 10;
   transition: background .2s var(--ease-out-quart), transform .2s var(--ease-out-quart);
 }
 .acc-deck-cover:hover {

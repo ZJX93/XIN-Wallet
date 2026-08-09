@@ -58,6 +58,7 @@ const AccountManager = {
         cache.accounts = data.accounts;
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
         const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
+        this.typeLabels = typeLabels;
         if (!data.accounts || data.accounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
 
         // 按类型分组（按语义顺序排），同类型叠成一叠牌，点击封面展开/收起
