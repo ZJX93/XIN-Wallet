@@ -28,16 +28,28 @@ const ChartManager = {
             const v = this._cssVar(cssVar, fallback);
             return (v && !v.startsWith('oklch')) ? v : fallback;
         };
+        // 暗色模式使用低饱和、协调的图表色，避免高饱和色块在深色背景上刺眼
+        const darkCats = [
+            '#b89a7a','#c47a72','#7fae8c','#c4a56a','#6a9bc7',
+            '#9b8bc4','#c47a9c','#5ead9e','#8a9bb0','#b86b64',
+            '#6fa67e','#967bb8','#5a9dbd','#c68a5a','#7c8696'
+        ];
+        const lightCats = [
+            '#8B6B4A','#c0392b','#27ae60','#f59e0b','#3b82f6',
+            '#8b5cf6','#ec4899','#14b8a6','#64748b','#e74c3c',
+            '#22c55e','#a855f7','#0ea5e9','#f97316','#6b7280'
+        ];
         return {
-            text:   resolve('--text-primary',   dk ? '#b0b0c8' : '#3a3028'),
-            textSec:resolve('--text-secondary',  dk ? '#8888a8' : '#6a6058'),
-            grid:   resolve('--border-subtle',    dk ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'),
-            inc:    resolve('--income',           '#c0392b'),
-            exp:    resolve('--expense',           '#27ae60'),
+            text:   resolve('--text-primary',   dk ? '#e8e4df' : '#3a3028'),
+            textSec:resolve('--text-secondary',  dk ? '#a8a29a' : '#6a6058'),
+            grid:   resolve('--border-subtle',    dk ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
+            inc:    resolve('--income',           dk ? '#d98a82' : '#c0392b'),
+            exp:    resolve('--expense',           dk ? '#7fbf94' : '#27ae60'),
             pri:    resolve('--accent-500',        '#8B6B4A'),
             war:    resolve('--warning-500',       '#f59e0b'),
-            info:   resolve('--info-500',          '#3b82f6'),
-            cats:   ['#8B6B4A','#c0392b','#27ae60','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#64748b','#e74c3c','#22c55e','#a855f7','#0ea5e9','#f97316','#6b7280']
+            info:   resolve('--info-500',          '#6a9bc7'),
+            bg:     dk ? '#2a2622' : '#ffffff',
+            cats:   dk ? darkCats : lightCats
         };
     },
 
@@ -274,7 +286,7 @@ const ChartManager = {
                         labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 9 }, padding: 10, boxWidth: 20, boxHeight: 3, usePointStyle: false, pointStyleWidth: 0, generateLabels: function(chart) { return chart.data.datasets.map((ds, i) => ({ text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor, lineWidth: 2, hidden: !chart.isDatasetVisible(i), index: i })); } }
                     },
                     tooltip: {
-                        backgroundColor: ctx => ctx.tooltip.opacity === 0 ? 'transparent' : (document.documentElement.getAttribute('data-theme') === 'dark' ? '#1e1e3a' : '#fff'),
+                        backgroundColor: c.bg,
                         titleColor: c.text, bodyColor: c.text,
                         borderColor: c.grid, borderWidth: 1,
                         cornerRadius: 10, padding: 12,
@@ -328,7 +340,7 @@ const ChartManager = {
                         labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 10 }, padding: 10, boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyleWidth: 12 }
                     },
                     tooltip: {
-                        backgroundColor: document.documentElement.getAttribute('data-theme') === 'dark' ? '#1e1e3a' : '#fff',
+                        backgroundColor: c.bg,
                         titleColor: c.text, bodyColor: c.text,
                         borderColor: c.grid, borderWidth: 1,
                         cornerRadius: 10, padding: 12,

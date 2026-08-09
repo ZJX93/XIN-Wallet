@@ -67,10 +67,10 @@
   border-radius: 8px;
   font-weight: var(--fw-medium);
 }
-.kpi-badge.good { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
-.kpi-badge.warn { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
-.kpi-badge.bad { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-.kpi-badge.neutral { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+.kpi-badge.good { background: color-mix(in srgb, var(--success-500) 20%, transparent); color: var(--success-500); }
+.kpi-badge.warn { background: color-mix(in srgb, var(--warning-500) 20%, transparent); color: var(--warning-500); }
+.kpi-badge.bad { background: color-mix(in srgb, var(--error-500) 20%, transparent); color: var(--error-500); }
+.kpi-badge.neutral { background: color-mix(in srgb, var(--gray-500) 20%, transparent); color: var(--gray-500); }
 
 /* KPI 变化指示：收红支绿 */
 .kpi-change.income { color: var(--income); }
@@ -83,8 +83,8 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.05));
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warning-500) 10%, transparent), color-mix(in srgb, var(--error-500) 5%, transparent));
+  border: 1px solid color-mix(in srgb, var(--warning-500) 30%, transparent);
   border-left: 4px solid var(--warning-500);
   border-radius: var(--radius-md);
 }
@@ -94,10 +94,10 @@
   font-size: 13px;
   padding: 4px 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-subtle);
 }
-.alert-item.bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-.alert-item.warn { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+.alert-item.bad { color: var(--error-500); background: color-mix(in srgb, var(--error-500) 10%, transparent); }
+.alert-item.warn { color: var(--warning-500); background: color-mix(in srgb, var(--warning-500) 10%, transparent); }
 
 /* ===== 资产负债概览 ===== */
 .balance-overview {
@@ -137,7 +137,7 @@
   grid-template-columns: 1fr 1fr 1fr;
   gap: var(--space-2);
   padding: var(--space-3);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-subtle);
   border-radius: var(--radius-md);
 }
 .bo-stat { text-align: center; padding: var(--space-2); }
@@ -168,7 +168,7 @@
   font-size: 13px;
   color: var(--text-secondary);
   padding: var(--space-2) var(--space-3);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-subtle);
   border-radius: var(--radius-md);
 }
 .bo-debt-info strong {

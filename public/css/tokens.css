@@ -165,48 +165,55 @@
 
 /* --------------------------------------------------------------------------
    4. SEMANTIC TOKENS — DARK THEME
+   夜间模式不再使用硬黑，改用深暖炭灰 + 柔和分层，避免卡片糊成一片。
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
-  --surface-page: var(--gray-1000);
-  --surface-card: var(--gray-950);
-  --surface-elevated: var(--gray-900);
-  --surface-overlay: var(--gray-800);
-  --surface-hover: oklch(20% 0.008 60);
-  --surface-active: oklch(26% 0.008 60);
-  --surface-subtle: oklch(16% 0.008 60);
+  /* 背景层：深暖炭灰（非纯黑），保留轻微暖调与饱和度 */
+  --surface-page: oklch(19% 0.012 60);
+  --surface-card: oklch(26% 0.014 60);
+  --surface-elevated: oklch(32% 0.016 60);
+  --surface-overlay: oklch(30% 0.015 60);
+  --surface-hover: oklch(32% 0.014 60);
+  --surface-active: oklch(38% 0.014 60);
+  --surface-subtle: oklch(22% 0.013 60);
 
-  --text-primary: var(--gray-100);
-  --text-secondary: var(--gray-300);
-  --text-tertiary: var(--gray-400);
-  --text-placeholder: var(--gray-400);
-  --text-on-accent: var(--gray-1000);
+  /* 文字：提高对比度但不过曝，主色偏暖白 */
+  --text-primary: oklch(92% 0.01 60);
+  --text-secondary: oklch(72% 0.012 60);
+  --text-tertiary: oklch(56% 0.012 60);
+  --text-placeholder: oklch(50% 0.012 60);
+  --text-on-accent: oklch(14% 0.014 60);
   --text-inverse: var(--gray-900);
 
-  --border-subtle: oklch(28% 0.008 60);
-  --border-default: oklch(34% 0.008 60);
-  --border-strong: oklch(42% 0.008 60);
-  --border-accent: var(--accent-600);
+  /* 边框：半透明提亮，让卡片边缘清晰但不过重 */
+  --border-subtle: oklch(46% 0.014 60 / 0.28);
+  --border-default: oklch(54% 0.014 60 / 0.4);
+  --border-strong: oklch(62% 0.014 60 / 0.55);
+  --border-accent: var(--accent-500);
 
+  /* 交互色：暗色下用更亮的暖棕，保持品牌感 */
   --interactive-default: var(--accent-400);
   --interactive-hover: var(--accent-300);
   --interactive-active: var(--accent-200);
-  --interactive-disabled: var(--gray-700);
-  --interactive-focus-ring: oklch(62% 0.11 60 / 0.4);
+  --interactive-disabled: oklch(40% 0.008 60);
+  --interactive-focus-ring: oklch(68% 0.12 60 / 0.45);
 
-  --income: var(--error-400);
-  --income-soft: oklch(52% 0.20 20 / 0.1);
-  --expense: var(--success-400);
-  --expense-soft: oklch(58% 0.16 160 / 0.12);
+  /* 收支：暗色下降低饱和度，避免刺眼 */
+  --income: oklch(68% 0.16 20);
+  --income-soft: oklch(56% 0.16 20 / 0.14);
+  --expense: oklch(68% 0.16 160);
+  --expense-soft: oklch(58% 0.14 160 / 0.16);
 
-  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.2);
-  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.3);
-  --shadow-lg: 0 8px 30px oklch(0% 0 0 / 0.4);
-  --shadow-xl: 0 20px 60px oklch(0% 0 0 / 0.5);
+  /* 阴影：暗色下用暖黑 + 低透明度，配合卡片分层 */
+  --shadow-sm: 0 1px 3px oklch(14% 0.02 60 / 0.25);
+  --shadow-md: 0 6px 16px oklch(12% 0.02 60 / 0.32);
+  --shadow-lg: 0 12px 36px oklch(10% 0.02 60 / 0.4);
+  --shadow-xl: 0 24px 70px oklch(8% 0.02 60 / 0.5);
 
   --primary: var(--interactive-default);
   --primary-hover: var(--interactive-hover);
-  --primary-soft: oklch(62% 0.11 60 / 0.1);
-  --primary-contrast: var(--gray-1000);
+  --primary-soft: oklch(62% 0.11 60 / 0.14);
+  --primary-contrast: var(--text-on-accent);
   --bg: var(--surface-page);
   --bg-subtle: var(--surface-hover);
   --surface: var(--surface-card);
@@ -222,7 +229,7 @@
   --text-primary-alias: var(--text-primary);
   --bg-input: var(--surface-hover);
   --border-input: var(--border-default);
-  --shadow-glow: var(--shadow-md);
+  --shadow-glow: 0 0 24px color-mix(in oklab, var(--interactive-default) 18%, transparent);
   --shadow-card: var(--shadow-sm);
 }
 

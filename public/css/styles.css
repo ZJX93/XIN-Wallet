@@ -625,9 +625,12 @@ button { font-family: inherit; cursor: pointer; }
    -------------------------------------------------------------------------- */
 .modal-overlay {
   position: fixed; inset: 0; z-index: var(--z-modal-backdrop);
-  background: oklch(0% 0 0 / 0.45); backdrop-filter: blur(4px);
+  background: oklch(14% 0.02 60 / 0.55); backdrop-filter: blur(4px);
   display: none; align-items: center; justify-content: center;
   padding: var(--space-6);
+}
+[data-theme="dark"] .modal-overlay {
+  background: oklch(18% 0.015 60 / 0.72);
 }
 
 .modal-overlay.show {
@@ -745,6 +748,9 @@ button { font-family: inherit; cursor: pointer; }
 
 [data-theme="light"] .shimmer::after {
   background: linear-gradient(90deg, transparent, oklch(0% 0 0 / 0.04), transparent);
+}
+[data-theme="dark"] .shimmer::after {
+  background: linear-gradient(90deg, transparent, oklch(100% 0 0 / 0.05), transparent);
 }
 
 @keyframes shimmer { 100% { transform: translateX(100%); } }
@@ -1609,7 +1615,7 @@ button { font-family: inherit; cursor: pointer; }
     padding: var(--space-1) 0; flex-shrink: 0; min-height: 60px;
     order: 99; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
     background: var(--surface-card);
-    box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 -2px 12px oklch(8% 0.02 60 / 0.35);
     overflow-x: auto; overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
   }

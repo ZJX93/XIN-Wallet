@@ -625,7 +625,7 @@
   transform-origin: top center;
   transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));  /* 平行下移，无旋转 */
   z-index: calc(var(--n) - var(--i));
-  box-shadow: 0 8px 20px rgba(0,0,0,.18);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
   pointer-events: auto;          /* 每张牌都可点出详情 */
   transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
@@ -779,7 +779,7 @@
   transform-origin: top center;
   transform: translateY(calc(var(--i) * var(--acc-stack-shift, 9px)));
   z-index: calc(var(--n) - var(--i));
-  box-shadow: 0 8px 20px rgba(0,0,0,.18);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
   pointer-events: auto;
   transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
