@@ -63,17 +63,32 @@ class AddTransactionViewModel(
     }
 
     fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String) {
-        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, "$date 00:00:00")).toUnit() }
+        val dt = normalizeDateTime(date)
+        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, dt)).toUnit() }
     }
 
     fun submitTransfer(fromId: Int, toId: Int, amount: Double, note: String, date: String) {
-        submit { txRepo.createTransfer(CreateTransferRequest(fromId, toId, amount, note, "$date 00:00:00")).toUnit() }
+        val dt = normalizeDateTime(date)
+        submit { txRepo.createTransfer(CreateTransferRequest(fromId, toId, amount, note, dt)).toUnit() }
     }
 
-    /** 编辑保存：沿用原始时间部分，避免把 12:30 的消费改成 00:00 */
+    /** 编辑保存：date 已带时间（到秒），直接透传，不再回填原始时间 */
     fun submitEdit(id: Int, accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String) {
-        val originalTime = _state.value.editing?.date?.substringAfter(' ', "")?.takeIf { it.isNotBlank() } ?: "00:00:00"
-        submit { txRepo.updateTransaction(id, UpdateTransactionRequest(accountId, categoryId, type, amount, note, "$date $originalTime")) }
+        val dt = normalizeDateTime(date)
+        submit { txRepo.updateTransaction(id, UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt)) }
+    }
+
+    /**
+     * UI 传来的时间统一整理成 yyyy-MM-dd HH:mm:ss。
+     * 兼容历史只传日期的调用方（补 00:00:00），也兼容多余的毫秒/时区后缀（截断到秒）。
+     */
+    private fun normalizeDateTime(raw: String): String {
+        val s = raw.trim().replace('T', ' ')
+        return when {
+            s.length >= 19 -> s.substring(0, 19)
+            s.length >= 16 -> s.substring(0, 16) + ":00"
+            else -> s.take(10) + " 00:00:00"
+        }
     }
 
     private fun submit(call: suspend () -> ApiResult<Unit>) {

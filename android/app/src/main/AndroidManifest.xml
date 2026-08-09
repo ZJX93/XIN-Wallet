@@ -3,11 +3,19 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+
+    <!--
+        故意不声明 android.permission.CAMERA：
+        我们只用 MediaStore.ACTION_IMAGE_CAPTURE 调起系统相机 App 拍照，不直接访问相机硬件。
+        一旦声明了 CAMERA 却没有在运行时拿到授权，系统会在 launch 时抛 SecurityException
+        直接闪退（AI 记账点"拍照"崩溃的根因）。不声明反而不需要任何运行时授权。
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
         android:name=".XWalletApplication"

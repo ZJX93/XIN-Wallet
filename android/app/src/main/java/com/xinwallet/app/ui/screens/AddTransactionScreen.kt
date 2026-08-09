@@ -33,13 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
-import com.xinwallet.app.ui.components.DatePickerField
+import com.xinwallet.app.ui.components.DateTimePickerField
 import com.xinwallet.app.ui.components.DropdownField
 import com.xinwallet.app.ui.components.LoadingBox
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
-import com.xinwallet.app.util.todayDate
+import com.xinwallet.app.util.todayDateTime
 import kotlinx.coroutines.launch
 
 /**
@@ -65,7 +65,8 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     var categoryId by remember { mutableStateOf<Int?>(null) }
     var fromId by remember { mutableStateOf<Int?>(null) }
     var toId by remember { mutableStateOf<Int?>(null) }
-    var date by remember { mutableStateOf(todayDate()) }
+    // 记账时间精确到秒，格式 yyyy-MM-dd HH:mm:ss，默认取当前时刻
+    var date by remember { mutableStateOf(todayDateTime()) }
     var prefilled by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.loadOptions(if (isEdit) editId else null, month) }
@@ -81,7 +82,8 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             note = tx.note.orEmpty()
             accountId = tx.account?.id
             categoryId = tx.category?.id
-            date = tx.date.take(10)
+            // 后端列表返回的是 yyyy-MM-dd HH:mm:ss，只有日期时补 00:00:00
+            date = tx.date.trim().let { if (it.length >= 19) it.substring(0, 19) else it.take(10) + " 00:00:00" }
             prefilled = true
         }
     }
@@ -184,7 +186,7 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
                     }
                 }
                 item {
-                    DatePickerField(label = "日期", date = date, onDateChange = { date = it })
+                    DateTimePickerField(label = "日期时间", value = date, onValueChange = { date = it })
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = note,

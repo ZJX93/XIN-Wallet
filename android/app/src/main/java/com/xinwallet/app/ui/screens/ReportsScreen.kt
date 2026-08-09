@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xinwallet.app.di.AppContainer
-import com.xinwallet.app.ui.components.CategoryBars
+import com.xinwallet.app.ui.components.CategoryPie
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
@@ -173,11 +173,11 @@ private fun ReportContent(
         }
 
         item { SectionTitle("支出分类占比") }
-        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryBars(report.expenseByCategory) } } }
+        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryPie(report.expenseByCategory) } } }
         item { Spacer(Modifier.height(8.dp)) }
 
         item { SectionTitle("收入分类占比") }
-        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryBars(report.incomeByCategory) } } }
+        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryPie(report.incomeByCategory) } } }
         item { Spacer(Modifier.height(8.dp)) }
 
         item { SectionTitle("趋势（收入/支出）") }

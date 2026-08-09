@@ -160,12 +160,21 @@ fun AiScanScreen(navController: NavHostController) {
                 ) {
                     OutlinedButton(
                         onClick = {
-                            // 相机输出到 cache/images，路径需与 res/xml/file_paths.xml 中的 cache-path 对应
-                            val dir = File(context.cacheDir, "images").apply { mkdirs() }
-                            val file = File(dir, "bill_${System.currentTimeMillis()}.jpg")
-                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                            cameraUri = uri
-                            takePhoto.launch(uri)
+                            // 相机输出到 cache/images，路径需与 res/xml/file_paths.xml 中的 cache-path 对应。
+                            // 整段包 try/catch：部分机型没有可用相机 App（ActivityNotFoundException），
+                            // 或系统对拍照 Intent 有额外限制（SecurityException），不能让它直接崩掉页面。
+                            try {
+                                val dir = File(context.cacheDir, "images").apply { mkdirs() }
+                                val file = File(dir, "bill_${System.currentTimeMillis()}.jpg")
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                cameraUri = uri
+                                takePhoto.launch(uri)
+                            } catch (e: Exception) {
+                                cameraUri = null
+                                scope.launch {
+                                    snackbar.showSnackbar("无法调起相机（${e.javaClass.simpleName}），请改用「从相册选择」")
+                                }
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     ) {

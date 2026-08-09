@@ -13,11 +13,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,12 +36,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.Transaction
@@ -288,6 +294,137 @@ private fun formatDateMillis(millis: Long): String {
         c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH)
     )
 }
+
+/**
+ * 只读「日期 + 时间（到秒）」输入框，值格式固定为 yyyy-MM-dd HH:mm:ss。
+ *
+ * 交互：点输入框或日历图标改日期，点时钟图标改时间；时间弹窗里除了 Material3 的
+ * 时/分转盘，额外给一个「秒」输入框，满足按秒记账的需求（后端 date 字段本来就是 datetime）。
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun DateTimePickerField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
+    var showDate by remember { mutableStateOf(false) }
+    var showTime by remember { mutableStateOf(false) }
+    val parts = remember(value) { parseDateTimeParts(value) }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        singleLine = true,
+        trailingIcon = {
+            Row {
+                IconButton(onClick = { showDate = true }) { Icon(Icons.Filled.DateRange, contentDescription = "选择日期") }
+                IconButton(onClick = { showTime = true }) { Icon(Icons.Filled.Schedule, contentDescription = "选择时间") }
+            }
+        },
+        modifier = modifier.fillMaxWidth().clickable { showDate = true }
+    )
+
+    if (showDate) {
+        val pickerState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = utcMidnightMillis(parts[0], parts[1], parts[2])
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDate = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        val c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
+                        onValueChange(
+                            buildDateTime(
+                                c.get(java.util.Calendar.YEAR),
+                                c.get(java.util.Calendar.MONTH) + 1,
+                                c.get(java.util.Calendar.DAY_OF_MONTH),
+                                parts[3], parts[4], parts[5]
+                            )
+                        )
+                    }
+                    showDate = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDate = false }) { Text("取消") }
+            }
+        ) { androidx.compose.material3.DatePicker(state = pickerState) }
+    }
+
+    if (showTime) {
+        val timeState = androidx.compose.material3.rememberTimePickerState(
+            initialHour = parts[3], initialMinute = parts[4], is24Hour = true
+        )
+        var secText by remember { mutableStateOf(String.format(java.util.Locale.CHINA, "%02d", parts[5])) }
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val sec = (secText.toIntOrNull() ?: 0).coerceIn(0, 59)
+                    onValueChange(buildDateTime(parts[0], parts[1], parts[2], timeState.hour, timeState.minute, sec))
+                    showTime = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showTime = false }) { Text("取消") }
+            },
+            title = { Text("选择时间") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    androidx.compose.material3.TimePicker(state = timeState)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("秒", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(10.dp))
+                        OutlinedTextField(
+                            value = secText,
+                            onValueChange = { input -> secText = input.filter { it.isDigit() }.take(2) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(96.dp)
+                        )
+                    }
+                }
+            }
+        )
+    }
+}
+
+/** 解析 yyyy-MM-dd HH:mm:ss（兼容只有日期的旧值），返回 [年, 月1-12, 日, 时, 分, 秒] */
+private fun parseDateTimeParts(value: String): IntArray {
+    val text = value.trim()
+    val parsed = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA).apply { isLenient = false }.parse(text)
+    }.getOrNull() ?: runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).apply { isLenient = false }.parse(text.take(10))
+    }.getOrNull()
+
+    val c = java.util.Calendar.getInstance()
+    if (parsed != null) c.time = parsed
+    return intArrayOf(
+        c.get(java.util.Calendar.YEAR),
+        c.get(java.util.Calendar.MONTH) + 1,
+        c.get(java.util.Calendar.DAY_OF_MONTH),
+        c.get(java.util.Calendar.HOUR_OF_DAY),
+        c.get(java.util.Calendar.MINUTE),
+        c.get(java.util.Calendar.SECOND)
+    )
+}
+
+private fun buildDateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String =
+    String.format(java.util.Locale.CHINA, "%04d-%02d-%02d %02d:%02d:%02d", year, month, day, hour, minute, second)
+
+/** DatePicker 用 UTC 零点表示"某一天"，这里按 UTC 构造，避免时区把日期挪一天 */
+private fun utcMidnightMillis(year: Int, month: Int, day: Int): Long =
+    java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(year, month - 1, day)
+    }.timeInMillis
 
 @Composable
 fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
