@@ -603,11 +603,10 @@
 .inv-cover-total { margin-left: auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
 .inv-cover-viewall { margin-left: var(--space-2); font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
-.inv-stack-cards { padding: 0 var(--space-2); }
+.inv-stack-cards { padding: 0 var(--space-2); position: relative; isolation: isolate; }
 
-/* 收起态：以右上角为锚的扇形微展牌堆（绝对定位，不撑开容器） */
+/* 收起态：平行下移叠牌（绝对定位，不撑开容器） */
 .inv-stack:not([data-expanded="true"]) .inv-stack-cards {
-  position: relative;
   padding-bottom: calc((var(--n, 1) - 1) * var(--inv-stack-shift, 9px));  /* 容纳平行下移溢出 */
 }
 .inv-stack:not([data-expanded="true"]) .inv-stack-card {
@@ -617,19 +616,17 @@
   transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));  /* 平行下移，无旋转 */
   z-index: calc(var(--n) - var(--i));
   box-shadow: 0 8px 20px rgba(0,0,0,.18);
-  pointer-events: none;          /* 收起时仅顶卡可交互 */
   cursor: pointer;
+  pointer-events: auto;          /* 每张牌都可点出详情 */
   transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
 }
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:first-child {
   position: relative;            /* 顶卡在流内，撑开容器高度（不撑开 grid 行） */
   transform: none;
-  z-index: 999;
-  pointer-events: auto;
-  cursor: pointer;
+  z-index: calc(var(--n) + 1);
   box-shadow: var(--shadow-md);
 }
-/* 收起态锁死位移，规避 .goal-card:hover 把卡片弹出牌堆（first-child --i=0 → none） */
+/* 收起态锁死位移，规避 hover 把卡片弹出牌堆 */
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:hover {
   transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));
   box-shadow: var(--shadow-md);
@@ -659,8 +656,9 @@
 .inv-detail-val { font-size: var(--text-body-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
 .inv-detail-note { font-size: var(--text-body-sm); color: var(--text-muted); background: var(--surface-subtle); border-left: 3px solid var(--accent-500); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
 
-/* 详情弹窗需叠在「全屏网格」之上（HTML 中它位于网格之前，需显式抬升层级） */
-.modal-overlay#invDetailModal { z-index: calc(var(--z-modal-backdrop) + 10); }
+/* 详情弹窗需叠在「全屏网格」与牌堆之上（牌堆 z-index 可达 999+） */
+.modal-overlay#invDetailModal { z-index: 1200; }
+.modal-overlay#invGridOverlay { z-index: calc(var(--z-modal-backdrop) + 5); }
 
 /* ============ 理财：全屏网格铺开 ============ */
 .inv-grid-panel {
