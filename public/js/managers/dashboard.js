@@ -341,8 +341,8 @@ const DashboardManager = {
     renderBalanceOverview(data) {
         const el = document.getElementById('dashBalanceOverview');
         if (!el) return;
-        // 总资产 = 账户余额 + 投资市值
-        const totalAssets = data.totalAssets + (data.investments?.totalValue || 0);
+        // 总资产（后端已合并账户余额 + 投资市值）
+        const totalAssets = data.totalAssets;
         const totalDebt = data.debts?.totalRemaining || 0;
         const netWorth = totalAssets - totalDebt;
         const debtRatio = totalAssets > 0 ? (totalDebt / totalAssets * 100) : 0;

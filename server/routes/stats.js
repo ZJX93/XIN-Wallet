@@ -201,8 +201,8 @@ router.get('/dashboard', async (req, res) => {
         });
         const monthsOut = monthsEnhanced.reverse();
 
-        // 金额精度（M3）：总资产是仪表盘首屏核心数字，用整数分精确累加
-        const totalAssets = sumAmounts(accounts, a => a.balance);
+        // 金额精度（M3）：总资产 = 账户余额 + 投资市值，用整数分精确累加
+        const totalAssets = addAmounts(sumAmounts(accounts, a => a.balance), parseFloat(invSummary.total_value || 0));
 
         const budgetMonthLastDay = parseInt(monthEnd.slice(8, 10));
         const budgetDayOfMonth = now.getDate();
@@ -371,7 +371,10 @@ router.get('/dashboard/detail', async (req, res) => {
                     [req.userId]
                 );
                 // 金额精度（M3）：资产明细求和与占比走整数分域
-                const totalAssets = sumAmounts(accounts, a => a.balance);
+                // 总资产 = 账户余额 + 投资市值；单账户占比按「余额 + 关联投资市值」计算
+                const accountTotal = sumAmounts(accounts, a => a.balance);
+                const investTotal = sumAmounts(accounts, a => a.inv_value);
+                const totalAssets = addAmounts(accountTotal, investTotal);
                 return res.json(success({
                     type: 'assets', title: '总资产明细',
                     total: totalAssets,
@@ -379,7 +382,7 @@ router.get('/dashboard/detail', async (req, res) => {
                         name: a.name, icon: a.icon, type: a.type,
                         balance: parseFloat(a.balance),
                         inv_value: parseFloat(a.inv_value),
-                        ratio: percentOf(a.balance, totalAssets, 10)
+                        ratio: percentOf(addAmounts(a.balance, a.inv_value), totalAssets, 10)
                     }))
                 }));
             default: return res.status(400).json(fail('无效的明细类型'));
