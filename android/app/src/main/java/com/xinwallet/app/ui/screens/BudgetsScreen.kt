@@ -256,4 +256,3 @@ private fun BudgetFormDialog(
     )
 }
 
-private fun trimAmount(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()

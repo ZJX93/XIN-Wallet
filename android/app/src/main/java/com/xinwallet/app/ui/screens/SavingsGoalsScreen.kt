@@ -390,4 +390,3 @@ private fun IconChoice(emoji: String, selected: Boolean, onClick: () -> Unit) {
     ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(emoji, style = MaterialTheme.typography.titleMedium) } }
 }
 
-private fun trimAmount(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()

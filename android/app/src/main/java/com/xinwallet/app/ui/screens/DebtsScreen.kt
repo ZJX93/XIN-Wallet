@@ -405,6 +405,7 @@ private fun RepaymentDialog(
     )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DebtDetailDialog(
     loading: Boolean,
@@ -460,4 +461,3 @@ private fun DebtDetailDialog(
     )
 }
 
-private fun trimAmount(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()

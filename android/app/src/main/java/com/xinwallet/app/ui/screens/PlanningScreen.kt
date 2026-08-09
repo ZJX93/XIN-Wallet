@@ -24,9 +24,9 @@ import androidx.navigation.NavHostController
 fun PlanningScreen(navController: NavHostController) {
     var tab by remember { mutableStateOf(0) }
     val tabs = listOf(
-        Triple("预算", Icons.Filled.AccountBalance),
-        Triple("储蓄目标", Icons.Filled.Savings),
-        Triple("债务", Icons.Filled.RequestQuote)
+        "预算" to Icons.Filled.AccountBalance,
+        "储蓄目标" to Icons.Filled.Savings,
+        "债务" to Icons.Filled.RequestQuote
     )
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
