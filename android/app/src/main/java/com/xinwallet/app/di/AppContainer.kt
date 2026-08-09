@@ -9,9 +9,12 @@ import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.AiRepository
 import com.xinwallet.app.data.repository.BudgetRepository
 import com.xinwallet.app.data.repository.CategoryRepository
+import com.xinwallet.app.data.repository.CsvRepository
+import com.xinwallet.app.data.repository.DebtRepository
+import com.xinwallet.app.data.repository.ReportRepository
+import com.xinwallet.app.data.repository.TagRepository
 import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.DashboardRepository
-import com.xinwallet.app.data.repository.DebtRepository
 import com.xinwallet.app.data.repository.InvestmentRepository
 import com.xinwallet.app.data.repository.SavingsGoalRepository
 import com.xinwallet.app.data.repository.TransactionRepository
@@ -53,6 +56,12 @@ object AppContainer {
         private set
     lateinit var debtRepository: DebtRepository
         private set
+    lateinit var reportRepository: ReportRepository
+        private set
+    lateinit var tagRepository: TagRepository
+        private set
+    lateinit var csvRepository: CsvRepository
+        private set
 
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
@@ -89,6 +98,9 @@ object AppContainer {
         budgetRepository = BudgetRepository { api }
         savingsGoalRepository = SavingsGoalRepository { api }
         debtRepository = DebtRepository { api }
+        reportRepository = ReportRepository { api }
+        tagRepository = TagRepository { api }
+        csvRepository = CsvRepository { api }
     }
 
     private fun buildRetrofit(baseUrl: String, gson: com.google.gson.Gson): Retrofit {

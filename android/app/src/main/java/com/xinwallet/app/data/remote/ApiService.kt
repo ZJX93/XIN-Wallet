@@ -2,6 +2,7 @@ package com.xinwallet.app.data.remote
 
 import com.xinwallet.app.data.model.*
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -166,4 +167,37 @@ interface ApiService {
 
     @DELETE("debts/{id}/repayments/{rid}")
     suspend fun deleteRepayment(@Path("id") id: Int, @Path("rid") rid: Int): Response<ApiResponse<Unit>>
+
+    /* 报表 */
+    @GET("reports")
+    suspend fun getReport(
+        @Query("type") type: String,
+        @Query("period") period: String
+    ): Response<ApiResponse<FinanceReport>>
+
+    /* 标签 */
+    @GET("tags")
+    suspend fun getTags(): Response<ApiResponse<List<Tag>>>
+
+    @POST("tags")
+    suspend fun createTag(@Body req: CreateTagRequest): Response<ApiResponse<IdResponse>>
+
+    @PUT("tags/{id}")
+    suspend fun updateTag(@Path("id") id: Int, @Body req: UpdateTagRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("tags/{id}")
+    suspend fun deleteTag(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    /* 数据导入导出 */
+    /** 导出 CSV：后端直接返回 text/csv 文本（非 JSON 包装），故用 ResponseBody 接收 */
+    @GET("csv/export/csv")
+    suspend fun exportCsv(@Query("type") type: String): Response<ResponseBody>
+
+    /** 导出完整账本（JSON）：同样直接返回文件内容 */
+    @GET("csv/export/full")
+    suspend fun exportFull(): Response<ResponseBody>
+
+    /** 导入交易 CSV：csv 为文件文本 */
+    @POST("csv/import/csv")
+    suspend fun importCsv(@Body req: ImportCsvRequest): Response<ApiResponse<CsvImportResult>>
 }

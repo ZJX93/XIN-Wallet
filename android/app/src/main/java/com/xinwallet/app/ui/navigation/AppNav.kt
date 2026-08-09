@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -38,6 +39,8 @@ import com.xinwallet.app.ui.screens.InvestmentsScreen
 import com.xinwallet.app.ui.screens.LoginScreen
 import com.xinwallet.app.ui.screens.ProfileScreen
 import com.xinwallet.app.ui.screens.PlanningScreen
+import com.xinwallet.app.ui.screens.ReportsScreen
+import com.xinwallet.app.ui.screens.TagsScreen
 import com.xinwallet.app.ui.screens.TransactionsScreen
 
 sealed class Screen(val route: String) {
@@ -59,6 +62,8 @@ sealed class Screen(val route: String) {
     }
     object Profile : Screen("profile")
     object Planning : Screen("planning")
+    object Reports : Screen("reports")
+    object Tags : Screen("tags")
 }
 
 private val bottomItems = listOf(
@@ -67,6 +72,7 @@ private val bottomItems = listOf(
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
     Screen.Investments to ("理财" to Icons.Filled.PieChart),
     Screen.Planning to ("规划" to Icons.Filled.Savings),
+    Screen.Reports to ("报表" to Icons.Filled.BarChart),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
 
@@ -159,5 +165,7 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
         }
         composable(Screen.Profile.route) { ProfileScreen(navController, onLogout) }
         composable(Screen.Planning.route) { PlanningScreen(navController) }
+        composable(Screen.Reports.route) { ReportsScreen() }
+        composable(Screen.Tags.route) { TagsScreen(navController) }
     }
 }

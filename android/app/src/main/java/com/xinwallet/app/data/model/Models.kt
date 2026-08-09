@@ -568,3 +568,81 @@ data class DebtSummary(
     val payable: Double = 0.0,
     val receivable: Double = 0.0
 )
+
+/* ----------------------------- 报表 ----------------------------- */
+
+/** GET /reports?type=&period= 的完整返回（仅声明用到字段，Gson 忽略其余） */
+data class FinanceReport(
+    val type: String = "",
+    val period: String = "",
+    val label: String = "",
+    val summary: ReportSummary = ReportSummary(),
+    @SerializedName("dailyTrend") val dailyTrend: List<DailyTrendPoint> = emptyList(),
+    @SerializedName("expenseByCategory") val expenseByCategory: List<ReportCategorySlice> = emptyList(),
+    @SerializedName("incomeByCategory") val incomeByCategory: List<ReportCategorySlice> = emptyList(),
+    @SerializedName("topExpenses") val topExpenses: List<TopExpense> = emptyList(),
+    val compare: ReportCompare? = null
+)
+
+data class ReportSummary(
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val balance: Double = 0.0,
+    @SerializedName("savingsRate") val savingsRate: Double = 0.0,
+    @SerializedName("transactionCount") val transactionCount: Int = 0,
+    @SerializedName("avgDailyExpense") val avgDailyExpense: Double = 0.0
+)
+
+/** 分类占比切片（支出/收入共用）。total 即该分类在周期内的发生额。 */
+data class ReportCategorySlice(
+    val id: Int = 0,
+    val name: String = "",
+    val icon: String? = null,
+    @SerializedName("parent_id") val parentId: Int? = null,
+    val total: Double = 0.0
+)
+
+data class DailyTrendPoint(
+    val date: String = "",
+    val income: Double = 0.0,
+    val expense: Double = 0.0
+)
+
+data class TopExpense(
+    val id: Int = 0,
+    val date: String = "",
+    val amount: Double = 0.0,
+    val note: String? = null,
+    @SerializedName("category_name") val categoryName: String? = null,
+    @SerializedName("category_icon") val categoryIcon: String? = null
+)
+
+/** 环比：与上个周期对比 */
+data class ReportCompare(
+    val period: String = "",
+    val label: String = "",
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val balance: Double = 0.0
+)
+
+/* ----------------------------- 标签 ----------------------------- */
+
+data class Tag(
+    val id: Int = 0,
+    val name: String = "",
+    val color: String = "#3b82f6",
+    val icon: String = "🏷️"
+)
+
+data class CreateTagRequest(val name: String, val color: String, val icon: String)
+data class UpdateTagRequest(val name: String, val color: String, val icon: String)
+
+/* ----------------------------- 数据导入导出 ----------------------------- */
+
+data class ImportCsvRequest(val type: String, val csv: String)
+
+data class CsvImportResult(
+    val imported: Int = 0,
+    val errors: List<String> = emptyList()
+)
