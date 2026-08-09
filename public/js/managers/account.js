@@ -94,7 +94,7 @@ const AccountManager = {
 
         container.innerHTML = groupList.map(([type, accounts]) => {
             const label = typeLabels[type] || type;
-            const total = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+            const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
             const cards = accounts.map((a, idx) => buildCard(a, idx, accounts.length)).join('');
             const icon = accounts[0].icon || '🏦';
             return `

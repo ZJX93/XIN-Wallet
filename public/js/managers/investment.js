@@ -488,7 +488,7 @@ const InvestmentManager = {
 
         container.innerHTML = groupList.map(([typeName, items]) => {
             const icon = items[0].type_icon || '📈';
-            const total = items.reduce((s, i) => s + i.current_value, 0);
+            const total = items.reduce((s, i) => s + (Number(i.current_value) || 0), 0);
             const cards = items.map((i, idx) => buildCard(i, idx, items.length)).join('');
             return `
             <div class="inv-stack">
