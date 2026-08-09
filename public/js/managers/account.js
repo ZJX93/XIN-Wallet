@@ -98,7 +98,7 @@ const AccountManager = {
             const icon = accounts[0].icon || '🏦';
             return `
             <div class="acc-stack">
-                <button class="acc-deck-cover" type="button" data-action="view-all" title="查看全部账户">
+                <button class="acc-deck-cover" type="button" data-action="view-all" data-type="${escapeHtml(type)}" title="查看全部账户">
                     <span class="acc-cover-icon">${escapeHtml(icon)}</span>
                     <span class="acc-cover-meta">
                         <span class="acc-cover-name">${escapeHtml(label)}</span>
@@ -113,9 +113,9 @@ const AccountManager = {
             </div>`;
         }).join('');
 
-        // 事件委托：封面「查看全部」→ 全屏网格铺开
+        // 事件委托：封面「查看全部」→ 全屏网格铺开（仅当前类别）
         container.querySelectorAll('[data-action="view-all"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openAccGrid());
+            btn.addEventListener('click', () => this.openAccGrid(btn.dataset.type));
         });
 
         // 事件委托：点击单张账户卡 → 弹出资金明细（点在操作按钮上则交给按钮处理）
@@ -325,11 +325,14 @@ const AccountManager = {
             <div class="goal-amounts"><span>${typeLabels[a.type] || a.type}</span><span><strong>${fmt(a.balance)}</strong></span></div>
         </div>`;
     },
-    openAccGrid() {
-        const items = (cache.accounts || []).filter(a => !a.closed);
-        if (!items.length) { showToast('暂无账户', 'warning'); return; }
+    openAccGrid(type) {
+        const all = (cache.accounts || []).filter(a => !a.closed);
+        const items = type ? all.filter(a => a.type === type) : all;
+        if (!items.length) { showToast(type ? '该类型暂无账户' : '暂无账户', 'warning'); return; }
         const grid = document.getElementById('accGridBody');
         grid.innerHTML = items.map(a => this.buildAccGridCard(a)).join('');
+        const label = type ? (this.typeLabels[type] || type) : '全部账户';
+        document.getElementById('accGridTitle').textContent = label;
         document.getElementById('accGridCount').textContent = items.length;
         grid.querySelectorAll('[data-acc-id]').forEach(card => {
             const handler = () => { const id = parseInt(card.dataset.accId); if (!isNaN(id)) this.openDetail(id); };

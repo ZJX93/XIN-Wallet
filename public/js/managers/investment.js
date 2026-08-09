@@ -492,7 +492,7 @@ const InvestmentManager = {
             const cards = items.map((i, idx) => buildCard(i, idx, items.length)).join('');
             return `
             <div class="inv-stack">
-                <button class="inv-deck-cover" type="button" data-action="view-all" title="查看全部持仓">
+                <button class="inv-deck-cover" type="button" data-action="view-all" data-type="${escapeHtml(typeName)}" title="查看全部持仓">
                     <span class="inv-cover-icon">${escapeHtml(icon)}</span>
                     <span class="inv-cover-meta">
                         <span class="inv-cover-name">${escapeHtml(typeName)}</span>
@@ -507,9 +507,9 @@ const InvestmentManager = {
             </div>`;
         }).join('');
 
-        // 事件委托：封面「查看全部」→ 全屏网格铺开
+        // 事件委托：封面「查看全部」→ 全屏网格铺开（仅当前类别）
         container.querySelectorAll('[data-action="view-all"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openInvGrid());
+            btn.addEventListener('click', () => this.openInvGrid(btn.dataset.type));
         });
 
         // 事件委托：点击单张牌 → 弹出该卡详情（点在操作按钮上则交给按钮处理）
@@ -599,11 +599,13 @@ const InvestmentManager = {
             <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
         </div>`;
     },
-    openInvGrid() {
-        const items = cache.investments || [];
-        if (!items.length) { showToast('暂无持仓', 'warning'); return; }
+    openInvGrid(typeName) {
+        const all = cache.investments || [];
+        const items = typeName ? all.filter(i => i.type_name === typeName) : all;
+        if (!items.length) { showToast(typeName ? `${escapeHtml(typeName)} 暂无持仓` : '暂无持仓', 'warning'); return; }
         const grid = document.getElementById('invGridBody');
         grid.innerHTML = items.map(i => this.buildGridCard(i)).join('');
+        document.getElementById('invGridTitle').textContent = typeName ? escapeHtml(typeName) : '全部持仓';
         document.getElementById('invGridCount').textContent = items.length;
         grid.querySelectorAll('[data-inv-id]').forEach(card => {
             const handler = () => { const id = parseInt(card.dataset.invId); if (!isNaN(id)) this.openInvDetail(id); };
