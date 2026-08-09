@@ -58,7 +58,7 @@ interface ApiService {
     suspend fun createTransfer(@Body req: CreateTransferRequest): Response<ApiResponse<IdResponse>>
 
     /* 分类 */
-    @GET("categories")
+    @GET("categories?flat=1")
     suspend fun getCategories(): Response<ApiResponse<List<Category>>>
 
     /* 理财 */
