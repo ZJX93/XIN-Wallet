@@ -606,30 +606,37 @@
 
 .inv-stack-cards { padding: 0 var(--space-2); }
 
-/* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
+/* 收起态：以右上角为锚的扇形微展牌堆（绝对定位，不撑开容器） */
+.inv-stack:not([data-expanded="true"]) .inv-stack-cards {
+  position: relative;
+  padding-bottom: 16px;          /* 容纳旋转后的下边溢出 */
+}
 .inv-stack:not([data-expanded="true"]) .inv-stack-card {
-  height: 185px;
-  overflow: hidden;
-  margin-top: calc(var(--i) * -165px);
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
-  transform-origin: center top;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  transform-origin: top right;   /* 右上角锚定 */
+  transform: rotate(calc(var(--i) * 3deg)) translateX(calc(var(--i) * -3px));
   z-index: calc(var(--n) - var(--i));
-  box-shadow: 0 -2px 0 rgba(255,255,255,.05), 0 10px 22px rgba(0,0,0,.18);
-  pointer-events: none;                /* 收起时仅顶层可交互，避免错位点击 */
-  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
+  box-shadow: 0 8px 20px rgba(0,0,0,.18);
+  pointer-events: none;          /* 收起时仅顶卡可交互 */
+  transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
 }
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:first-child {
+  position: relative;            /* 顶卡在流内，撑开容器高度（不撑开 grid 行） */
+  transform: none;
+  z-index: 999;
   pointer-events: auto;
   box-shadow: var(--shadow-md);
 }
-/* 规避 .goal-card:hover 在收起态把卡片弹出牌堆 */
+/* 收起态锁死旋转，规避 .goal-card:hover 把卡片弹出牌堆（first-child --i=0 → none） */
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:hover {
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  transform: rotate(calc(var(--i) * 3deg)) translateX(calc(var(--i) * -3px));
   box-shadow: var(--shadow-md);
 }
 
 /* 展开态：摊开成整洁列表，逐张发牌 */
 .inv-stack[data-expanded="true"] .inv-stack-card {
+  position: relative;
   height: auto;
   overflow: visible;
   margin-top: var(--space-3);
@@ -684,30 +691,36 @@
 
 .acc-stack-cards { padding: 0 var(--space-2); }
 
-/* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
+/* 收起态：以右上角为锚的扇形微展牌堆（绝对定位，不撑开容器） */
+.acc-stack:not([data-expanded="true"]) .acc-stack-cards {
+  position: relative;
+  padding-bottom: 12px;
+}
 .acc-stack:not([data-expanded="true"]) .acc-stack-card {
-  height: 120px;
-  overflow: hidden;
-  margin-top: calc(var(--i) * -104px);
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
-  transform-origin: center top;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  transform-origin: top right;
+  transform: rotate(calc(var(--i) * 2.4deg)) translateX(calc(var(--i) * -2px));
   z-index: calc(var(--n) - var(--i));
-  box-shadow: 0 -2px 0 rgba(255,255,255,.05), 0 10px 22px rgba(0,0,0,.18);
+  box-shadow: 0 8px 20px rgba(0,0,0,.18);
   pointer-events: none;
-  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
+  transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
 }
 .acc-stack:not([data-expanded="true"]) .acc-stack-card:first-child {
+  position: relative;
+  transform: none;
+  z-index: 999;
   pointer-events: auto;
   box-shadow: var(--shadow-md);
 }
-/* 规避 .account-card:hover 在收起态把卡片弹出牌堆 */
 .acc-stack:not([data-expanded="true"]) .acc-stack-card:hover {
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  transform: rotate(calc(var(--i) * 2.4deg)) translateX(calc(var(--i) * -2px));
   box-shadow: var(--shadow-md);
 }
 
 /* 展开态：摊开成整洁列表，逐张发牌 */
 .acc-stack[data-expanded="true"] .acc-stack-card {
+  position: relative;
   height: auto;
   overflow: visible;
   margin-top: var(--space-3);
