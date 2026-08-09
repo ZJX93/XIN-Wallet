@@ -67,7 +67,9 @@ function calcMonthlyPayment(principal, annualRate, termMonths, method) {
     return 0;
 }
 
-// 生成还款计划（仅等额本息 / 等额本金）
+// 生成还款计划（仅等额本息 / 等额本金），遵循银行实际规则：
+// - 等额本息每期月供固定（优先使用用户录入的实际月供，与银行账单对齐）
+// - 最后一期抹平剩余本金尾差，确保本金精确还清
 function buildDebtSchedule(debt) {
     const P = parseFloat(debt.principal) || 0;
     const r = (parseFloat(debt.interest_rate) || 0) / 100 / 12;
@@ -76,6 +78,10 @@ function buildDebtSchedule(debt) {
     if (P <= 0 || n <= 0 || (method !== 'equal_installment' && method !== 'equal_principal')) return [];
     const schedule = [];
     let remain = P;
+    // 等额本息：优先用用户录入的实际月供，否则回退公式计算的理论值
+    const baseMonthly = method === 'equal_installment'
+        ? (parseFloat(debt.monthly_payment) || calcMonthlyPayment(P, debt.interest_rate, n, 'equal_installment'))
+        : 0;
     for (let k = 1; k <= n; k++) {
         const interest = remain * r;
         let principalPart, payment;
@@ -83,15 +89,20 @@ function buildDebtSchedule(debt) {
             principalPart = P / n;
             payment = principalPart + interest;
         } else {
-            payment = calcMonthlyPayment(P, debt.interest_rate, n, 'equal_installment');
+            payment = baseMonthly;
             principalPart = payment - interest;
+            if (k === n) {
+                // 末期抹平尾差：剩余本金一次还清，当期月供 = 本金 + 利息
+                principalPart = remain;
+                payment = principalPart + interest;
+            }
         }
         schedule.push({
             period: k,
             payment: Math.round(payment * 100) / 100,
             principal: Math.round(principalPart * 100) / 100,
             interest: Math.round(interest * 100) / 100,
-            remainAfter: Math.round((remain - principalPart) * 100) / 100
+            remainAfter: k === n ? 0 : Math.round((remain - principalPart) * 100) / 100
         });
         remain -= principalPart;
     }

@@ -362,7 +362,7 @@
                                 <option value="minimum">最低还款额（信用卡）</option>
                                 <option value="lump_sum">一次性还本付息</option>
                             </select></div>
-                            <div class="form-group"><label>每期应还 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"></div>
+                            <div class="form-group"><label>每期应还 (¥)</label><input type="number" id="debtMonthly" step="0.01" min="0" autocomplete="off" placeholder="自动计算类可留空"><small style="display:block;margin-top:4px;color:var(--text-muted,#888);font-size:12px;">自动类留空按公式生成理论值；若与银行账单不符，请直接填写银行实际月供</small></div>
                         </div>
                         <div class="form-row">
                             <div class="form-group"><label>起息日</label><input type="date" id="debtStart"></div>
