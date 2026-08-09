@@ -36,6 +36,77 @@ const DebtManager = {
             const el = document.getElementById(id);
             if (el) el.addEventListener('change', () => this._autoCalcDates(id));
         });
+        // 月供实时预览（对齐银行计算）
+        ['debtPrincipal', 'debtRate', 'debtTerm', 'debtMethod', 'debtMonthly'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => this._updateMonthlyPreview());
+        });
+    },
+
+    // 等额本息/等额本金/先息后本 月供（与后端 calcMonthlyPayment 一致的央行公式）
+    _calcMonthlyPayment(P, annualRate, n, method) {
+        P = parseFloat(P) || 0;
+        const r = (parseFloat(annualRate) || 0) / 100 / 12;
+        n = parseInt(n) || 0;
+        if (P <= 0) return 0;
+        if (method === 'equal_installment') {
+            if (n <= 0) return 0;
+            if (r === 0) return P / n;
+            const pow = Math.pow(1 + r, n);
+            return (P * r * pow) / (pow - 1);
+        }
+        if (method === 'equal_principal') {
+            if (n <= 0) return 0;
+            return P / n + P * r; // 首期月供
+        }
+        if (method === 'interest_only') return P * r;
+        return 0;
+    },
+
+    // 由实际月供反推银行实际执行年利率（牛顿迭代），返回百分数
+    _calcImpliedRate(P, n, monthly) {
+        P = parseFloat(P) || 0; n = parseInt(n) || 0; monthly = parseFloat(monthly) || 0;
+        if (P <= 0 || n <= 0 || monthly <= 0) return null;
+        if (monthly <= P / n) return 0;
+        let r = 0.005;
+        for (let i = 0; i < 80; i++) {
+            const one = 1 + r;
+            const pow = Math.pow(one, n);
+            const f = P * r * pow / (pow - 1) - monthly;
+            const df = P * (pow * (pow - 1) - r * n * pow) / Math.pow(pow - 1, 2);
+            if (Math.abs(df) < 1e-15) break;
+            const rNext = r - f / df;
+            if (Math.abs(rNext - r) < 1e-16) { r = rNext; break; }
+            r = rNext;
+        }
+        if (!(r > 0)) return null;
+        return r * 12 * 100;
+    },
+
+    // 实时预览：理论月供 + 银行实际执行利率（当你填的实际月供与公式不符时反推）
+    _updateMonthlyPreview() {
+        const hint = document.getElementById('debtMonthlyHint');
+        if (!hint) return;
+        const methodEl = document.getElementById('debtMethod');
+        const method = methodEl ? methodEl.value : 'manual';
+        const auto = ['equal_installment', 'equal_principal', 'interest_only'].includes(method);
+        if (!auto) { hint.textContent = '手动还款类：月供以“每期应还”为准'; return; }
+        const P = parseFloat(document.getElementById('debtPrincipal').value);
+        const rate = parseFloat(document.getElementById('debtRate').value);
+        const term = parseInt(document.getElementById('debtTerm').value);
+        if (!(P > 0) || !(term > 0)) { hint.textContent = '填写本金与期数后自动测算月供'; return; }
+        const m = this._calcMonthlyPayment(P, rate, term, method);
+        let txt = `按公式理论月供 ≈ ¥${m.toFixed(2)}`;
+        const actual = parseFloat(document.getElementById('debtMonthly').value);
+        if (document.getElementById('debtMonthly').value !== '' && actual > 0 && method === 'equal_installment') {
+            if (Math.abs(actual - m) > 0.005) {
+                const implied = this._calcImpliedRate(P, term, actual);
+                if (implied != null) txt += ` ｜ 银行实际执行利率 ≈ ${implied.toFixed(4)}%`;
+            } else {
+                txt += '（与公式一致）';
+            }
+        }
+        hint.textContent = txt;
     },
 
     async refresh() {
@@ -256,6 +327,7 @@ const DebtManager = {
         document.getElementById('debtModal').classList.add('show');
         document.getElementById('debtEditId').value = '';
         ['debtName','debtType','debtCreditor','debtPrincipal','debtRate','debtTerm','debtMethod','debtMonthly','debtStart','debtDue','debtBillingDay','debtPaymentDay','debtMinPayment','debtNote','debtAccount'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        this._updateMonthlyPreview();
         document.getElementById('debtType').value = 'loan';
         document.getElementById('debtMethod').value = 'manual';
         // 默认沿用当前列表的筛选方向
