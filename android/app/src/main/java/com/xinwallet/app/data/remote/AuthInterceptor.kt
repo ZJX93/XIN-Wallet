@@ -1,6 +1,7 @@
 package com.xinwallet.app.data.remote
 
 import com.xinwallet.app.data.local.SessionManager
+import com.xinwallet.app.data.model.RefreshRequest
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
