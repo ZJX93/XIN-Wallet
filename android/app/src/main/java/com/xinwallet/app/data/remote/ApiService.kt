@@ -1,6 +1,7 @@
 package com.xinwallet.app.data.remote
 
 import com.xinwallet.app.data.model.*
+import com.xinwallet.app.data.model.Tag
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
