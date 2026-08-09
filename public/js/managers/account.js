@@ -32,6 +32,12 @@ const AccountManager = {
         document.getElementById('accountDeleteModal').addEventListener('click', (e) => { if (e.target === document.getElementById('accountDeleteModal')) this.closeDeleteModal(); });
         document.getElementById('accDelCloseBtn').addEventListener('click', () => this.closeAccount());
         document.getElementById('accDelHardBtn').addEventListener('click', () => this.hardDeleteAccount());
+        // 账户全屏网格
+        const accGridClose = document.getElementById('accGridClose');
+        if (accGridClose) accGridClose.addEventListener('click', () => this.closeAccGrid());
+        const accGridOverlay = document.getElementById('accGridOverlay');
+        if (accGridOverlay) accGridOverlay.addEventListener('click', (e) => { if (e.target === accGridOverlay) this.closeAccGrid(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.closeAccGrid(); this.closeDetail(); this.closeDeleteModal(); this.closeModal(); } });
     },
     // 复式记账对账：以账本为唯一真相，重算并修正账户余额
     async reconcile() {
@@ -91,25 +97,29 @@ const AccountManager = {
             const cards = accounts.map((a, idx) => buildCard(a, idx, accounts.length)).join('');
             const icon = accounts[0].icon || '🏦';
             return `
-            <div class="acc-stack" data-expanded="false">
-                <button class="acc-deck-cover" type="button" data-action="toggle-acc-stack" title="点击展开/收起">
+            <div class="acc-stack">
+                <button class="acc-deck-cover" type="button" data-action="view-all" title="查看全部账户">
                     <span class="acc-cover-icon">${escapeHtml(icon)}</span>
                     <span class="acc-cover-name">${escapeHtml(label)}</span>
                     <span class="acc-cover-count">${accounts.length} 个账户</span>
                     <span class="acc-cover-total">${fmt(total)}</span>
-                    <span class="acc-cover-chevron">▾</span>
+                    <span class="acc-cover-viewall">查看全部 →</span>
                 </button>
-                <div class="acc-stack-cards">${cards}</div>
+                <div class="acc-stack-cards" style="--n:${accounts.length}">${cards}</div>
             </div>`;
         }).join('');
 
-        // 事件委托：叠牌展开/收起
-        container.querySelectorAll('[data-action="toggle-acc-stack"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const stack = btn.closest('.acc-stack');
-                if (!stack) return;
-                const expanded = stack.getAttribute('data-expanded') === 'true';
-                stack.setAttribute('data-expanded', expanded ? 'false' : 'true');
+        // 事件委托：封面「查看全部」→ 全屏网格铺开
+        container.querySelectorAll('[data-action="view-all"]').forEach(btn => {
+            btn.addEventListener('click', () => this.openAccGrid());
+        });
+
+        // 事件委托：点击单张账户卡 → 弹出资金明细（点在操作按钮上则交给按钮处理）
+        container.querySelectorAll('.acc-stack-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('[data-action]')) return;
+                const id = parseInt(card.dataset.id);
+                if (!isNaN(id)) this.openDetail(id);
             });
         });
 
@@ -297,7 +307,37 @@ const AccountManager = {
         }).join('');
         body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
     },
-    closeDetail() { document.getElementById('accountDetailModal').classList.remove('show'); }
+    closeDetail() { document.getElementById('accountDetailModal').classList.remove('show'); },
+
+    /* ---- 账户：全屏网格铺开 ---- */
+    buildAccGridCard(a) {
+        const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
+        return `
+        <div class="acc-grid-card" data-acc-id="${a.id}" tabindex="0" role="button" aria-label="${escapeHtml(a.name)} 资金明细">
+            <div class="goal-head">
+                <div class="goal-icon">${escapeHtml(a.icon || '🏦')}</div>
+                <div class="goal-title">${escapeHtml(a.name)}</div>
+            </div>
+            <div class="goal-amounts"><span>${typeLabels[a.type] || a.type}</span><span><strong>${fmt(a.balance)}</strong></span></div>
+        </div>`;
+    },
+    openAccGrid() {
+        const items = (cache.accounts || []).filter(a => !a.closed);
+        if (!items.length) { showToast('暂无账户', 'warning'); return; }
+        const grid = document.getElementById('accGridBody');
+        grid.innerHTML = items.map(a => this.buildAccGridCard(a)).join('');
+        document.getElementById('accGridCount').textContent = items.length;
+        grid.querySelectorAll('[data-acc-id]').forEach(card => {
+            const handler = () => { const id = parseInt(card.dataset.accId); if (!isNaN(id)) this.openDetail(id); };
+            card.addEventListener('click', handler);
+            card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
+        });
+        document.getElementById('accGridOverlay').classList.add('show');
+    },
+    closeAccGrid() {
+        const ov = document.getElementById('accGridOverlay');
+        if (ov) ov.classList.remove('show');
+    }
 };
 
 export default AccountManager;
