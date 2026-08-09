@@ -1,10 +1,11 @@
 # ============================================
-# 鑫钱包 · Android 客户端构建验证
-# 触发：PR / 主干 push（仅当 android/ 或本文件变更时）。
+# 鑫钱包 · Android 客户端构建与发布
+# 触发：PR / 主干 push（仅当 android/ 或本文件变更时）/ 手动 workflow_dispatch。
 # 行为：Ubuntu runner 安装 JDK17 + Android SDK，执行 ./gradlew assembleDebug，
-#       做真编译验证（非静态核对），产物上传未签名 debug APK。
-# 目标：确认安卓端代码可编译、依赖可解析——每次 push 自动跑，不靠本地 Android Studio。
-# 注意：仅构建 debug，不签名发布；不触发镜像/打 tag（安卓端尚未独立定版本基线）。
+#       做真编译验证（非静态核对），随后自动创建 GitHub Release 并上传 APK 安装包。
+# 版本：安卓端使用独立命名空间 android-vX.Y.Z，不污染 Web 端 v0.x 版本线，
+#       每次成功构建 patch +1（首次 android-v0.1.0）。
+# 产物：GitHub Release 里的 app-debug.apk（debug 签名，可侧载安装，无需 Google Play）。
 # ============================================
 name: Android Build
 
@@ -16,11 +17,16 @@ on:
     paths:
       - 'android/**'
       - '.github/workflows/android-build.yml'
+  workflow_dispatch:
 
 # 同一分支同时仅允许一个构建，避免排队堆积
 concurrency:
   group: android-build-${{ github.ref }}
   cancel-in-progress: true
+
+# 创建 Release 需要写权限
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -34,6 +40,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: 设置 JDK 17
         # AGP 8.7 + Kotlin 2.0.21 + Compose 编译器插件均要求 JDK 17
@@ -61,10 +70,31 @@ jobs:
       - name: 编译 Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: 上传 APK 产物
+      - name: 计算安卓版本号
+        id: android_version
         if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xinwallet-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          retention-days: 7
+        run: |
+          LATEST=$(git tag --list 'android-v*.*.*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            NEW=android-v0.1.0
+          else
+            VER=${LATEST#android-v}
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+            PATCH=$((PATCH + 1))
+            NEW="android-v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          echo "new_tag=$NEW" >> "$GITHUB_OUTPUT"
+          echo "Next Android version: $NEW"
+
+      - name: 创建 GitHub Release 并上传 APK
+        if: success()
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.android_version.outputs.new_tag }}" \
+            --title "鑫钱包 Android 客户端 ${{ steps.android_version.outputs.new_tag }}" \
+            --notes "自动构建的安卓 debug 安装包（debug 签名，可侧载安装，无需 Google Play）。\n\n安装方式：下载 app-debug.apk 传到手机，允许「未知来源」后点击安装；或用 adb install app-debug.apk。" \
+            android/app/build/outputs/apk/debug/*.apk
