@@ -114,6 +114,7 @@ const InvestmentManager = {
         document.getElementById('investCurrentValue').value = '';
         document.getElementById('investBuyDate').value = fmtDate();
         document.getElementById('investExpectedRate').value = '';
+        document.getElementById('investRisk').value = '';
         document.getElementById('investNote').value = '';
         document.getElementById('quoteResult').innerHTML = '';
     },
@@ -141,6 +142,7 @@ const InvestmentManager = {
         document.getElementById('investCurrentValue').value = inv.current_value || '';
         document.getElementById('investBuyDate').value = inv.buy_date ? inv.buy_date.slice(0, 10) : fmtDate();
         document.getElementById('investExpectedRate').value = inv.expected_rate || '';
+        document.getElementById('investRisk').value = inv.risk_level || '';
         document.getElementById('investNote').value = inv.note || '';
         document.getElementById('quoteResult').innerHTML = '';
     },
@@ -202,6 +204,7 @@ const InvestmentManager = {
             fee: parseFloat(document.getElementById('investFee').value) || 0,
             buy_date: document.getElementById('investBuyDate').value,
             expected_rate: parseFloat(document.getElementById('investExpectedRate').value) || 0,
+            risk_level: document.getElementById('investRisk').value || null,
             note: document.getElementById('investNote').value
         };
         if (!body.name) { showToast('请输入产品名称', 'error'); return; }
@@ -406,20 +409,23 @@ const InvestmentManager = {
         const expEl = document.getElementById('invExpectedRate');
         if (expEl) expEl.textContent = (s.expectedRateAvg ?? 0).toFixed(2) + '%';
 
-        // 持仓列表（与储蓄目标/债务卡片保持一致的大卡样式）
+        // 持仓列表：按类型分组，同类型叠成一叠牌，点击封面展开/收起
         if (!data.investments || data.investments.length === 0) { showEmpty(container, '还没有理财持仓，点击「新增持仓」记录你的投资', '📈'); return; }
-        const riskLabels = { low: '低风险', medium: '中风险', high: '高风险', very_high: '高风险' };
-        container.innerHTML = data.investments.map(i => {
+        const riskLabels = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
+        const riskDot = { low: '#22c55e', medium: '#eab308', high: '#f97316', very_high: '#ef4444' };
+
+        const buildCard = (i, idx, n) => {
             const progress = i.total_cost > 0 ? Math.min(100, (i.current_value / i.total_cost) * 100) : 0;
             const profitCls = i.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
             const profitSign = i.profit_rate >= 0 ? '+' : '';
             const annualSign = i.annualizedRate >= 0 ? '+' : '';
+            const rl = i.risk_level || 'medium';
             return `
-            <div class="goal-card" data-id="${i.id}">
+            <div class="goal-card inv-stack-card" data-id="${i.id}" style="--i:${idx}; --n:${n}">
                 <div class="goal-head">
                     <div class="goal-icon">${escapeHtml(i.type_icon || "📈")}</div>
                     <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
-                    <span class="goal-status type">${riskLabels[i.risk_level] || i.risk_level}</span>
+                    <span class="inv-risk-badge" style="--dot:${riskDot[rl]}; background:${riskDot[rl]}22; color:${riskDot[rl]}">${riskLabels[rl] || rl}</span>
                 </div>
                 <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
@@ -432,7 +438,42 @@ const InvestmentManager = {
                     <button class="btn btn-ghost" data-action="delete-inv" data-id="${i.id}" title="删除">🗑️</button>
                 </div>
             </div>`;
+        };
+
+        // 按类型分组（保持后端返回的顺序）
+        const groups = {};
+        data.investments.forEach(i => {
+            const key = i.type_name || '其他';
+            (groups[key] = groups[key] || []).push(i);
+        });
+        const groupList = Object.entries(groups);
+
+        container.innerHTML = groupList.map(([typeName, items]) => {
+            const icon = items[0].type_icon || '📈';
+            const total = items.reduce((s, i) => s + i.current_value, 0);
+            const cards = items.map((i, idx) => buildCard(i, idx, items.length)).join('');
+            return `
+            <div class="inv-stack" data-expanded="false">
+                <button class="inv-deck-cover" type="button" data-action="toggle-stack" title="点击展开/收起">
+                    <span class="inv-cover-icon">${escapeHtml(icon)}</span>
+                    <span class="inv-cover-name">${escapeHtml(typeName)}</span>
+                    <span class="inv-cover-count">${items.length} 个产品</span>
+                    <span class="inv-cover-total">${fmt(total)}</span>
+                    <span class="inv-cover-chevron">▾</span>
+                </button>
+                <div class="inv-stack-cards">${cards}</div>
+            </div>`;
         }).join('');
+
+        // 事件委托：叠牌展开/收起
+        container.querySelectorAll('[data-action="toggle-stack"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const stack = btn.closest('.inv-stack');
+                if (!stack) return;
+                const expanded = stack.getAttribute('data-expanded') === 'true';
+                stack.setAttribute('data-expanded', expanded ? 'false' : 'true');
+            });
+        });
 
         // 事件委托：刷新、编辑、减持和删除按钮
         container.querySelectorAll('[data-action="refresh-quote"]').forEach(btn => {

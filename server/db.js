@@ -289,6 +289,13 @@ async function initDatabase() {
       if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
     }
 
+    // 5.1) 幂等迁移：investments.risk_level（每持仓独立风险等级，覆盖类型默认）
+    try {
+      await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS risk_level VARCHAR(10) CHECK (risk_level IN ('low','medium','high','very_high'))`);
+    } catch (err) {
+      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.risk_level 迁移警告:', err.message);
+    }
+
     // 6) 幂等迁移：transactions 复合索引
     try {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_account_date ON transactions (account_id, date)`);

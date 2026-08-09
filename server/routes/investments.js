@@ -194,7 +194,8 @@ const { annualizedRate: calcAnnualizedRate, calcPortfolioMetrics } = require('..
 router.get('/investments', async (req, res) => {
     try {
         const investments = await db.query(
-            `SELECT i.*, it.name as type_name, it.icon as type_icon, it.risk_level,
+            `SELECT i.*, it.name as type_name, it.icon as type_icon, it.risk_level as type_risk_level,
+       COALESCE(i.risk_level, it.risk_level) as risk_level,
        a.name as acc_name
        FROM investments i
        JOIN investment_types it ON i.investment_type_id = it.id
@@ -257,7 +258,7 @@ router.get('/investments', async (req, res) => {
 
 router.post('/investments', async (req, res) => {
     try {
-        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, note } = req.body;
+        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note } = req.body;
 
         if (!name || !investment_type_id) return res.status(400).json(fail('参数不完整'));
 
@@ -266,17 +267,19 @@ router.post('/investments', async (req, res) => {
         const valueVal = parseFloat(current_value) || costVal || 0;
         const accId = parseInt(account_id) || null;
         const buyDate = buy_date || new Date().toISOString().split('T')[0];
+        const riskVal = ['low', 'medium', 'high', 'very_high'].includes(risk_level) ? risk_level : null;
 
         const result = await db.transaction(async (conn) => {
             const invResult = await conn.query(
-                `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, note)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, risk_level, note)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [req.userId, accId, parseInt(investment_type_id), name, code || '',
                     parseFloat(buy_price) || 0, parseFloat(current_price) || parseFloat(buy_price) || 0,
                     parseFloat(quantity) || 0, costVal,
                     valueVal,
                     feeVal,
-                    buyDate, parseFloat(expected_rate) || 0, note || '']
+                    buyDate, parseFloat(expected_rate) || 0, riskVal,
+                    note || '']
             );
             const invId = invResult.insertId;
 
@@ -306,7 +309,7 @@ router.post('/investments', async (req, res) => {
 router.put('/investments/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, actual_rate, note, status } = req.body;
+        const { account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, actual_rate, risk_level, note, status } = req.body;
 
         // 区分行情刷新（仅 current_price/current_value/actual_rate）和完整编辑
         const isQuoteRefresh = name === undefined;
@@ -339,7 +342,7 @@ router.put('/investments/:id', async (req, res) => {
                 `UPDATE investments SET
                     account_id=?, investment_type_id=?, name=?, code=?,
                     buy_price=?, current_price=?, quantity=?, total_cost=?, current_value=?, fee=?,
-                    buy_date=?, expected_rate=?, actual_rate=?, note=?, status=?
+                    buy_date=?, expected_rate=?, actual_rate=?, risk_level=?, note=?, status=?
                  WHERE id=? AND user_id=?`,
                 [
                     newAccId, parseInt(investment_type_id), newName, code || '',
@@ -347,6 +350,7 @@ router.put('/investments/:id', async (req, res) => {
                     parseFloat(quantity) || 0, newCost, parseFloat(current_value) || 0, parseFloat(fee) || 0,
                     newBuyDate,
                     parseFloat(expected_rate) || 0, parseFloat(actual_rate) || 0,
+                    ['low', 'medium', 'high', 'very_high'].includes(risk_level) ? risk_level : null,
                     note || '', status || 'holding', id, req.userId
                 ]
             );

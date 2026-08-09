@@ -52,6 +52,16 @@
                             <div class="form-group"><label>买入日期</label><input type="date" id="investBuyDate" required></div>
                             <div class="form-group"><label>预期年化收益率 (%)</label><input type="number" id="investExpectedRate" step="0.01"></div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group"><label>风险等级（按产品独立设置）</label><select id="investRisk">
+                                <option value="">跟随类型默认</option>
+                                <option value="low">🟢 低风险</option>
+                                <option value="medium">🟡 中风险</option>
+                                <option value="high">🟠 高风险</option>
+                                <option value="very_high">🔴 极高风险</option>
+                            </select></div>
+                            <div class="form-group"><label>&nbsp;</label><span class="form-hint" style="font-size:12px;color:var(--text-muted,#888)">同类型下每个产品可单独定风险，不选则继承类型默认值</span></div>
+                        </div>
                         <div class="form-group full-width"><label>备注</label><input type="text" id="investNote" placeholder="备注..."></div>
                         <div class="form-actions"><button type="button" class="btn btn-ghost" id="investCancelBtn">取消</button><button type="submit" class="btn btn-primary">保存持仓</button></div>
                     </form>

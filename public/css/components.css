@@ -576,6 +576,80 @@
 .goal-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .goal-actions .btn { font-size: var(--text-caption); height: 32px; padding: 0 var(--space-3); flex: 1; justify-content: center; }
 
+/* ============ 理财持仓：按类型真实叠牌 ============ */
+.inv-stack { margin-bottom: var(--space-4); }
+
+/* 牌堆封面（可点击展开/收起） */
+.inv-deck-cover {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface-card) 82%, var(--interactive-default) 8%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: background .2s var(--ease-out-quart), transform .2s var(--ease-out-quart);
+}
+.inv-deck-cover:hover {
+  background: color-mix(in srgb, var(--surface-card) 70%, var(--interactive-default) 14%);
+  transform: translateY(-1px);
+}
+.inv-cover-icon { font-size: 20px; line-height: 1; }
+.inv-cover-name { font-weight: var(--fw-semibold); color: var(--text-primary); flex: 0 0 auto; }
+.inv-cover-count {
+  font-size: 12px; color: var(--text-tertiary);
+  background: var(--surface-hover); padding: 2px 9px; border-radius: var(--radius-full);
+}
+.inv-cover-total { margin-left: auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.inv-cover-chevron { color: var(--text-tertiary); transition: transform .35s var(--ease-out-quart); }
+.inv-stack[data-expanded="true"] .inv-cover-chevron { transform: rotate(180deg); }
+
+.inv-stack-cards { padding: 0 var(--space-2); }
+
+/* 收起态：同类型叠成一摞牌（负边距重叠 + 微旋转 + 层级），带发牌式过渡 */
+.inv-stack:not([data-expanded="true"]) .inv-stack-card {
+  margin-top: calc(var(--i) * -72px);
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  transform-origin: center top;
+  z-index: calc(var(--n) - var(--i));
+  box-shadow: 0 -2px 0 rgba(255,255,255,.05), 0 10px 22px rgba(0,0,0,.18);
+  pointer-events: none;                /* 收起时仅顶层可交互，避免错位点击 */
+  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
+}
+.inv-stack:not([data-expanded="true"]) .inv-stack-card:first-child {
+  pointer-events: auto;
+  box-shadow: var(--shadow-md);
+}
+/* 规避 .goal-card:hover 在收起态把卡片弹出牌堆 */
+.inv-stack:not([data-expanded="true"]) .inv-stack-card:hover {
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 1.6deg));
+  box-shadow: var(--shadow-md);
+}
+
+/* 展开态：摊开成整洁列表，逐张发牌 */
+.inv-stack[data-expanded="true"] .inv-stack-card {
+  margin-top: var(--space-3);
+  transform: none;
+  z-index: auto;
+  box-shadow: var(--shadow-sm);
+  pointer-events: auto;
+  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart),
+    box-shadow .3s var(--ease-out-quart);
+  transition-delay: calc(var(--i) * 35ms);
+}
+
+/* 每产品独立风险徽标 */
+.inv-risk-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: var(--fw-semibold);
+  padding: 2px 9px; border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.inv-risk-badge::before {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--dot, #888);
+}
+
 /* Goal amount / Reduce modal meta */
 .goal-amount-meta,
 .reduce-meta {
