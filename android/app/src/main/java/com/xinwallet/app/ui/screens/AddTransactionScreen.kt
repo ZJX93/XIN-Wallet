@@ -1,22 +1,29 @@
 package com.xinwallet.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -26,6 +33,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +54,9 @@ import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.todayDate
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,14 +76,33 @@ fun AddTransactionScreen(navController: NavHostController) {
     var fromId by remember { mutableStateOf<Int?>(null) }
     var toId by remember { mutableStateOf<Int?>(null) }
     var date by remember { mutableStateOf(todayDate()) }
-    var accountExpanded by remember { mutableStateOf(false) }
-    var categoryExpanded by remember { mutableStateOf(false) }
-    var fromExpanded by remember { mutableStateOf(false) }
-    var toExpanded by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.loadOptions() }
     LaunchedEffect(state.success) { if (state.success) navController.popBackStack() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
+
+    if (showDatePicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = dateToMillis(date) ?: System.currentTimeMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        date = millisToDate(millis)
+                    }
+                    showDatePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 
     Scaffold(
         topBar = { com.xinwallet.app.ui.components.TopBar("记一笔", onBack = { navController.popBackStack() }) },
@@ -85,12 +116,12 @@ fun AddTransactionScreen(navController: NavHostController) {
                         "transfer" -> {
                             if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return@Button }
                             if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return@Button }
-                            vm.submitTransfer(fromId!!, toId!!, amt, note)
+                            vm.submitTransfer(fromId!!, toId!!, amt, note, date)
                         }
                         else -> {
                             if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@Button }
                             if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@Button }
-                            vm.submitExpense(accountId!!, categoryId!!, amt, note, type)
+                            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date)
                         }
                     }
                 },
@@ -101,7 +132,7 @@ fun AddTransactionScreen(navController: NavHostController) {
             }
         }
     ) { padding ->
-        if (state.loading && state.accounts.isEmpty()) {
+        if (state.loading && state.accounts.isEmpty() && state.categories.isEmpty()) {
             LoadingBox()
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
@@ -124,40 +155,64 @@ fun AddTransactionScreen(navController: NavHostController) {
                 }
                 if (type == "transfer") {
                     item {
-                        DropdownField("转出账户", state.accounts.find { it.id == fromId }?.name ?: "请选择", fromExpanded, { fromExpanded = it }) {
-                            state.accounts.forEach { acc ->
-                                DropdownMenuItem(text = { Text("${acc.icon ?: ""} ${acc.name}") }, onClick = { fromId = acc.id; fromExpanded = false })
-                            }
-                        }
+                        DropdownField(
+                            label = "转出账户",
+                            value = state.accounts.find { it.id == fromId }?.let { "${it.icon ?: ""} ${it.name}" } ?: "请选择",
+                            options = state.accounts.map { "${it.icon ?: ""} ${it.name}" to it.id },
+                            onSelected = { id -> fromId = id }
+                        )
                         Spacer(Modifier.height(12.dp))
-                        DropdownField("转入账户", state.accounts.find { it.id == toId }?.name ?: "请选择", toExpanded, { toExpanded = it }) {
-                            state.accounts.forEach { acc ->
-                                DropdownMenuItem(text = { Text("${acc.icon ?: ""} ${acc.name}") }, onClick = { toId = acc.id; toExpanded = false })
-                            }
-                        }
+                        DropdownField(
+                            label = "转入账户",
+                            value = state.accounts.find { it.id == toId }?.let { "${it.icon ?: ""} ${it.name}" } ?: "请选择",
+                            options = state.accounts.map { "${it.icon ?: ""} ${it.name}" to it.id },
+                            onSelected = { id -> toId = id }
+                        )
                         Spacer(Modifier.height(12.dp))
                     }
                 } else {
                     item {
-                        DropdownField("账户", state.accounts.find { it.id == accountId }?.name ?: "请选择", accountExpanded, { accountExpanded = it }) {
-                            state.accounts.forEach { acc ->
-                                DropdownMenuItem(text = { Text("${acc.icon ?: ""} ${acc.name}") }, onClick = { accountId = acc.id; accountExpanded = false })
-                            }
-                        }
+                        DropdownField(
+                            label = "账户",
+                            value = state.accounts.find { it.id == accountId }?.let { "${it.icon ?: ""} ${it.name}" } ?: "请选择",
+                            options = state.accounts.map { "${it.icon ?: ""} ${it.name}" to it.id },
+                            emptyHint = if (state.accounts.isEmpty()) "暂无账户，请先在「账户」页添加" else null,
+                            onSelected = { id -> accountId = id }
+                        )
                         Spacer(Modifier.height(12.dp))
                         val cats = state.categories.filter { it.type == type }
-                        DropdownField("分类", state.categories.find { it.id == categoryId }?.name ?: "请选择", categoryExpanded, { categoryExpanded = it }) {
-                            cats.forEach { c ->
-                                DropdownMenuItem(text = { Text("${c.icon ?: ""} ${c.name}") }, onClick = { categoryId = c.id; categoryExpanded = false })
-                            }
-                        }
+                        DropdownField(
+                            label = "分类",
+                            value = state.categories.find { it.id == categoryId }?.let { "${it.icon ?: ""} ${it.name}" } ?: "请选择",
+                            options = cats.map { "${it.icon ?: ""} ${it.name}" to it.id },
+                            emptyHint = if (cats.isEmpty()) "暂无${if (type == "income") "收入" else "支出"}分类" else null,
+                            onSelected = { id -> categoryId = id }
+                        )
                         Spacer(Modifier.height(12.dp))
                     }
                 }
                 item {
-                    OutlinedTextField(value = date, onValueChange = { date = it }, label = { Text("日期 (yyyy-MM-dd)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = date,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("日期") },
+                        singleLine = true,
+                        trailingIcon = {
+                            IconButton(onClick = { showDatePicker = true }) {
+                                Icon(Icons.Default.DateRange, contentDescription = "选择日期")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
+                    )
                     Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("备注") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it },
+                        label = { Text("备注") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -165,22 +220,58 @@ fun AddTransactionScreen(navController: NavHostController) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DropdownField(
+private fun DropdownField(
     label: String,
     value: String,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    content: @Composable ColumnScope.() -> Unit
+    options: List<Pair<String, Int>>,
+    emptyHint: String? = null,
+    onSelected: (Int) -> Unit
 ) {
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
         OutlinedTextField(
-            value = value, onValueChange = {}, readOnly = true,
+            value = value,
+            onValueChange = {},
+            readOnly = true,
             label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
+            trailingIcon = {
+                IconButton(onClick = { expanded = true }) {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = "展开")
+                }
+            },
+            modifier = Modifier.fillMaxWidth().clickable { expanded = true }
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }, content = content)
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (options.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(emptyHint ?: "暂无选项", color = MaterialTheme.colorScheme.outline) },
+                    onClick = { expanded = false }
+                )
+            } else {
+                options.forEach { (name, id) ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = { onSelected(id); expanded = false }
+                    )
+                }
+            }
+        }
     }
+}
+
+private fun dateToMillis(date: String): Long? {
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+        sdf.parse(date)?.time
+    } catch (_: Exception) { null }
+}
+
+private fun millisToDate(millis: Long): String {
+    val c = Calendar.getInstance().apply { timeInMillis = millis }
+    return String.format("%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
 }

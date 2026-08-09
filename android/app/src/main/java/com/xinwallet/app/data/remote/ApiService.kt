@@ -65,13 +65,13 @@ interface ApiService {
     @GET("investment-types")
     suspend fun getInvestmentTypes(): Response<ApiResponse<List<InvestmentType>>>
 
-    @GET("investments")
+    @GET("investments/investments")
     suspend fun getInvestments(): Response<ApiResponse<InvestmentsResponse>>
 
-    @POST("investments")
+    @POST("investments/investments")
     suspend fun createInvestment(@Body req: CreateInvestmentRequest): Response<ApiResponse<IdResponse>>
 
-    @DELETE("investments/{id}")
+    @DELETE("investments/investments/{id}")
     suspend fun deleteInvestment(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
     /* 仪表盘 */

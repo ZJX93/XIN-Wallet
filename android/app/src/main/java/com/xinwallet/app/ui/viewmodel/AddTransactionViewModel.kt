@@ -11,7 +11,6 @@ import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.TransactionRepository
-import com.xinwallet.app.util.todayDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -43,12 +42,12 @@ class AddTransactionViewModel(
         }
     }
 
-    fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String) {
-        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, todayDateTime())) }
+    fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String) {
+        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, "$date 00:00:00")) }
     }
 
-    fun submitTransfer(fromId: Int, toId: Int, amount: Double, note: String) {
-        submit { txRepo.createTransfer(CreateTransferRequest(fromId, toId, amount, note, todayDateTime())) }
+    fun submitTransfer(fromId: Int, toId: Int, amount: Double, note: String, date: String) {
+        submit { txRepo.createTransfer(CreateTransferRequest(fromId, toId, amount, note, "$date 00:00:00")) }
     }
 
     private fun submit(call: suspend () -> ApiResult<IdResponse>) {
