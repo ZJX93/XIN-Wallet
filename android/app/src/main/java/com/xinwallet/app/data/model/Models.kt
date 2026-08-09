@@ -131,6 +131,33 @@ data class CreateTransactionRequest(
     val date: String
 )
 
+/** 编辑交易：字段与新增一致，后端会按账本重算受影响账户余额 */
+data class UpdateTransactionRequest(
+    @SerializedName("account_id") val accountId: Int,
+    @SerializedName("category_id") val categoryId: Int,
+    val type: String,
+    val amount: Double,
+    val note: String? = null,
+    val date: String
+)
+
+/** GET /transactions/summary?month=YYYY-MM */
+data class TxSummary(
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val balance: Double = 0.0,
+    val expenseByCategory: List<CategoryTotal> = emptyList(),
+    val incomeByCategory: List<CategoryTotal> = emptyList()
+)
+
+data class CategoryTotal(
+    val id: Int = 0,
+    val name: String = "",
+    val icon: String? = null,
+    @SerializedName("parent_id") val parentId: Int? = null,
+    val total: Double = 0.0
+)
+
 /* ----------------------------- 转账 ----------------------------- */
 
 data class Transfer(
@@ -235,6 +262,59 @@ data class CreateInvestmentRequest(
     @SerializedName("risk_level") val riskLevel: String? = null,
     val note: String? = null
 )
+
+/** 编辑理财持仓 */
+data class UpdateInvestmentRequest(
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("investment_type_id") val investmentTypeId: Int,
+    val name: String,
+    val code: String = "",
+    @SerializedName("buy_price") val buyPrice: Double = 0.0,
+    @SerializedName("current_price") val currentPrice: Double = 0.0,
+    val quantity: Double = 0.0,
+    @SerializedName("total_cost") val totalCost: Double = 0.0,
+    @SerializedName("current_value") val currentValue: Double = 0.0,
+    val fee: Double = 0.0,
+    @SerializedName("buy_date") val buyDate: String = "",
+    @SerializedName("expected_rate") val expectedRate: Double = 0.0,
+    @SerializedName("risk_level") val riskLevel: String? = null,
+    val note: String? = null
+)
+
+/* ----------------------------- AI 智能记账 ----------------------------- */
+
+/** POST /ai/ocr 返回体 */
+data class OcrResponse(
+    val text: String = "",
+    val items: List<OcrItem> = emptyList(),
+    val reason: String? = null
+)
+
+/**
+ * OCR 识别出的单条交易候选。
+ * `category` 是后端给出的分类「名称」（如「午餐」），客户端需按名称匹配到本地分类 id。
+ * `date` 形如 `2026-07-17 17:23:49`，也可能只有日期。
+ */
+data class OcrItem(
+    val name: String = "",
+    val amount: Double = 0.0,
+    val type: String = "expense",
+    val date: String? = null,
+    val note: String? = null,
+    val category: String? = null
+)
+
+/** GET /ai/ocr-config：判断是否已配置腾讯云 OCR 密钥 */
+data class OcrConfig(
+    val provider: String? = null,
+    @SerializedName("secret_id") val secretId: String? = null,
+    val region: String? = null,
+    val credentialsValid: Boolean? = null,
+    val credentialsError: String? = null
+) {
+    /** secret_id 为空表示尚未配置 */
+    val configured: Boolean get() = !secretId.isNullOrBlank()
+}
 
 /* ----------------------------- 仪表盘 ----------------------------- */
 

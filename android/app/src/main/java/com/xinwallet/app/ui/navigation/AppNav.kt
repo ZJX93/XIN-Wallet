@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,11 +30,13 @@ import androidx.navigation.navArgument
 import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
+import com.xinwallet.app.ui.screens.AiScanScreen
 import com.xinwallet.app.ui.screens.HomeScreen
 import com.xinwallet.app.ui.screens.InvestmentDetailScreen
 import com.xinwallet.app.ui.screens.InvestmentsScreen
 import com.xinwallet.app.ui.screens.LoginScreen
 import com.xinwallet.app.ui.screens.ProfileScreen
+import com.xinwallet.app.ui.screens.TransactionsScreen
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
@@ -40,7 +44,13 @@ sealed class Screen(val route: String) {
     object AccountDetail : Screen("account/{id}") {
         fun create(id: Int) = "account/$id"
     }
+    object Transactions : Screen("transactions")
     object AddTransaction : Screen("add")
+    object EditTransaction : Screen("edit/{id}?month={month}") {
+        fun create(id: Int, month: String? = null) =
+            if (month != null) "edit/$id?month=$month" else "edit/$id"
+    }
+    object AiScan : Screen("ai-scan")
     object Investments : Screen("investments")
     object InvestmentDetail : Screen("investment/{id}") {
         fun create(id: Int) = "investment/$id"
@@ -51,6 +61,7 @@ sealed class Screen(val route: String) {
 private val bottomItems = listOf(
     Screen.Home to ("首页" to Icons.Filled.Home),
     Screen.Accounts to ("账户" to Icons.Filled.AccountBalanceWallet),
+    Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
     Screen.Investments to ("理财" to Icons.Filled.PieChart),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
@@ -58,6 +69,9 @@ private val bottomItems = listOf(
 fun routeKey(route: String?): String? = when {
     route == null -> null
     route.startsWith("account") -> Screen.Accounts.route
+    route.startsWith("edit") -> Screen.Transactions.route
+    route.startsWith("ai") -> Screen.Transactions.route
+    route.startsWith("transactions") -> Screen.Transactions.route
     route.startsWith("investment") -> Screen.Investments.route
     else -> route.substringBefore("/")
 }
@@ -89,9 +103,12 @@ fun MainScaffold(onLogout: () -> Unit) {
             }
         },
         floatingActionButton = {
-            if (current == Screen.Home.route) {
-                FloatingActionButton(onClick = { navController.navigate(Screen.AddTransaction.route) }) {
+            when (current) {
+                Screen.Home.route -> FloatingActionButton(onClick = { navController.navigate(Screen.AddTransaction.route) }) {
                     Icon(Icons.Filled.Add, "记一笔")
+                }
+                Screen.Transactions.route -> FloatingActionButton(onClick = { navController.navigate(Screen.AiScan.route) }) {
+                    Icon(Icons.Filled.CameraAlt, "AI 记账")
                 }
             }
         }
@@ -115,7 +132,20 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
         ) {
             AccountDetailScreen(navController, it.arguments?.getInt("id") ?: 0)
         }
+        composable(Screen.Transactions.route) { TransactionsScreen(navController) }
         composable(Screen.AddTransaction.route) { AddTransactionScreen(navController) }
+        composable(
+            Screen.EditTransaction.route,
+            arguments = listOf(
+                navArgument("id") { type = androidx.navigation.NavType.IntType },
+                navArgument("month") { type = androidx.navigation.NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) {
+            val id = it.arguments?.getInt("id") ?: 0
+            val month = it.arguments?.getString("month")
+            AddTransactionScreen(navController, editId = id, month = month)
+        }
+        composable(Screen.AiScan.route) { AiScanScreen(navController) }
         composable(Screen.Investments.route) { InvestmentsScreen(navController) }
         composable(
             Screen.InvestmentDetail.route,

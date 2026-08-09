@@ -37,3 +37,28 @@ suspend fun <T> safeApiCall(call: suspend () -> Response<ApiResponse<T>>): ApiRe
         ApiResult.Error(e.message ?: "网络异常")
     }
 }
+
+/**
+ * 无返回体的调用（删除 / 更新类接口）。
+ * 后端这类接口返回 `{ success: true, data: null, message: "xxx已删除" }`，
+ * 若沿用 safeApiCall 会因 `data == null` 被误判为失败，故单独处理：只看 success 标志。
+ */
+suspend fun safeUnitCall(call: suspend () -> Response<ApiResponse<Unit>>): ApiResult<Unit> {
+    return try {
+        val response = call()
+        if (response.isSuccessful) {
+            val body = response.body()
+            if (body == null || body.success) ApiResult.Success(Unit)
+            else ApiResult.Error(body.message ?: "请求失败")
+        } else {
+            val errorMsg = try {
+                response.errorBody()?.string()?.let {
+                    Gson().fromJson(it, ApiResponse::class.java)?.message
+                }
+            } catch (_: Exception) { null }
+            ApiResult.Error(errorMsg ?: "HTTP ${response.code()}", response.code())
+        }
+    } catch (e: Exception) {
+        ApiResult.Error(e.message ?: "网络异常")
+    }
+}

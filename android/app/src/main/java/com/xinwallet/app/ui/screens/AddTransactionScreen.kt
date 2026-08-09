@@ -1,30 +1,16 @@
 package com.xinwallet.app.ui.screens
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -33,8 +19,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,24 +33,30 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
+import com.xinwallet.app.ui.components.DatePickerField
+import com.xinwallet.app.ui.components.DropdownField
 import com.xinwallet.app.ui.components.LoadingBox
+import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.todayDate
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
+/**
+ * 记一笔 / 编辑交易。
+ * @param editId 大于 0 表示编辑模式；编辑模式不支持转账（转账两条腿需成对改，只允许删除后重记）
+ * @param month  编辑模式下用于定位原交易所在月份
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTransactionScreen(navController: NavHostController) {
+fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, month: String? = null) {
     val vm: AddTransactionViewModel = viewModel(factory = viewModelFactory {
         AddTransactionViewModel(AppContainer.transactionRepository, AppContainer.accountRepository, AppContainer.categoryRepository)
     })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val isEdit = editId > 0
 
     var type by remember { mutableStateOf("expense") }
     var amount by remember { mutableStateOf("") }
@@ -76,44 +66,41 @@ fun AddTransactionScreen(navController: NavHostController) {
     var fromId by remember { mutableStateOf<Int?>(null) }
     var toId by remember { mutableStateOf<Int?>(null) }
     var date by remember { mutableStateOf(todayDate()) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var prefilled by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { vm.loadOptions() }
+    LaunchedEffect(Unit) { vm.loadOptions(if (isEdit) editId else null, month) }
     LaunchedEffect(state.success) { if (state.success) navController.popBackStack() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
 
-    if (showDatePicker) {
-        val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = dateToMillis(date) ?: System.currentTimeMillis()
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { millis ->
-                        date = millisToDate(millis)
-                    }
-                    showDatePicker = false
-                }) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
-            }
-        ) {
-            DatePicker(state = pickerState)
+    // 编辑模式：原交易加载完成后回填表单（只回填一次，避免覆盖用户的修改）
+    LaunchedEffect(state.editing) {
+        val tx = state.editing
+        if (tx != null && !prefilled) {
+            type = if (tx.type == "income") "income" else "expense"
+            amount = trimAmount(tx.amount)
+            note = tx.note.orEmpty()
+            accountId = tx.account?.id
+            categoryId = tx.category?.id
+            date = tx.date.take(10)
+            prefilled = true
         }
     }
 
     Scaffold(
-        topBar = { com.xinwallet.app.ui.components.TopBar("记一笔", onBack = { navController.popBackStack() }) },
+        topBar = { TopBar(if (isEdit) "编辑交易" else "记一笔", onBack = { navController.popBackStack() }) },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Button(
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
                     if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return@Button }
-                    when (type) {
-                        "transfer" -> {
+                    when {
+                        isEdit -> {
+                            if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@Button }
+                            if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@Button }
+                            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date)
+                        }
+                        type == "transfer" -> {
                             if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return@Button }
                             if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return@Button }
                             vm.submitTransfer(fromId!!, toId!!, amt, note, date)
@@ -128,7 +115,8 @@ fun AddTransactionScreen(navController: NavHostController) {
                 enabled = !state.loading,
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
-                if (state.loading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp) else Text("保存")
+                if (state.loading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
+                else Text(if (isEdit) "保存修改" else "保存")
             }
         }
     ) { padding ->
@@ -137,10 +125,14 @@ fun AddTransactionScreen(navController: NavHostController) {
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 item {
+                    // 编辑模式隐藏转账选项：转账是成对记录，需整笔删除后重记
+                    val count = if (isEdit) 2 else 3
                     SingleChoiceSegmentedButtonRow {
-                        SegmentedButton(selected = type == "expense", onClick = { type = "expense" }, shape = SegmentedButtonDefaults.itemShape(0, 3)) { Text("支出") }
-                        SegmentedButton(selected = type == "income", onClick = { type = "income" }, shape = SegmentedButtonDefaults.itemShape(1, 3)) { Text("收入") }
-                        SegmentedButton(selected = type == "transfer", onClick = { type = "transfer" }, shape = SegmentedButtonDefaults.itemShape(2, 3)) { Text("转账") }
+                        SegmentedButton(selected = type == "expense", onClick = { type = "expense"; categoryId = null }, shape = SegmentedButtonDefaults.itemShape(0, count)) { Text("支出") }
+                        SegmentedButton(selected = type == "income", onClick = { type = "income"; categoryId = null }, shape = SegmentedButtonDefaults.itemShape(1, count)) { Text("收入") }
+                        if (!isEdit) {
+                            SegmentedButton(selected = type == "transfer", onClick = { type = "transfer" }, shape = SegmentedButtonDefaults.itemShape(2, count)) { Text("转账") }
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     OutlinedTextField(
@@ -192,19 +184,7 @@ fun AddTransactionScreen(navController: NavHostController) {
                     }
                 }
                 item {
-                    OutlinedTextField(
-                        value = date,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("日期") },
-                        singleLine = true,
-                        trailingIcon = {
-                            IconButton(onClick = { showDatePicker = true }) {
-                                Icon(Icons.Default.DateRange, contentDescription = "选择日期")
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true }
-                    )
+                    DatePickerField(label = "日期", date = date, onDateChange = { date = it })
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = note,
@@ -220,58 +200,8 @@ fun AddTransactionScreen(navController: NavHostController) {
     }
 }
 
-@Composable
-private fun DropdownField(
-    label: String,
-    value: String,
-    options: List<Pair<String, Int>>,
-    emptyHint: String? = null,
-    onSelected: (Int) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = {
-                IconButton(onClick = { expanded = true }) {
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = "展开")
-                }
-            },
-            modifier = Modifier.fillMaxWidth().clickable { expanded = true }
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (options.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text(emptyHint ?: "暂无选项", color = MaterialTheme.colorScheme.outline) },
-                    onClick = { expanded = false }
-                )
-            } else {
-                options.forEach { (name, id) ->
-                    DropdownMenuItem(
-                        text = { Text(name) },
-                        onClick = { onSelected(id); expanded = false }
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun dateToMillis(date: String): Long? {
-    return try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
-        sdf.parse(date)?.time
-    } catch (_: Exception) { null }
-}
-
-private fun millisToDate(millis: Long): String {
-    val c = Calendar.getInstance().apply { timeInMillis = millis }
-    return String.format("%04d-%02d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH))
+/** 金额回填时去掉多余小数：120.00 -> 120，12.50 -> 12.5 */
+internal fun trimAmount(value: Double): String {
+    val s = java.math.BigDecimal(value).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+    return s.trimEnd('0').trimEnd('.').ifEmpty { "0" }
 }

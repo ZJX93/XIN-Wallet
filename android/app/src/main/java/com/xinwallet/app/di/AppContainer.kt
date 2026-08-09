@@ -6,6 +6,7 @@ import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.AuthInterceptor
 import com.xinwallet.app.data.repository.AccountRepository
+import com.xinwallet.app.data.repository.AiRepository
 import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.DashboardRepository
@@ -41,6 +42,8 @@ object AppContainer {
         private set
     lateinit var dashboardRepository: DashboardRepository
         private set
+    lateinit var aiRepository: AiRepository
+        private set
 
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
@@ -55,7 +58,9 @@ object AppContainer {
             .addInterceptor(interceptor)
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
+            // OCR 走「腾讯云识别 + 大模型抽取」，端到端可能十几秒，读写超时放宽到 60s
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .build()
 
         // 首次未配置地址时使用占位符，避免 Retrofit baseUrl 为空崩溃；UI 会强制用户填写真实地址。
@@ -71,6 +76,7 @@ object AppContainer {
         investmentRepository = InvestmentRepository { api }
         dashboardRepository = DashboardRepository { api }
         categoryRepository = CategoryRepository { api }
+        aiRepository = AiRepository { api }
     }
 
     private fun buildRetrofit(baseUrl: String, gson: com.google.gson.Gson): Retrofit {

@@ -15,15 +15,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -182,6 +188,105 @@ fun LoadingBox() {
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
+}
+
+/**
+ * 只读下拉选择框。选项为 (显示文本, id) 列表，空列表时展示 emptyHint。
+ * 抽到公共组件，供记一笔 / AI 记账 / 账户表单共用。
+ */
+@Composable
+fun DropdownField(
+    label: String,
+    value: String,
+    options: List<Pair<String, Int>>,
+    modifier: Modifier = Modifier,
+    emptyHint: String? = null,
+    onSelected: (Int) -> Unit
+) {
+    var expanded by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(modifier) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = {
+                IconButton(onClick = { expanded = true }) {
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = "展开")
+                }
+            },
+            modifier = Modifier.fillMaxWidth().clickable { expanded = true }
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (options.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(emptyHint ?: "暂无选项", color = MaterialTheme.colorScheme.outline) },
+                    onClick = { expanded = false }
+                )
+            } else {
+                options.forEach { (name, id) ->
+                    DropdownMenuItem(text = { Text(name) }, onClick = { onSelected(id); expanded = false })
+                }
+            }
+        }
+    }
+}
+
+/** 只读日期输入框，点击弹出 Material3 日期选择器 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun DatePickerField(
+    label: String,
+    date: String,
+    modifier: Modifier = Modifier,
+    onDateChange: (String) -> Unit
+) {
+    var show by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    OutlinedTextField(
+        value = date,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(label) },
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = { show = true }) { Icon(Icons.Filled.DateRange, contentDescription = "选择日期") }
+        },
+        modifier = modifier.fillMaxWidth().clickable { show = true }
+    )
+    if (show) {
+        val pickerState = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = parseDateMillis(date) ?: System.currentTimeMillis()
+        )
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { show = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { onDateChange(formatDateMillis(it)) }
+                    show = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { show = false }) { Text("取消") }
+            }
+        ) { androidx.compose.material3.DatePicker(state = pickerState) }
+    }
+}
+
+private fun parseDateMillis(date: String): Long? = try {
+    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).parse(date)?.time
+} catch (_: Exception) { null }
+
+private fun formatDateMillis(millis: Long): String {
+    val c = java.util.Calendar.getInstance().apply { timeInMillis = millis }
+    return String.format(
+        java.util.Locale.CHINA, "%04d-%02d-%02d",
+        c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH)
+    )
 }
 
 @Composable
