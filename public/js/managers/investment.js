@@ -93,10 +93,14 @@ const InvestmentManager = {
                 const act = btn.dataset.detailAction;
                 this.closeDetailModal();
                 if (act === 'refresh') this.refreshQuote(id, null);
-                else if (act === 'edit') this.edit(id);
-                else if (act === 'reduce') this.openReduceModal(id);
-                else if (act === 'interest') this.openInterestModal(id);
-                else if (act === 'delete') this.delete(id);
+                else {
+                    // 从全屏网格详情进入编辑/加仓减仓/记息/删除时，先关闭网格避免编辑弹窗被压住
+                    this.closeInvGrid();
+                    if (act === 'edit') this.edit(id);
+                    else if (act === 'reduce') this.openReduceModal(id);
+                    else if (act === 'interest') this.openInterestModal(id);
+                    else if (act === 'delete') this.delete(id);
+                }
             });
         });
         document.addEventListener('keydown', (e) => {

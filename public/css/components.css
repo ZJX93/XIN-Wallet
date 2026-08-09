@@ -677,6 +677,14 @@
 .modal-overlay#invGridOverlay,
 .modal-overlay#accGridOverlay { z-index: calc(var(--z-modal-backdrop) + 5); }
 
+/* 表单/编辑弹窗需高于全屏网格与详情弹窗，避免从网格详情点编辑后被压住 */
+.modal-overlay#investModal,
+.modal-overlay#reduceModal,
+.modal-overlay#interestModal,
+.modal-overlay#goalModal,
+.modal-overlay#accountModal,
+.modal-overlay#accountDeleteModal { z-index: 1300; }
+
 /* ============ 理财：全屏网格铺开 ============ */
 .inv-grid-panel {
   width: min(1080px, 100%);
