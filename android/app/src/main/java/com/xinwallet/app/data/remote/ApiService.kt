@@ -106,4 +106,64 @@ interface ApiService {
     /** 查询腾讯云 OCR 密钥配置状态，用于提前提示用户去 Web 端配置 */
     @GET("ai/ocr-config")
     suspend fun getOcrConfig(): Response<ApiResponse<OcrConfig>>
+
+    /* 预算 */
+    @GET("budgets")
+    suspend fun getBudgets(): Response<ApiResponse<List<Budget>>>
+
+    @POST("budgets")
+    suspend fun createBudget(@Body req: CreateBudgetRequest): Response<ApiResponse<IdResponse>>
+
+    @PUT("budgets/{id}")
+    suspend fun updateBudget(@Path("id") id: Int, @Body req: UpdateBudgetRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("budgets/{id}")
+    suspend fun deleteBudget(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    /* 储蓄目标 */
+    @GET("savings-goals")
+    suspend fun getSavingsGoals(): Response<ApiResponse<List<SavingGoal>>>
+
+    @POST("savings-goals")
+    suspend fun createSavingsGoal(@Body req: CreateSavingGoalRequest): Response<ApiResponse<IdResponse>>
+
+    @PUT("savings-goals/{id}")
+    suspend fun updateSavingsGoal(@Path("id") id: Int, @Body req: UpdateSavingGoalRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("savings-goals/{id}")
+    suspend fun deleteSavingsGoal(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    /** 存入：从来源账户转账到目标关联的储蓄账户 */
+    @POST("savings-goals/{id}/allocate")
+    suspend fun allocateSavings(@Path("id") id: Int, @Body req: SavingsAllocateRequest): Response<ApiResponse<Unit>>
+
+    /** 取回：从目标关联的储蓄账户转账到目标账户 */
+    @POST("savings-goals/{id}/withdraw")
+    suspend fun withdrawSavings(@Path("id") id: Int, @Body req: SavingsWithdrawRequest): Response<ApiResponse<Unit>>
+
+    @GET("savings-goals/{id}/transactions")
+    suspend fun getSavingsTxns(@Path("id") id: Int): Response<ApiResponse<SavingsTxnResponse>>
+
+    /* 债务 */
+    @GET("debts")
+    suspend fun getDebts(): Response<ApiResponse<DebtListResponse>>
+
+    @POST("debts")
+    suspend fun createDebt(@Body req: CreateDebtRequest): Response<ApiResponse<IdResponse>>
+
+    @PUT("debts/{id}")
+    suspend fun updateDebt(@Path("id") id: Int, @Body req: UpdateDebtRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("debts/{id}")
+    suspend fun deleteDebt(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
+    @GET("debts/{id}")
+    suspend fun getDebt(@Path("id") id: Int): Response<ApiResponse<DebtDetailResponse>>
+
+    /** 添加还款/收款记录（按 direction 分叉） */
+    @POST("debts/{id}/repayments")
+    suspend fun createRepayment(@Path("id") id: Int, @Body req: CreateRepaymentRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("debts/{id}/repayments/{rid}")
+    suspend fun deleteRepayment(@Path("id") id: Int, @Path("rid") rid: Int): Response<ApiResponse<Unit>>
 }

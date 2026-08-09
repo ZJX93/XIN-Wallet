@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ import com.xinwallet.app.ui.screens.InvestmentDetailScreen
 import com.xinwallet.app.ui.screens.InvestmentsScreen
 import com.xinwallet.app.ui.screens.LoginScreen
 import com.xinwallet.app.ui.screens.ProfileScreen
+import com.xinwallet.app.ui.screens.PlanningScreen
 import com.xinwallet.app.ui.screens.TransactionsScreen
 
 sealed class Screen(val route: String) {
@@ -56,6 +58,7 @@ sealed class Screen(val route: String) {
         fun create(id: Int) = "investment/$id"
     }
     object Profile : Screen("profile")
+    object Planning : Screen("planning")
 }
 
 private val bottomItems = listOf(
@@ -63,6 +66,7 @@ private val bottomItems = listOf(
     Screen.Accounts to ("账户" to Icons.Filled.AccountBalanceWallet),
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
     Screen.Investments to ("理财" to Icons.Filled.PieChart),
+    Screen.Planning to ("规划" to Icons.Filled.Savings),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
 
@@ -154,5 +158,6 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             InvestmentDetailScreen(navController, it.arguments?.getInt("id") ?: 0)
         }
         composable(Screen.Profile.route) { ProfileScreen(navController, onLogout) }
+        composable(Screen.Planning.route) { PlanningScreen(navController) }
     }
 }

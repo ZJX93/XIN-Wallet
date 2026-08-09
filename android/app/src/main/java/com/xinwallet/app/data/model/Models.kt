@@ -316,6 +316,200 @@ data class OcrConfig(
     val configured: Boolean get() = !secretId.isNullOrBlank()
 }
 
+/* ----------------------------- 预算 ----------------------------- */
+
+data class Budget(
+    val id: Int = 0,
+    val name: String = "",
+    @SerializedName("period_type") val periodType: String = "month",
+    @SerializedName("start_date") val startDate: String = "",
+    @SerializedName("end_date") val endDate: String = "",
+    val amount: Double = 0.0,
+    val actual: Double = 0.0
+)
+
+data class CreateBudgetRequest(
+    val name: String,
+    val amount: Double,
+    @SerializedName("period_type") val periodType: String = "month",
+    @SerializedName("base_date") val baseDate: String? = null
+)
+
+data class UpdateBudgetRequest(
+    val name: String,
+    val amount: Double,
+    @SerializedName("period_type") val periodType: String = "month",
+    @SerializedName("base_date") val baseDate: String? = null
+)
+
+/* ----------------------------- 储蓄目标（存入/取回） ----------------------------- */
+
+data class CreateSavingGoalRequest(
+    val name: String,
+    @SerializedName("target_amount") val targetAmount: Double,
+    @SerializedName("account_id") val accountId: Int,
+    @SerializedName("source_account_id") val sourceAccountId: Int,
+    val icon: String? = "🎯",
+    val note: String? = null
+)
+
+data class UpdateSavingGoalRequest(
+    val name: String,
+    @SerializedName("target_amount") val targetAmount: Double,
+    @SerializedName("account_id") val accountId: Int,
+    @SerializedName("source_account_id") val sourceAccountId: Int,
+    val icon: String? = "🎯",
+    val note: String? = null
+)
+
+data class SavingsAllocateRequest(
+    val amount: Double,
+    @SerializedName("account_id") val accountId: Int
+)
+
+data class SavingsWithdrawRequest(
+    val amount: Double,
+    @SerializedName("account_id") val accountId: Int
+)
+
+data class SavingsTxn(
+    val type: String = "",
+    val amount: Double = 0.0,
+    val date: String = "",
+    val note: String? = null,
+    @SerializedName("account_name") val accountName: String? = null
+)
+
+data class SavingsTxnSummary(
+    val deposit: Double = 0.0,
+    val withdraw: Double = 0.0,
+    val net: Double = 0.0
+)
+
+data class SavingsTxnResponse(
+    val transactions: List<SavingsTxn> = emptyList(),
+    val summary: SavingsTxnSummary? = null
+)
+
+/* ----------------------------- 债务（含还款） ----------------------------- */
+
+data class DebtSubSummary(
+    val remaining: Double = 0.0,
+    val monthly: Double = 0.0,
+    val count: Int = 0,
+    val activeCount: Int = 0,
+    val dueThisMonth: Double = 0.0,
+    val dueAmount: Double = 0.0,
+    val overdue: Int = 0,
+    val overdueAmount: Double = 0.0
+)
+
+data class DebtListSummary(
+    val totalRemaining: Double = 0.0,
+    val totalMonthly: Double = 0.0,
+    val dueThisMonth: Double = 0.0,
+    val dueAmount: Double = 0.0,
+    val overdue: Int = 0,
+    val overdueAmount: Double = 0.0,
+    val count: Int = 0,
+    val activeCount: Int = 0,
+    val netDebt: Double = 0.0,
+    val payable: DebtSubSummary? = null,
+    val receivable: DebtSubSummary? = null
+)
+
+data class DebtListResponse(
+    val debts: List<Debt> = emptyList(),
+    val summary: DebtListSummary? = null
+)
+
+data class Debt(
+    val id: Int = 0,
+    val name: String = "",
+    val type: String = "loan",
+    val direction: String = "payable",
+    val creditor: String? = null,
+    val principal: Double = 0.0,
+    val remaining: Double = 0.0,
+    @SerializedName("interest_rate") val interestRate: Double = 0.0,
+    @SerializedName("term_months") val termMonths: Int = 0,
+    val method: String = "equal_installment",
+    @SerializedName("monthly_payment") val monthlyPayment: Double = 0.0,
+    @SerializedName("min_payment") val minPayment: Double = 0.0,
+    @SerializedName("start_date") val startDate: String = "",
+    @SerializedName("due_date") val dueDate: String = "",
+    @SerializedName("billing_day") val billingDay: Int? = null,
+    @SerializedName("payment_day") val paymentDay: Int? = null,
+    val note: String? = null,
+    val status: String = "active",
+    @SerializedName("paid_total") val paidTotal: Double = 0.0,
+    @SerializedName("account_id") val accountId: Int? = null
+)
+
+data class DebtRepayment(
+    val id: Int = 0,
+    val amount: Double = 0.0,
+    @SerializedName("principal_part") val principalPart: Double = 0.0,
+    @SerializedName("interest_part") val interestPart: Double = 0.0,
+    @SerializedName("paid_at") val paidAt: String = "",
+    val note: String? = null,
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("account_name") val accountName: String? = null
+)
+
+data class DebtScheduleItem(
+    val period: Int = 0,
+    val payment: Double = 0.0,
+    val principal: Double = 0.0,
+    val interest: Double = 0.0,
+    val remainAfter: Double = 0.0
+)
+
+data class DebtDetailResponse(
+    val debt: Debt = Debt(),
+    val repayments: List<DebtRepayment> = emptyList(),
+    val schedule: List<DebtScheduleItem> = emptyList()
+)
+
+data class CreateDebtRequest(
+    val name: String,
+    val principal: Double,
+    val direction: String = "payable",
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("interest_rate") val interestRate: Double = 0.0,
+    @SerializedName("term_months") val termMonths: Int = 0,
+    val method: String = "equal_installment",
+    @SerializedName("monthly_payment") val monthlyPayment: Double = 0.0,
+    @SerializedName("due_date") val dueDate: String? = null,
+    val note: String? = null,
+    val type: String = "loan",
+    val creditor: String? = null
+)
+
+data class UpdateDebtRequest(
+    val name: String,
+    val principal: Double,
+    val direction: String = "payable",
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("interest_rate") val interestRate: Double = 0.0,
+    @SerializedName("term_months") val termMonths: Int = 0,
+    val method: String = "equal_installment",
+    @SerializedName("monthly_payment") val monthlyPayment: Double = 0.0,
+    @SerializedName("due_date") val dueDate: String? = null,
+    val note: String? = null,
+    val type: String = "loan",
+    val creditor: String? = null
+)
+
+data class CreateRepaymentRequest(
+    val amount: Double,
+    @SerializedName("paid_at") val paidAt: String? = null,
+    val note: String? = null,
+    @SerializedName("account_id") val accountId: Int,
+    @SerializedName("principal_part") val principalPart: Double? = null,
+    @SerializedName("interest_part") val interestPart: Double? = null
+)
+
 /* ----------------------------- 仪表盘 ----------------------------- */
 
 data class Dashboard(
@@ -354,7 +548,12 @@ data class SavingGoal(
     val icon: String? = "🎯",
     @SerializedName("target_amount") val targetAmount: Double = 0.0,
     @SerializedName("current_amount") val currentAmount: Double = 0.0,
-    val status: String = "active"
+    val status: String = "active",
+    @SerializedName("account_id") val accountId: Int? = null,
+    @SerializedName("acc_name") val accName: String? = null,
+    @SerializedName("source_account_id") val sourceAccountId: Int? = null,
+    @SerializedName("source_acc_name") val sourceAccName: String? = null,
+    val note: String? = null
 )
 data class HoldingRow(
     val name: String = "",

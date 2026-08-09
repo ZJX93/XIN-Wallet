@@ -7,10 +7,13 @@ import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.AuthInterceptor
 import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.AiRepository
+import com.xinwallet.app.data.repository.BudgetRepository
 import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.DashboardRepository
+import com.xinwallet.app.data.repository.DebtRepository
 import com.xinwallet.app.data.repository.InvestmentRepository
+import com.xinwallet.app.data.repository.SavingsGoalRepository
 import com.xinwallet.app.data.repository.TransactionRepository
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -43,6 +46,12 @@ object AppContainer {
     lateinit var dashboardRepository: DashboardRepository
         private set
     lateinit var aiRepository: AiRepository
+        private set
+    lateinit var budgetRepository: BudgetRepository
+        private set
+    lateinit var savingsGoalRepository: SavingsGoalRepository
+        private set
+    lateinit var debtRepository: DebtRepository
         private set
 
     private lateinit var retrofit: Retrofit
@@ -77,6 +86,9 @@ object AppContainer {
         dashboardRepository = DashboardRepository { api }
         categoryRepository = CategoryRepository { api }
         aiRepository = AiRepository { api }
+        budgetRepository = BudgetRepository { api }
+        savingsGoalRepository = SavingsGoalRepository { api }
+        debtRepository = DebtRepository { api }
     }
 
     private fun buildRetrofit(baseUrl: String, gson: com.google.gson.Gson): Retrofit {
