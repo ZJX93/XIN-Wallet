@@ -577,7 +577,7 @@
 .goal-actions .btn { font-size: var(--text-caption); height: 32px; padding: 0 var(--space-3); flex: 1; justify-content: center; }
 
 /* ============ 理财持仓：按类型真实叠牌 ============ */
-.inv-stack { margin-bottom: var(--space-4); }
+.inv-stack { margin-bottom: var(--space-4); --inv-stack-shift: 9px; }
 
 /* 牌堆封面（可点击展开/收起） */
 .inv-deck-cover {
@@ -601,24 +601,24 @@
   background: var(--surface-hover); padding: 2px 9px; border-radius: var(--radius-full);
 }
 .inv-cover-total { margin-left: auto; font-weight: var(--fw-semibold); color: var(--text-primary); }
-.inv-cover-chevron { color: var(--text-tertiary); transition: transform .35s var(--ease-out-quart); }
-.inv-stack[data-expanded="true"] .inv-cover-chevron { transform: rotate(180deg); }
+.inv-cover-viewall { margin-left: var(--space-2); font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
 .inv-stack-cards { padding: 0 var(--space-2); }
 
 /* 收起态：以右上角为锚的扇形微展牌堆（绝对定位，不撑开容器） */
 .inv-stack:not([data-expanded="true"]) .inv-stack-cards {
   position: relative;
-  padding-bottom: 16px;          /* 容纳旋转后的下边溢出 */
+  padding-bottom: calc((var(--n, 1) - 1) * var(--inv-stack-shift, 9px));  /* 容纳平行下移溢出 */
 }
 .inv-stack:not([data-expanded="true"]) .inv-stack-card {
   position: absolute;
   top: 0; left: 0; right: 0;
-  transform-origin: top right;   /* 右上角锚定 */
-  transform: rotate(calc(var(--i) * 3deg)) translateX(calc(var(--i) * -3px));
+  transform-origin: top center;
+  transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));  /* 平行下移，无旋转 */
   z-index: calc(var(--n) - var(--i));
   box-shadow: 0 8px 20px rgba(0,0,0,.18);
   pointer-events: none;          /* 收起时仅顶卡可交互 */
+  cursor: pointer;
   transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
 }
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:first-child {
@@ -626,28 +626,16 @@
   transform: none;
   z-index: 999;
   pointer-events: auto;
+  cursor: pointer;
   box-shadow: var(--shadow-md);
 }
-/* 收起态锁死旋转，规避 .goal-card:hover 把卡片弹出牌堆（first-child --i=0 → none） */
+/* 收起态锁死位移，规避 .goal-card:hover 把卡片弹出牌堆（first-child --i=0 → none） */
 .inv-stack:not([data-expanded="true"]) .inv-stack-card:hover {
-  transform: rotate(calc(var(--i) * 3deg)) translateX(calc(var(--i) * -3px));
+  transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));
   box-shadow: var(--shadow-md);
 }
 
-/* 展开态：摊开成整洁列表，逐张发牌 */
-.inv-stack[data-expanded="true"] .inv-stack-card {
-  position: relative;
-  height: auto;
-  overflow: visible;
-  margin-top: var(--space-3);
-  transform: none;
-  z-index: auto;
-  box-shadow: var(--shadow-sm);
-  pointer-events: auto;
-  transition: transform .5s var(--ease-out-quart), margin-top .5s var(--ease-out-quart),
-    box-shadow .3s var(--ease-out-quart);
-  transition-delay: calc(var(--i) * 35ms);
-}
+/* 注：展开态已改为「查看全部」全屏网格（openInvGrid），不再就地流式展开 */
 
 /* 每产品独立风险徽标 */
 .inv-risk-badge {
@@ -659,6 +647,54 @@
 .inv-risk-badge::before {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: var(--dot, #888);
+}
+
+/* ============ 理财：单卡详情弹窗 ============ */
+.inv-detail-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.inv-detail-icon { font-size: 26px; line-height: 1; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: var(--surface-hover); border-radius: var(--radius-lg); flex: 0 0 auto; }
+.inv-detail-name { font-size: var(--text-heading-sm); font-weight: var(--fw-semibold); color: var(--text-primary); margin-bottom: 6px; }
+.inv-detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
+.inv-detail-grid > div { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); display: flex; flex-direction: column; gap: 4px; }
+.inv-detail-grid .stat-label { font-size: var(--text-caption); color: var(--text-tertiary); }
+.inv-detail-val { font-size: var(--text-body-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.inv-detail-note { font-size: var(--text-body-sm); color: var(--text-muted); background: var(--surface-subtle); border-left: 3px solid var(--accent-500); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
+
+/* 详情弹窗需叠在「全屏网格」之上（HTML 中它位于网格之前，需显式抬升层级） */
+.modal-overlay#invDetailModal { z-index: calc(var(--z-modal-backdrop) + 10); }
+
+/* ============ 理财：全屏网格铺开 ============ */
+.inv-grid-panel {
+  width: min(1080px, 100%);
+  max-height: 88dvh;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: modalEnter var(--duration-300) var(--ease-out-expo);
+}
+.inv-grid-header { padding: var(--space-5) var(--space-6) 0; margin-bottom: var(--space-4); }
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+  padding: 0 var(--space-6) var(--space-6);
+  overflow-y: auto;
+}
+.inv-grid-card {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  padding: var(--space-4);
+  transition: transform .2s var(--ease-out-quart), box-shadow .2s var(--ease-out-quart), border-color .2s var(--ease-out-quart);
+  outline: none;
+}
+.inv-grid-card:hover, .inv-grid-card:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent-500);
 }
 
 /* ============ 账户：按类型真实叠牌（牌堆跟随账户网格列宽，不横跨整行） ============ */

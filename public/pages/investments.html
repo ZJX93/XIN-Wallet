@@ -165,6 +165,26 @@
                     </div>
                     <div class="sh-body"></div>
                 </div></div>
+                <!-- 理财：单卡详情弹窗 -->
+                <div class="modal-overlay" id="invDetailModal"><div class="modal glass-card modal-detail">
+                    <div class="modal-header"><h3 id="invDetailTitle">持仓详情</h3><button class="modal-close" id="invDetailClose" aria-label="关闭">✕</button></div>
+                    <div class="modal-body" id="invDetailBody"></div>
+                    <div class="form-actions" id="invDetailActions" style="margin-top:var(--space-4)">
+                        <button class="btn btn-ghost" data-detail-action="refresh" title="刷新行情">🔄 刷新行情</button>
+                        <button class="btn btn-ghost" data-detail-action="edit" title="编辑">✏️ 编辑</button>
+                        <button class="btn btn-ghost" data-detail-action="reduce" title="加仓/减仓">💰 加仓/减仓</button>
+                        <button class="btn btn-ghost" data-detail-action="interest" title="记一笔利息">📊 记息</button>
+                        <button class="btn btn-ghost" data-detail-action="delete" title="删除" style="color:var(--expense)">🗑️ 删除</button>
+                    </div>
+                </div></div>
+                <!-- 理财：全屏网格铺开 -->
+                <div class="modal-overlay" id="invGridOverlay"><div class="inv-grid-panel">
+                    <div class="modal-header inv-grid-header">
+                        <h3>全部持仓 · 共 <span id="invGridCount">0</span> 个</h3>
+                        <button class="modal-close" id="invGridClose" aria-label="关闭">✕</button>
+                    </div>
+                    <div class="inv-grid" id="invGridBody"></div>
+                </div></div>
             </section>
 
             <!-- ========== 标签管理 ========== -->

@@ -25,6 +25,16 @@
 //                    reduceModal 等）
 // ============================================================
 
+const INV_RISK_LABELS = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
+const INV_RISK_DOT = { low: '#22c55e', medium: '#eab308', high: '#f97316', very_high: '#ef4444' };
+
+// 收益率/年化格式化：异常值（极小本金导致公式放大）不展示科学计数法
+function fmtPct(v) {
+    if (v === null || v === undefined || !isFinite(v)) return '--';
+    if (Math.abs(v) > 100000) return '--';
+    return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+}
+
 const InvestmentManager = {
     refreshTimer: null,
     _initialized: false,
@@ -67,6 +77,31 @@ const InvestmentManager = {
         // 新增持仓按钮
         const addBtn = document.getElementById('addInvestBtn');
         if (addBtn) addBtn.addEventListener('click', () => this.openModal());
+        // 详情弹窗 & 全屏网格：关闭与动作绑定
+        const detailClose = document.getElementById('invDetailClose');
+        if (detailClose) detailClose.addEventListener('click', () => this.closeDetailModal());
+        const detailModal = document.getElementById('invDetailModal');
+        if (detailModal) detailModal.addEventListener('click', (e) => { if (e.target === detailModal) this.closeDetailModal(); });
+        const gridClose = document.getElementById('invGridClose');
+        if (gridClose) gridClose.addEventListener('click', () => this.closeInvGrid());
+        const gridOverlay = document.getElementById('invGridOverlay');
+        if (gridOverlay) gridOverlay.addEventListener('click', (e) => { if (e.target === gridOverlay) this.closeInvGrid(); });
+        document.querySelectorAll('#invDetailActions [data-detail-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = this.detailId;
+                if (id == null) return;
+                const act = btn.dataset.detailAction;
+                this.closeDetailModal();
+                if (act === 'refresh') this.refreshQuote(id, null);
+                else if (act === 'edit') this.edit(id);
+                else if (act === 'reduce') this.openReduceModal(id);
+                else if (act === 'interest') this.openInterestModal(id);
+                else if (act === 'delete') this.delete(id);
+            });
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { this.closeInvGrid(); this.closeDetailModal(); }
+        });
     },
     bindAutoCalc() {
         const buyPriceEl = document.getElementById('investBuyPrice');
@@ -411,8 +446,7 @@ const InvestmentManager = {
 
         // 持仓列表：按类型分组，同类型叠成一叠牌，点击封面展开/收起
         if (!data.investments || data.investments.length === 0) { showEmpty(container, '还没有理财持仓，点击「新增持仓」记录你的投资', '📈'); return; }
-        const riskLabels = { low: '低风险', medium: '中风险', high: '高风险', very_high: '极高风险' };
-        const riskDot = { low: '#22c55e', medium: '#eab308', high: '#f97316', very_high: '#ef4444' };
+        // 复用模块级 INV_RISK_LABELS / INV_RISK_DOT
 
         const buildCard = (i, idx, n) => {
             const progress = i.total_cost > 0 ? Math.min(100, (i.current_value / i.total_cost) * 100) : 0;
@@ -425,11 +459,11 @@ const InvestmentManager = {
                 <div class="goal-head">
                     <div class="goal-icon">${escapeHtml(i.type_icon || "📈")}</div>
                     <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
-                    <span class="inv-risk-badge" style="--dot:${riskDot[rl]}; background:${riskDot[rl]}22; color:${riskDot[rl]}">${riskLabels[rl] || rl}</span>
+                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
                 </div>
                 <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
-                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${profitSign}${i.profit_rate.toFixed(2)}%</span><span>年化 ${annualSign}${i.annualizedRate.toFixed(2)}%</span></div>
+                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>
                     <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}" title="编辑">✏️</button>
@@ -453,25 +487,29 @@ const InvestmentManager = {
             const total = items.reduce((s, i) => s + i.current_value, 0);
             const cards = items.map((i, idx) => buildCard(i, idx, items.length)).join('');
             return `
-            <div class="inv-stack" data-expanded="false">
-                <button class="inv-deck-cover" type="button" data-action="toggle-stack" title="点击展开/收起">
+            <div class="inv-stack">
+                <button class="inv-deck-cover" type="button" data-action="view-all" title="查看全部持仓">
                     <span class="inv-cover-icon">${escapeHtml(icon)}</span>
                     <span class="inv-cover-name">${escapeHtml(typeName)}</span>
                     <span class="inv-cover-count">${items.length} 个产品</span>
                     <span class="inv-cover-total">${fmt(total)}</span>
-                    <span class="inv-cover-chevron">▾</span>
+                    <span class="inv-cover-viewall">查看全部 →</span>
                 </button>
-                <div class="inv-stack-cards">${cards}</div>
+                <div class="inv-stack-cards" style="--n:${items.length}">${cards}</div>
             </div>`;
         }).join('');
 
-        // 事件委托：叠牌展开/收起
-        container.querySelectorAll('[data-action="toggle-stack"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const stack = btn.closest('.inv-stack');
-                if (!stack) return;
-                const expanded = stack.getAttribute('data-expanded') === 'true';
-                stack.setAttribute('data-expanded', expanded ? 'false' : 'true');
+        // 事件委托：封面「查看全部」→ 全屏网格铺开
+        container.querySelectorAll('[data-action="view-all"]').forEach(btn => {
+            btn.addEventListener('click', () => this.openInvGrid());
+        });
+
+        // 事件委托：点击单张牌 → 弹出该卡详情（点在操作按钮上则交给按钮处理）
+        container.querySelectorAll('.inv-stack-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('[data-action]')) return;
+                const id = parseInt(card.dataset.id);
+                if (!isNaN(id)) this.openInvDetail(id);
             });
         });
 
@@ -501,6 +539,74 @@ const InvestmentManager = {
             await ChartManager.renderInvTrend(trendData.trendSeries);
             await ChartManager.renderInvTypeBar(trendData.byType);
         }
+    },
+
+    /* ---- 理财：单卡详情弹窗 ---- */
+    openInvDetail(id) {
+        const inv = (cache.investments || []).find(i => i.id === id);
+        if (!inv) { showToast('持仓不存在', 'error'); return; }
+        this.detailId = id;
+        const rl = inv.risk_level || 'medium';
+        const profitCls = inv.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
+        document.getElementById('invDetailTitle').textContent = `${escapeHtml(inv.name)} 详情`;
+        document.getElementById('invDetailBody').innerHTML = `
+            <div class="inv-detail-head">
+                <div class="inv-detail-icon">${escapeHtml(inv.type_icon || '📈')}</div>
+                <div>
+                    <div class="inv-detail-name">${escapeHtml(inv.name)}${inv.code ? ' <span class="goal-sub">(' + escapeHtml(inv.code) + ')</span>' : ''}</div>
+                    <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
+                </div>
+            </div>
+            <div class="inv-detail-grid">
+                <div><span class="stat-label">投入本金</span><span class="inv-detail-val">${fmt(inv.total_cost)}</span></div>
+                <div><span class="stat-label">当前市值</span><span class="inv-detail-val">${fmt(inv.current_value)}</span></div>
+                <div><span class="stat-label">浮动盈亏</span><span class="inv-detail-val ${profitCls}">${fmt(inv.profit)}</span></div>
+                <div><span class="stat-label">收益率</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.profit_rate)}</span></div>
+                <div><span class="stat-label">年化</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.annualizedRate)}</span></div>
+                <div><span class="stat-label">持有数量</span><span class="inv-detail-val">${inv.quantity}</span></div>
+            </div>
+            ${inv.note ? `<div class="inv-detail-note">📝 ${escapeHtml(inv.note)}</div>` : ''}
+        `;
+        document.getElementById('invDetailModal').classList.add('show');
+    },
+    closeDetailModal() {
+        document.getElementById('invDetailModal').classList.remove('show');
+        this.detailId = null;
+    },
+
+    /* ---- 理财：全屏网格铺开 ---- */
+    buildGridCard(i) {
+        const rl = i.risk_level || 'medium';
+        const profitCls = i.profit_rate >= 0 ? 'profit-positive' : 'profit-negative';
+        const progress = i.total_cost > 0 ? Math.min(100, (i.current_value / i.total_cost) * 100) : 0;
+        return `
+        <div class="inv-grid-card" data-inv-id="${i.id}" tabindex="0" role="button" aria-label="${escapeHtml(i.name)} 持仓详情">
+            <div class="goal-head">
+                <div class="goal-icon">${escapeHtml(i.type_icon || '📈')}</div>
+                <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
+                <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
+            </div>
+            <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
+            <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
+            <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
+        </div>`;
+    },
+    openInvGrid() {
+        const items = cache.investments || [];
+        if (!items.length) { showToast('暂无持仓', 'warning'); return; }
+        const grid = document.getElementById('invGridBody');
+        grid.innerHTML = items.map(i => this.buildGridCard(i)).join('');
+        document.getElementById('invGridCount').textContent = items.length;
+        grid.querySelectorAll('[data-inv-id]').forEach(card => {
+            const handler = () => { const id = parseInt(card.dataset.invId); if (!isNaN(id)) this.openInvDetail(id); };
+            card.addEventListener('click', handler);
+            card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
+        });
+        document.getElementById('invGridOverlay').classList.add('show');
+    },
+    closeInvGrid() {
+        const ov = document.getElementById('invGridOverlay');
+        if (ov) ov.classList.remove('show');
     }
 };
 
