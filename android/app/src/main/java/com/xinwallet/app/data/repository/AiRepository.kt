@@ -10,7 +10,7 @@ class AiRepository(private val apiProvider: () -> ApiService) {
 
     /**
      * 上传账单图片做 OCR + 交易项提取。
-     * 后端 multer 限制 5MB 且只接受 image/*，字段名固定为 image。
+     * 后端 multer 限制 5MB 且只接受图片格式，字段名固定为 image。
      */
     suspend fun ocr(bytes: ByteArray, fileName: String = "bill.jpg", mime: String = "image/jpeg") =
         safeApiCall {
