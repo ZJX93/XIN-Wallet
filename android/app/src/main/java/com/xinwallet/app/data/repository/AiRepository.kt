@@ -20,4 +20,11 @@ class AiRepository(private val apiProvider: () -> ApiService) {
         }
 
     suspend fun getOcrConfig() = safeApiCall { apiProvider().getOcrConfig() }
+
+    /** AI 对话记账：把完整对话历史发给后端，后端用 function calling 建账/查账 */
+    suspend fun chat(req: ChatRequest) = safeApiCall { apiProvider().chat(req) }
+
+    /** 云端语音转写：audio 为 base64 */
+    suspend fun transcribe(audio: String, mime: String? = null) =
+        safeApiCall { apiProvider().transcribe(TranscribeRequest(audio, mime)) }
 }

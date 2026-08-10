@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -31,6 +32,7 @@ import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
 import com.xinwallet.app.ui.screens.AiScanScreen
+import com.xinwallet.app.ui.screens.ChatScreen
 import com.xinwallet.app.ui.screens.HomeScreen
 import com.xinwallet.app.ui.screens.InvestmentDetailScreen
 import com.xinwallet.app.ui.screens.InvestmentsScreen
@@ -62,6 +64,7 @@ sealed class Screen(val route: String) {
     object Planning : Screen("planning")
     object Reports : Screen("reports")
     object Tags : Screen("tags")
+    object Chat : Screen("chat")
 }
 
 private val bottomItems = listOf(
@@ -70,6 +73,7 @@ private val bottomItems = listOf(
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
     Screen.Planning to ("规划" to Icons.Filled.Savings),
     Screen.Reports to ("报表" to Icons.Filled.BarChart),
+    Screen.Chat to ("对话" to Icons.Filled.Chat),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
 
@@ -78,6 +82,7 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("account") -> Screen.Accounts.route
     route.startsWith("edit") -> Screen.Transactions.route
     route.startsWith("ai") -> Screen.Transactions.route
+    route.startsWith("chat") -> Screen.Chat.route
     route.startsWith("transactions") -> Screen.Transactions.route
     route.startsWith("investment") -> Screen.Investments.route
     else -> route.substringBefore("/")
@@ -160,6 +165,7 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
         composable(Screen.Profile.route) { ProfileScreen(navController, onLogout) }
         composable(Screen.Planning.route) { PlanningScreen(navController) }
         composable(Screen.Reports.route) { ReportsScreen() }
+        composable(Screen.Chat.route) { ChatScreen(navController) }
         composable(Screen.Tags.route) { TagsScreen(navController) }
     }
 }

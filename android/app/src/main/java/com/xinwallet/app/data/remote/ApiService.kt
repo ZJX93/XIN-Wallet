@@ -109,6 +109,14 @@ interface ApiService {
     @GET("ai/ocr-config")
     suspend fun getOcrConfig(): Response<ApiResponse<OcrConfig>>
 
+    /** AI 对话记账：文字 / 截图多模态，后端用 function calling 真正建账 */
+    @POST("ai/chat")
+    suspend fun chat(@Body req: ChatRequest): Response<ApiResponse<ChatResponse>>
+
+    /** 语音转文字（云端回退）：audio 为 base64 */
+    @POST("ai/transcribe")
+    suspend fun transcribe(@Body req: TranscribeRequest): Response<ApiResponse<TranscribeResponse>>
+
     /* 预算 */
     @GET("budgets")
     suspend fun getBudgets(): Response<ApiResponse<List<Budget>>>

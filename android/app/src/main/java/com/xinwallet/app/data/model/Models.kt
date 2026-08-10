@@ -316,6 +316,44 @@ data class OcrConfig(
     val configured: Boolean get() = !secretId.isNullOrBlank()
 }
 
+/* ----------------------------- AI 对话记账 ----------------------------- */
+
+/** 对话中的一条消息；user 消息可附带截图（多模态），assistant 消息可携带已建交易 */
+data class ChatMessage(
+    val role: String,
+    val content: String = "",
+    val imageBase64: String? = null,
+    val mime: String? = null,
+    val transactions: List<ChatTxn> = emptyList()
+)
+
+data class ChatRequest(
+    val messages: List<ChatMessage>,
+    val image: String? = null,
+    val mime: String? = null
+)
+
+data class ChatTxn(
+    val id: Int = 0,
+    val type: String = "",
+    val amount: Double = 0.0,
+    val categoryName: String? = null,
+    val accountName: String? = null,
+    val date: String? = null
+)
+
+data class ChatResponse(
+    val reply: String = "",
+    val transactions: List<ChatTxn> = emptyList()
+)
+
+data class TranscribeRequest(
+    val audio: String,
+    val mime: String? = null
+)
+
+data class TranscribeResponse(val text: String = "")
+
 /* ----------------------------- 预算 ----------------------------- */
 
 data class Budget(

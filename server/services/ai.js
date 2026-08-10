@@ -97,4 +97,150 @@ async function callProvider(provider, messages) {
     return await callOpenAICompatible(provider.base_url, provider.api_key, provider.model, messages);
 }
 
-module.exports = { httpsPostJson, getActiveProvider, callOpenAICompatible, callAnthropic, callProvider };
+// ==========================================
+// 多模态 + 函数调用（tools）支持
+// 归一化消息格式：{ role, content }
+//   content: string | parts[]，parts = {type:'text',text} | {type:'image',mime,data(base64)}
+// 归一化工具调用结果：{ role:'tool', toolCallId, content }
+// 归一化助手消息（含工具调用）：{ role:'assistant', content, toolCalls:[{id,name,arguments(object)}] }
+// ==========================================
+
+function safeParseJson(str) {
+    if (typeof str !== 'string') return str;
+    try { return JSON.parse(str); } catch { return {}; }
+}
+
+function mimeToAnthropic(mime) {
+    if (!mime) return 'image/jpeg';
+    if (mime.includes('png')) return 'image/png';
+    if (mime.includes('webp')) return 'image/webp';
+    if (mime.includes('gif')) return 'image/gif';
+    return 'image/jpeg';
+}
+
+function toOpenAIContent(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.map(p => p.type === 'image'
+            ? { type: 'image_url', image_url: { url: `data:${p.mime || 'image/jpeg'};base64,${p.data}` } }
+            : { type: 'text', text: p.text || '' });
+    }
+    return content;
+}
+
+function toAnthropicContent(content) {
+    if (typeof content === 'string') return [{ type: 'text', text: content }];
+    if (Array.isArray(content)) {
+        return content.map(p => p.type === 'image'
+            ? { type: 'image', source: { type: 'base64', media_type: mimeToAnthropic(p.mime), data: p.data } }
+            : { type: 'text', text: p.text || '' });
+    }
+    return content;
+}
+
+function toOpenAITools(tools) {
+    return (tools || []).map(t => ({
+        type: 'function',
+        function: { name: t.name, description: t.description || '', parameters: t.parameters || { type: 'object', properties: {} } }
+    }));
+}
+
+function toAnthropicTools(tools) {
+    return (tools || []).map(t => ({
+        name: t.name, description: t.description || '', input_schema: t.parameters || { type: 'object', properties: {} }
+    }));
+}
+
+// OpenAI 兼容：带 tools 的对话，返回归一化助手消息
+async function chatOpenAITools(provider, messages, tools) {
+    const baseUrl = (provider.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    const url = baseUrl + '/chat/completions';
+    const translated = messages.map(m => {
+        if (m.role === 'system') return { role: 'system', content: m.content };
+        if (m.role === 'tool') return { role: 'tool', tool_call_id: m.toolCallId, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) };
+        if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length) {
+            return {
+                role: 'assistant',
+                content: m.content || '',
+                tool_calls: m.toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: JSON.stringify(tc.arguments || {}) } }))
+            };
+        }
+        return { role: m.role, content: toOpenAIContent(m.content) };
+    });
+    const body = { model: provider.model || 'gpt-4o-mini', messages: translated, temperature: 0.3 };
+    if (tools && tools.length) { body.tools = toOpenAITools(tools); body.tool_choice = 'auto'; }
+    const data = await httpsPostJson(url, { 'Authorization': `Bearer ${provider.api_key}` }, body);
+    const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+    if (!msg) throw new Error('AI 返回为空');
+    const toolCalls = (msg.tool_calls || []).map(tc => ({ id: tc.id, name: tc.function.name, arguments: safeParseJson(tc.function.arguments) }));
+    return { role: 'assistant', content: msg.content || '', toolCalls };
+}
+
+// Anthropic：带 tools 的对话
+async function chatAnthropicTools(provider, messages, tools) {
+    const baseUrl = (provider.base_url || 'https://api.anthropic.com/v1').replace(/\/+$/, '');
+    const url = baseUrl + '/messages';
+    let system = '';
+    const translated = [];
+    for (const m of messages) {
+        if (m.role === 'system') { system += (system ? '\n' : '') + (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)); continue; }
+        if (m.role === 'tool') {
+            translated.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: m.toolCallId, content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }] });
+            continue;
+        }
+        if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length) {
+            const blocks = m.content ? toAnthropicContent(m.content) : [];
+            m.toolCalls.forEach(tc => blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.arguments || {} }));
+            translated.push({ role: 'assistant', content: blocks });
+            continue;
+        }
+        translated.push({ role: m.role, content: toAnthropicContent(m.content) });
+    }
+    const body = { model: provider.model || 'claude-3-haiku-20240307', max_tokens: 2048, system, messages: translated };
+    if (tools && tools.length) body.tools = toAnthropicTools(tools);
+    const data = await httpsPostJson(url, { 'x-api-key': provider.api_key, 'anthropic-version': '2023-06-01' }, body);
+    const content = data && data.content;
+    let text = '';
+    const toolCalls = [];
+    if (Array.isArray(content)) {
+        for (const block of content) {
+            if (block.type === 'text') text += block.text;
+            else if (block.type === 'tool_use') toolCalls.push({ id: block.id, name: block.name, arguments: block.input || {} });
+        }
+    }
+    return { role: 'assistant', content: text, toolCalls };
+}
+
+// 通用：根据服务商分发
+async function chatWithTools(provider, messages, tools) {
+    if (!provider) throw new Error('未配置 AI 服务商');
+    if (!provider.api_key) throw new Error('服务商未设置 API Key');
+    if (provider.api_type === 'anthropic') return await chatAnthropicTools(provider, messages, tools);
+    return await chatOpenAITools(provider, messages, tools);
+}
+
+// 发送原始字节 body（multipart 等），用于语音转写
+async function httpsPostRaw(url, headers, bufferBody) {
+    await assertPublicUrl(url);
+    return new Promise((resolve, reject) => {
+        const u = new URL(url);
+        const mod = u.protocol === 'https:' ? https : http;
+        const opts = {
+            hostname: u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80),
+            path: u.pathname + u.search, method: 'POST',
+            headers: { 'Content-Length': Buffer.byteLength(bufferBody), ...headers },
+            timeout: 60000
+        };
+        const req = mod.request(opts, (res) => {
+            let buf = '';
+            res.on('data', c => buf += c);
+            res.on('end', () => { try { resolve(JSON.parse(buf)); } catch { resolve(buf); } });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（60s）')); });
+        req.write(bufferBody);
+        req.end();
+    });
+}
+
+module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools };

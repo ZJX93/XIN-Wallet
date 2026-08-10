@@ -6,8 +6,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
-const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt } = require('./_helpers');
-const { getActiveProvider, callProvider } = require('../services/ai');
+const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime } = require('./_helpers');
+const { getActiveProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
+const { syncCreditCardDebt } = require('./utils');
+const { toAmount, toNumber } = require('../validate');
 const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
 const OcrClient = tencentOcr.v20181119.Client;
 
@@ -790,6 +792,267 @@ ${ocrText}`;
     } catch (err) {
         console.error('[OCR ERROR]', err && err.stack ? err.stack : err);
         handleServerError(res, err, 'OCR 识别');
+    }
+});
+
+// ==========================================
+// AI 对话记账（文字 / 语音转写文本 / 截图多模态）
+// 客户端维护对话历史，每次把完整 messages 发上来；截图以 imageBase64 附着在 user 消息或顶层 image 字段。
+// 后端用 function calling 真正建账 / 查账，返回 { reply, transactions }。
+// ==========================================
+router.post('/chat', async (req, res) => {
+    try {
+        const { messages, image, mime } = req.body;
+        if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json(fail('消息不能为空'));
+        const provider = await getActiveProvider(req.userId);
+        if (!provider) return res.status(400).json(fail('请先在 Web 端「AI 配置」页面配置 AI 服务商'));
+
+        // 取用户类目与账户作为工具参考
+        const cats = await db.query(
+            `SELECT c.id, c.name, c.type, c.icon FROM categories c WHERE (c.user_id IS NULL OR c.user_id = ?) ORDER BY c.type, c.sort_order`,
+            [req.userId]
+        );
+        const accounts = await db.query(
+            `SELECT id, name, icon, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY sort_order`,
+            [req.userId]
+        );
+        const transferCat = await db.queryOne("SELECT id FROM categories WHERE name='转账' AND type='transfer' AND (user_id IS NULL OR user_id=?) LIMIT 1", [req.userId]) || { id: 22 };
+
+        const catRef = cats.map(c => `- [${c.id}] ${c.name}（${c.type}${c.icon ? ' ' + c.icon : ''}）`).join('\n');
+        const accRef = accounts.map(a => `- [${a.id}] ${a.name}（${a.type}${a.icon ? ' ' + a.icon : ''}）`).join('\n');
+
+        // 归一化客户端消息：user 消息可携带 imageBase64
+        const norm = messages.map(m => {
+            if (m.role === 'user' && m.imageBase64) {
+                return { role: 'user', content: [{ type: 'text', text: m.content || '' }, { type: 'image', mime: m.mime || 'image/jpeg', data: m.imageBase64 }] };
+            }
+            return { role: m.role, content: m.content };
+        });
+        // 顶层 image（可选）附加到最后一条 user 消息
+        if (image) {
+            const lastUser = [...norm].reverse().find(m => m.role === 'user');
+            if (lastUser) {
+                lastUser.content = Array.isArray(lastUser.content) ? lastUser.content : [{ type: 'text', text: lastUser.content || '' }];
+                lastUser.content.push({ type: 'image', mime: mime || 'image/jpeg', data: image });
+            }
+        }
+
+        const system = `你是「鑫钱包」的智能记账助手，帮助用户通过自然语言完成记账与查账。
+规则：
+1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
+2. 信息不全（金额、收支方向或账户不明）时，用一句中文追问，不要臆造。
+3. 记账优先调用工具：create_transaction（收入/支出）、create_transfer（转账）、query_stats（查账问答）。
+4. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止编造 id。
+5. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
+6. 记账成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）"）。
+
+可用类目：
+${catRef}
+
+可用账户：
+${accRef}`;
+
+        const tools = [
+            {
+                name: 'create_transaction',
+                description: '创建一笔收入或支出交易。category_id 与 account_id 必须从上面账户/类目列表中选取。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        type: { type: 'string', enum: ['income', 'expense'] },
+                        amount: { type: 'number', description: '正数金额' },
+                        category_id: { type: 'integer' },
+                        account_id: { type: 'integer' },
+                        date: { type: 'string', description: 'YYYY-MM-DD HH:mm:ss，可省略' },
+                        note: { type: 'string', description: '备注/商户名' }
+                    },
+                    required: ['type', 'amount', 'category_id', 'account_id']
+                }
+            },
+            {
+                name: 'create_transfer',
+                description: '在两个账户间转账（如银行卡转余额宝）。from_account_id/to_account_id 从账户列表选取。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        from_account_id: { type: 'integer' },
+                        to_account_id: { type: 'integer' },
+                        amount: { type: 'number' },
+                        date: { type: 'string' },
+                        note: { type: 'string' }
+                    },
+                    required: ['from_account_id', 'to_account_id', 'amount']
+                }
+            },
+            {
+                name: 'query_stats',
+                description: '回答查账类问题（本月收入/支出/结余、当前总余额、本月各类目花费、最近交易）。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        metric: { type: 'string', enum: ['month_income', 'month_expense', 'month_balance', 'total_balance', 'category_this_month', 'recent'] },
+                        month: { type: 'string', description: 'YYYY-MM，可省略表示当前月' }
+                    },
+                    required: ['metric']
+                }
+            }
+        ];
+
+        async function executeTool(name, args) {
+            if (name === 'create_transaction') {
+                const type = args.type;
+                if (type !== 'income' && type !== 'expense') return { ok: false, error: '收支类型不合法' };
+                const amount = toAmount(args.amount);
+                if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
+                const accountId = parseInt(args.account_id), categoryId = parseInt(args.category_id);
+                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accountId, req.userId]);
+                if (!acc) return { ok: false, error: '账户不存在' };
+                const cat = await db.queryOne('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)', [categoryId, req.userId]);
+                if (!cat) return { ok: false, error: '分类不存在' };
+                const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
+                const txId = await db.transaction(async (conn) => {
+                    const ins = await conn.query(
+                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [req.userId, accountId, categoryId, type, amount, args.note || '', date,
+                        (type === 'expense' ? accountId : null), (type === 'income' ? accountId : null)]
+                    );
+                    const newBal = await computeAccountBalance(conn, req.userId, accountId);
+                    await enforceBalanceLimit(conn, req.userId, accountId, newBal);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, accountId]);
+                    await syncCreditCardDebt(conn, req.userId, accountId);
+                    return ins.insertId;
+                });
+                return { ok: true, transaction_id: txId, type, amount, category_id: categoryId, account_id: accountId };
+            }
+            if (name === 'create_transfer') {
+                const fromId = parseInt(args.from_account_id), toId = parseInt(args.to_account_id);
+                const amount = toNumber(args.amount);
+                if (!fromId || !toId) return { ok: false, error: '请选择转出和转入账户' };
+                if (fromId === toId) return { ok: false, error: '转出和转入账户不能相同' };
+                if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
+                const fromAcc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [fromId, req.userId]);
+                if (!fromAcc) return { ok: false, error: '转出账户不存在' };
+                const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
+                const txId = await db.transaction(async (conn) => {
+                    const ins = await conn.query(
+                        `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')`,
+                        [req.userId, fromId, toId, amount, args.note || '', date]
+                    );
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+                        [req.userId, fromId, transferCat.id, amount, `转账至${fromAcc.name}`, date, ins.insertId, fromId]
+                    );
+                    const toAcc = await db.queryOne('SELECT name FROM accounts WHERE id = ?', [toId]);
+                    await conn.query(
+                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+                        [req.userId, toId, transferCat.id, amount, `来自${toAcc ? toAcc.name : '转账'}`, date, ins.insertId, toId]
+                    );
+                    const fromBal = await computeAccountBalance(conn, req.userId, fromId);
+                    const toBal = await computeAccountBalance(conn, req.userId, toId);
+                    await enforceBalanceLimit(conn, req.userId, fromId, fromBal);
+                    await enforceBalanceLimit(conn, req.userId, toId, toBal);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, fromId]);
+                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, toId]);
+                    return ins.insertId;
+                });
+                return { ok: true, transaction_id: txId, type: 'transfer', amount, from_account_id: fromId, to_account_id: toId };
+            }
+            if (name === 'query_stats') {
+                const metric = args.metric;
+                const month = args.month || new Date().toISOString().slice(0, 7);
+                if (metric === 'total_balance') {
+                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = ? AND status='active'", [req.userId]);
+                    return { ok: true, metric, value: parseFloat(rows[0].b) };
+                }
+                if (metric === 'month_income' || metric === 'month_expense' || metric === 'month_balance') {
+                    const rows = await db.query(
+                        `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as inc,
+                                COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as exp
+                         FROM transactions WHERE user_id = ? AND date::text LIKE ? AND type IN ('income','expense')`,
+                        [req.userId, month + '%']
+                    );
+                    const inc = parseFloat(rows[0].inc), exp = parseFloat(rows[0].exp);
+                    const value = metric === 'month_income' ? inc : metric === 'month_expense' ? exp : (inc - exp);
+                    return { ok: true, metric, month, value };
+                }
+                if (metric === 'category_this_month') {
+                    const rows = await db.query(
+                        `SELECT c.name, COALESCE(SUM(t.amount),0) as amt FROM transactions t
+                         LEFT JOIN categories c ON t.category_id = c.id
+                         WHERE t.user_id = ? AND t.date::text LIKE ? AND t.type='expense'
+                         GROUP BY c.name ORDER BY amt DESC LIMIT 8`,
+                        [req.userId, month + '%']
+                    );
+                    return { ok: true, metric, month, rows: rows.map(r => ({ name: r.name, amount: parseFloat(r.amt) })) };
+                }
+                if (metric === 'recent') {
+                    const rows = await db.query(
+                        `SELECT t.amount, t.type, t.note, t.date, c.name as cat FROM transactions t
+                         LEFT JOIN categories c ON t.category_id=c.id WHERE t.user_id=? ORDER BY t.date DESC, t.id DESC LIMIT 5`,
+                        [req.userId]
+                    );
+                    return { ok: true, metric, rows: rows.map(r => ({ amount: parseFloat(r.amount), type: r.type, note: r.note, date: r.date, category: r.cat })) };
+                }
+                return { ok: false, error: '不支持的查询类型' };
+            }
+            return { ok: false, error: '未知工具 ' + name };
+        }
+
+        const conv = [{ role: 'system', content: system }, ...norm];
+        let reply = '';
+        const created = [];
+        const MAX_LOOPS = 5;
+        for (let i = 0; i < MAX_LOOPS; i++) {
+            const msg = await chatWithTools(provider, conv, tools);
+            conv.push(msg);
+            if (!msg.toolCalls || msg.toolCalls.length === 0) { reply = msg.content; break; }
+            for (const tc of msg.toolCalls) {
+                const result = await executeTool(tc.name, tc.arguments || {});
+                conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
+                if (result.ok && result.transaction_id) {
+                    const t = await db.queryOne(
+                        `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
+                         FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
+                         WHERE t.id=? AND t.user_id=?`,
+                        [result.transaction_id, req.userId]
+                    );
+                    if (t) created.push({ id: result.transaction_id, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
+                }
+            }
+        }
+        if (!reply) reply = '已完成处理。';
+        res.json(success({ reply, transactions: created }));
+    } catch (err) {
+        handleServerError(res, err, 'AI 对话');
+    }
+});
+
+// 语音转文字（云端回退）：仅 OpenAI 兼容且服务商支持 /audio/transcriptions 时可用
+router.post('/transcribe', async (req, res) => {
+    try {
+        const { audio, mime } = req.body;
+        if (!audio) return res.status(400).json(fail('缺少音频'));
+        const provider = await getActiveProvider(req.userId);
+        if (!provider) return res.status(400).json(fail('请先配置 AI 服务商'));
+        if (provider.api_type === 'anthropic') return res.status(400).json(fail('当前 Anthropic 服务商不支持语音转写，请使用设备端语音识别或切换 OpenAI 兼容服务商'));
+        const baseUrl = (provider.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const url = baseUrl + '/audio/transcriptions';
+        const boundary = '----xinwallet' + Date.now();
+        const fileData = Buffer.from(audio, 'base64');
+        const body = Buffer.concat([
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.webm"\r\nContent-Type: ${mime || 'audio/webm'}\r\n\r\n`),
+            fileData,
+            Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--${boundary}--\r\n`)
+        ]);
+        const data = await httpsPostRaw(url, { 'Authorization': `Bearer ${provider.api_key}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body);
+        const text = (typeof data === 'string') ? data : (data && data.text);
+        if (!text) return res.status(502).json(fail('语音转写失败，服务商可能不支持音频接口'));
+        res.json(success({ text }));
+    } catch (err) {
+        handleServerError(res, err, '语音转写');
     }
 });
 
