@@ -6,10 +6,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.FloatingActionButton
@@ -70,7 +68,6 @@ private val bottomItems = listOf(
     Screen.Home to ("首页" to Icons.Filled.Home),
     Screen.Accounts to ("账户" to Icons.Filled.AccountBalanceWallet),
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
-    Screen.Investments to ("理财" to Icons.Filled.PieChart),
     Screen.Planning to ("规划" to Icons.Filled.Savings),
     Screen.Reports to ("报表" to Icons.Filled.BarChart),
     Screen.Profile to ("我的" to Icons.Filled.Person)
@@ -116,9 +113,6 @@ fun MainScaffold(onLogout: () -> Unit) {
             when (current) {
                 Screen.Home.route -> FloatingActionButton(onClick = { navController.navigate(Screen.AddTransaction.route) }) {
                     Icon(Icons.Filled.Add, "记一笔")
-                }
-                Screen.Transactions.route -> FloatingActionButton(onClick = { navController.navigate(Screen.AiScan.route) }) {
-                    Icon(Icons.Filled.CameraAlt, "AI 记账")
                 }
             }
         }

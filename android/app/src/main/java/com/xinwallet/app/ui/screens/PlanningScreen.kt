@@ -1,12 +1,16 @@
 package com.xinwallet.app.ui.screens
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.RequestQuote
+import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -26,7 +30,8 @@ fun PlanningScreen(navController: NavHostController) {
     val tabs = listOf(
         "预算" to Icons.Filled.AccountBalance,
         "储蓄目标" to Icons.Filled.Savings,
-        "债务" to Icons.Filled.RequestQuote
+        "债务" to Icons.Filled.RequestQuote,
+        "理财" to Icons.Filled.PieChart
     )
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
@@ -39,10 +44,13 @@ fun PlanningScreen(navController: NavHostController) {
                 )
             }
         }
-        when (tab) {
-            0 -> BudgetsTab()
-            1 -> SavingsTab()
-            2 -> DebtsTab()
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (tab) {
+                0 -> BudgetsTab()
+                1 -> SavingsTab()
+                2 -> DebtsTab()
+                3 -> InvestmentsContent(navController)
+            }
         }
     }
 }

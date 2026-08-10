@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
@@ -52,42 +53,45 @@ import com.xinwallet.app.util.formatMoney
 import com.xinwallet.app.util.formatMoneySigned
 
 @Composable
-fun InvestmentsScreen(navController: NavHostController) {
+fun InvestmentsContent(navController: NavHostController, contentPadding: PaddingValues = PaddingValues()) {
     val vm: InvestmentsViewModel = viewModel(factory = viewModelFactory { InvestmentsViewModel(AppContainer.investmentRepository) })
     val state by vm.state.collectAsState()
-    val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { vm.load() }
-    LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
 
-    Scaffold(topBar = { TopBar("理财") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        when {
-            state.loading -> LoadingBox()
-            state.error != null -> ErrorState(state.error!!) { vm.load() }
-            state.investments.isEmpty() -> EmptyState("暂无理财持仓")
-            else -> {
-                val sum = state.summary
-                val grouped = state.investments.groupBy { it.typeName ?: "其他" }
-                LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                    item {
-                        Spacer(Modifier.height(12.dp))
-                        if (sum != null) {
-                            val sub = "总成本 ${formatMoney(sum.totalCost)} · 总收益 ${formatMoneySigned(sum.totalProfit)}"
-                            BalanceCard("理财总市值", sum.totalValue, sub, Modifier.padding(horizontal = 16.dp))
-                        } else {
-                            BalanceCard("理财总市值", state.investments.sumOf { it.currentValue }, null, Modifier.padding(horizontal = 16.dp))
-                        }
+    when {
+        state.loading -> LoadingBox()
+        state.error != null -> ErrorState(state.error!!) { vm.load() }
+        state.investments.isEmpty() -> EmptyState("暂无理财持仓")
+        else -> {
+            val sum = state.summary
+            val grouped = state.investments.groupBy { it.typeName ?: "其他" }
+            LazyColumn(Modifier.fillMaxSize().padding(contentPadding)) {
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    if (sum != null) {
+                        val sub = "总成本 ${formatMoney(sum.totalCost)} · 总收益 ${formatMoneySigned(sum.totalProfit)}"
+                        BalanceCard("理财总市值", sum.totalValue, sub, Modifier.padding(horizontal = 16.dp))
+                    } else {
+                        BalanceCard("理财总市值", state.investments.sumOf { it.currentValue }, null, Modifier.padding(horizontal = 16.dp))
                     }
-                    grouped.forEach { (typeName, list) ->
-                        item { SectionTitle("$typeName（${list.size}）") }
-                        items(list) { inv ->
-                            InvestmentRow(inv) { navController.navigate(Screen.InvestmentDetail.create(inv.id)) }
-                        }
-                    }
-                    item { Spacer(Modifier.height(16.dp)) }
                 }
+                grouped.forEach { (typeName, list) ->
+                    item { SectionTitle("$typeName（${list.size}）") }
+                    items(list) { inv ->
+                        InvestmentRow(inv) { navController.navigate(Screen.InvestmentDetail.create(inv.id)) }
+                    }
+                }
+                item { Spacer(Modifier.height(16.dp)) }
             }
         }
+    }
+}
+
+@Composable
+fun InvestmentsScreen(navController: NavHostController) {
+    Scaffold(topBar = { TopBar("理财") }) { padding ->
+        InvestmentsContent(navController, padding)
     }
 }
 

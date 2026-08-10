@@ -519,20 +519,25 @@ data class Dashboard(
     val year: IncomeExpense? = null,
     val months: List<MonthTrend> = emptyList(),
     val accounts: List<Account> = emptyList(),
-    val invSummary: InvSummary? = null,
-    val budgetRows: List<BudgetRow> = emptyList(),
-    val goalRows: List<SavingGoal> = emptyList(),
-    val holdingRows: List<HoldingRow> = emptyList(),
-    val recentTrans: List<Transaction> = emptyList(),
-    val debtSum: DebtSummary? = null
+    @SerializedName("investments") val inv: InvData? = null,
+    @SerializedName("budgets") val budgetRows: List<BudgetRow> = emptyList(),
+    @SerializedName("savingsGoals") val goalRows: List<SavingGoal> = emptyList(),
+    @SerializedName("recentTransactions") val recentTrans: List<TransactionItem> = emptyList(),
+    @SerializedName("debts") val debt: DebtSummary? = null,
+    @SerializedName("netWorth") val netWorth: Double = 0.0,
+    @SerializedName("totalAssets") val totalAssets: Double = 0.0,
+    @SerializedName("totalSavings") val totalSavings: Double = 0.0,
+    @SerializedName("savingsRate") val savingsRate: Double = 0.0
 )
 
 data class AmountOnly(val expense: Double = 0.0)
 data class IncomeExpense(val income: Double = 0.0, val expense: Double = 0.0)
 data class MonthTrend(val month: String = "", val income: Double = 0.0, val expense: Double = 0.0)
-data class InvSummary(
-    @SerializedName("total_cost") val totalCost: Double = 0.0,
-    @SerializedName("total_value") val totalValue: Double = 0.0
+data class InvData(
+    @SerializedName("totalCost") val totalCost: Double = 0.0,
+    @SerializedName("totalValue") val totalValue: Double = 0.0,
+    @SerializedName("totalProfit") val totalProfit: Double = 0.0,
+    val holdings: List<HoldingRow> = emptyList()
 )
 data class BudgetRow(
     val id: Int = 0,
@@ -561,12 +566,19 @@ data class HoldingRow(
     @SerializedName("total_cost") val totalCost: Double = 0.0,
     @SerializedName("current_value") val currentValue: Double = 0.0,
     val profit: Double = 0.0,
+    @SerializedName("profit_rate") val profitRate: Double = 0.0,
     @SerializedName("type_icon") val typeIcon: String? = null,
     @SerializedName("type_name") val typeName: String? = null
 )
 data class DebtSummary(
-    val payable: Double = 0.0,
-    val receivable: Double = 0.0
+    @SerializedName("totalRemaining") val totalRemaining: Double = 0.0,
+    @SerializedName("totalMonthly") val totalMonthly: Double = 0.0,
+    @SerializedName("dueThisMonth") val dueThisMonth: Int = 0,
+    @SerializedName("dueAmount") val dueAmount: Double = 0.0,
+    val overdue: Int = 0,
+    @SerializedName("overdueAmount") val overdueAmount: Double = 0.0,
+    val count: Int = 0,
+    val activeCount: Int = 0
 )
 
 /* ----------------------------- 报表 ----------------------------- */

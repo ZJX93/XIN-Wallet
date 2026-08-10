@@ -40,6 +40,18 @@ import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.todayDateTime
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import kotlinx.coroutines.launch
 
 /**
@@ -68,6 +80,8 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     // 记账时间精确到秒，格式 yyyy-MM-dd HH:mm:ss，默认取当前时刻
     var date by remember { mutableStateOf(todayDateTime()) }
     var prefilled by remember { mutableStateOf(false) }
+    // AI 记账内联模式：true 时在记一笔页内直接展示 AI 智能记账流程
+    var aiMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.loadOptions(if (isEdit) editId else null, month) }
     LaunchedEffect(state.success) { if (state.success) navController.popBackStack() }
@@ -91,7 +105,7 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     Scaffold(
         topBar = { TopBar(if (isEdit) "编辑交易" else "记一笔", onBack = { navController.popBackStack() }) },
         snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
+        bottomBar = if (aiMode) null else {
             Button(
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
@@ -122,11 +136,27 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             }
         }
     ) { padding ->
-        if (state.loading && state.accounts.isEmpty() && state.categories.isEmpty()) {
+        if (aiMode) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("AI 智能记账", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { aiMode = false }) { Text("收起") }
+                }
+                Box(Modifier.weight(1f)) { AiScanContent(navController, PaddingValues()) }
+            }
+        } else if (state.loading && state.accounts.isEmpty() && state.categories.isEmpty()) {
             LoadingBox()
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 item {
+                    if (!isEdit) {
+                        OutlinedButton(onClick = { aiMode = true }, Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.PhotoCamera, null, Modifier.height(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("📷 AI 智能记账（拍照/截图自动识别）")
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
                     // 编辑模式隐藏转账选项：转账是成对记录，需整笔删除后重记
                     val count = if (isEdit) 2 else 3
                     SingleChoiceSegmentedButtonRow {
