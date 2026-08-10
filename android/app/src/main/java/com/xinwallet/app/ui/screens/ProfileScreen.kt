@@ -142,8 +142,10 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            // OPSTR_REQUEST_INSTALL_PACKAGES 的字面值（API29+ 的 public 常量，
+            // 但部分编译工具链在 compileSdk 下不稳定暴露该常量，故直接写入以保证可编译）
             appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES,
+                "android:request_install_packages",
                 android.os.Process.myUid(),
                 ctx.packageName
             ) == AppOpsManager.MODE_ALLOWED
