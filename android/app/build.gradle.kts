@@ -18,7 +18,22 @@ android {
         versionName = (project.findProperty("appVersionName") as? String) ?: "0.1.0"
     }
 
+    // 固定 debug 签名密钥：仓库内提交一把共享 keystore，CI 与本地统一用同一把密钥，
+    // 保证每次构建的 APK 签名一致，应用内「覆盖安装」升级才不会因签名不同而失败。
+    signingConfigs {
+        create("fixedDebug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixedDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

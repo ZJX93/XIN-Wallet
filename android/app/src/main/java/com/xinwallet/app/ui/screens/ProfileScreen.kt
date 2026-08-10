@@ -3,6 +3,7 @@ package com.xinwallet.app.ui.screens
 import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.app.AppOpsManager
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -136,25 +137,30 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         }
     }
 
-    /** 请求「安装未知应用」权限；Oreo 以下无此权限，直接尝试安装 */
-    val requestInstallPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) installApk(context, updateState.localApkPath)
-        else openUnknownSourcesSettings(context)
+    /** 是否允许本应用安装未知来源 APK（跨版本可靠判断：API29+ 用 AppOps，O~P 用权限，<O 恒真） */
+    fun canInstallPackages(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            appOps.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_REQUEST_INSTALL_PACKAGES,
+                android.os.Process.myUid(),
+                ctx.packageName
+            ) == AppOpsManager.MODE_ALLOWED
+        } else {
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.REQUEST_INSTALL_PACKAGES) ==
+                PackageManager.PERMISSION_GRANTED
+        }
     }
 
-    /** 一键升级：已下载则直接安装；Oreo+ 先确认安装权限 */
+    /** 一键升级：已下载则直接安装；Android 8+ 若未开启「未知来源」权限，直接深链到设置页并提示 */
     fun startInstall() {
         val path = updateState.localApkPath ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.REQUEST_INSTALL_PACKAGES)
-                == PackageManager.PERMISSION_GRANTED
-            ) {
-                installApk(context, path)
-            } else {
-                requestInstallPermission.launch(Manifest.permission.REQUEST_INSTALL_PACKAGES)
-            }
-        } else {
+        if (canInstallPackages(context)) {
             installApk(context, path)
+        } else {
+            openUnknownSourcesSettings(context)
+            scope.launch { snackbar.showSnackbar("请先在设置中开启「允许安装未知应用」，再返回点击安装") }
         }
     }
 
