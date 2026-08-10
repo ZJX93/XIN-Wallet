@@ -740,36 +740,53 @@ router.post('/ocr', async (req, res) => {
         const provider = await getActiveProvider(req.userId);
         const today = new Date().toISOString().slice(0, 10);
 
-        // 策略：正则先试（0ms），能解析直接返回；解析不出再调 AI（省 2-3s）
+        // 策略：若配置了 AI 服务商，优先用大模型分析 OCR 文字，识别质量更高；
+        //       大模型无结果/失败，或未配置 AI 时，回退到本地正则兜底。
+        if (provider) {
+            try {
+                const prompt = `你是一位账单识别助手。请根据以下 OCR 识别的账单文字，提取出交易记录。
+
+要求：
+1. 只返回纯 JSON，不要任何解释。
+2. 格式：{"items":[{"name":"完整商户名或商品名","amount":100.00,"type":"expense","date":"2026-08-10 13:51:00","note":"补充描述（可选）","category":"分类名"}]}
+3. name 字段：取最完整的商户/商品名称，不要截断；如果 OCR 中有“商品”行，优先用商品行内容，否则用商户名。
+4. amount 必须为正数。
+5. date 格式为 YYYY-MM-DD HH:mm:ss；如果账单中只有日期没有时间，时间填 00:00:00。
+6. 跳过合计、优惠、退款、找零、应付、实付等汇总行；只保留实际消费/收入的条目。
+7. category 必须从下面列表中选择最合适的，尽量细分；如果确实无法判断，返回“其他”。
+8. 餐别按时间推断：05-10早餐，10-14午餐，14-21晚餐。
+
+可选分类：早餐|午餐|晚餐|零食|聚餐|外卖|饮料|生鲜|公交地铁|打车|火车飞机|加油|充电|停车费|过路费|日用百货|服装鞋包|数码产品|家居家具|房租|水电燃气|物业费|维修|电影演出|游戏|运动健身|旅游度假|KTV酒吧|门诊|药品|体检|培训课程|书籍|考试报名|话费|宽带|快递|孝敬父母|送礼红包|护肤|美发|主粮零食|社保|商业保险|维保费|车险|其他
+
+OCR文字：
+${ocrText}`;
+
+                const content = await callProvider(provider, [
+                    { role: 'user', content: prompt }
+                ]);
+                console.log(`[OCR AI] user=${req.userId} rawReply=${(content || '').slice(0, 500)}`);
+                const json = extractJson(content);
+                const items = (json && Array.isArray(json.items)) ? json.items : [];
+                if (items.length > 0) {
+                    return res.json(success({ text: ocrText, items, reason: '' }));
+                }
+                console.log(`[OCR AI] user=${req.userId} no items from LLM, falling back to regex`);
+            } catch (err) {
+                console.error(`[OCR AI ERROR] user=${req.userId}`, err && err.message ? err.message : err);
+                // LLM 调用失败，继续走正则兜底
+            }
+        }
+
         const fallbackItems = fallbackExtractItems(ocrText, today);
         if (fallbackItems.length > 0) {
-            console.log(`[OCR REGEX] user=${req.userId} extracted ${fallbackItems.length} items via regex (fast path)`);
+            console.log(`[OCR REGEX] user=${req.userId} extracted ${fallbackItems.length} items via regex fallback`);
             return res.json(success({ text: ocrText, items: fallbackItems, reason: '' }));
         }
 
-        // 正则未能提取，尝试 AI
-        if (!provider) {
-            return res.json(success({ text: ocrText, items: [], reason: '未配置 AI 服务商且未能从 OCR 文字中自动提取交易项，请先配置 AI 服务商或手动输入' }));
-        }
-
-        const prompt = `提取 OCR 中的交易记录。只返回纯 JSON：
-{"items":[{"name":"商户","amount":4.00,"type":"expense","date":"2026-07-17 17:23:49","note":"描述","category":"晚餐"}]}
-规则：金额正数；日期完整 YYYY-MM-DD HH:mm:ss；跳过合计/优惠/退款行。
-二级分类：早餐|午餐|晚餐|零食|聚餐|外卖|饮料|生鲜|公交地铁|打车|火车飞机|加油|充电|停车费|过路费|日用百货|服装鞋包|数码产品|家居家具|房租|水电燃气|物业费|维修|电影演出|游戏|运动健身|旅游度假|KTV酒吧|门诊|药品|体检|培训课程|书籍|考试报名|话费|宽带|快递|孝敬父母|送礼红包|护肤|美发|主粮零食|社保|商业保险|维保费|车险|其他
-餐别按时间：05-10早餐 10-14午餐 14-21晚餐
-OCR：
-${ocrText}`;
-
-        const content = await callProvider(provider, [
-            { role: 'user', content: prompt }
-        ]);
-        console.log(`[OCR AI] user=${req.userId} rawReply=${(content || '').slice(0, 500)}`);
-        const json = extractJson(content);
-        const items = (json && Array.isArray(json.items)) ? json.items : [];
-        const reason = items.length > 0
-            ? ''
-            : 'AI 未能从识别结果中解析出交易项，建议检查 AI 服务商是否可用，或手动输入';
-        res.json(success({ text: ocrText, items, reason }));
+        const reason = provider
+            ? 'AI 未能从识别结果中解析出交易项，建议检查 AI 服务商是否可用，或手动输入'
+            : '未配置 AI 服务商且未能从 OCR 文字中自动提取交易项，请先配置 AI 服务商或手动输入';
+        res.json(success({ text: ocrText, items: [], reason }));
     } catch (err) {
         console.error('[OCR ERROR]', err && err.stack ? err.stack : err);
         handleServerError(res, err, 'OCR 识别');
