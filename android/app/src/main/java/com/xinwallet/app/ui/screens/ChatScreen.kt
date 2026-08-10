@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,6 +90,20 @@ fun ChatScreen(navController: NavHostController) {
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { consume(it) }
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) consume(cameraUri) }
 
+    var showImageMenu by remember { mutableStateOf(false) }
+
+    fun launchCamera() {
+        try {
+            val dir = File(context.cacheDir, "images").apply { mkdirs() }
+            val file = File(dir, "chat_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            cameraUri = uri
+            takePhoto.launch(uri)
+        } catch (e: Exception) {
+            pickImage.launch("image/*")
+        }
+    }
+
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.clearError() } }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
 
@@ -109,26 +125,41 @@ fun ChatScreen(navController: NavHostController) {
                 voiceActive = state.voiceMode != null,
                 onVoice = {
                     when (state.voiceMode) {
-                        null -> if (vm.speechAvailable) vm.startVoice { vm.onInputChange(it) }
-                        else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
+                        null -> {
+                            if (vm.speechAvailable) vm.startVoice { vm.onInputChange(it) }
+                            else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                         "device" -> vm.stopVoice()
                         "cloud" -> vm.stopCloudVoice()
                     }
                 },
-                onImage = {
-                    try {
-                        val dir = File(context.cacheDir, "images").apply { mkdirs() }
-                        val file = File(dir, "chat_${System.currentTimeMillis()}.jpg")
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                        cameraUri = uri
-                        takePhoto.launch(uri)
-                    } catch (e: Exception) {
-                        pickImage.launch("image/*")
-                    }
-                },
+                onImage = { showImageMenu = true },
                 onSend = { vm.sendText() },
                 sending = state.sending
             )
+
+            if (showImageMenu) {
+                AlertDialog(
+                    onDismissRequest = { showImageMenu = false },
+                    title = { Text("添加截图") },
+                    text = {
+                        Column {
+                            TextButton(
+                                onClick = { showImageMenu = false; launchCamera() },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("拍照") }
+                            TextButton(
+                                onClick = { showImageMenu = false; pickImage.launch("image/*") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("从相册选择 / 上传截图") }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = { showImageMenu = false }) { Text("取消") }
+                    }
+                )
+            }
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
