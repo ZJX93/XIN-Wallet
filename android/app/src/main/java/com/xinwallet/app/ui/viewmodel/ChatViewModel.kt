@@ -134,7 +134,6 @@ class ChatViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        try { recognizer?.destroy() } catch (_: Exception) {}
         try { recorder?.release() } catch (_: Exception) {}
     }
 }
