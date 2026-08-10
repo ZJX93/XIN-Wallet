@@ -36,8 +36,10 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 
     const balance = parseFloat(account.balance);
     const limit = parseFloat(account.credit_limit) || 0;
-    // 欠款 = 有 credit_limit 时用 limit-balance；否则用负余额
-    const owes = limit > 0 ? Math.max(0, limit - balance) : Math.max(0, -balance);
+    // 欠款：余额为负时 = -balance（欠款额）；余额为正时 = limit - balance（可用额度）
+    const owes = balance <= 0
+        ? Math.max(0, -balance)
+        : Math.max(0, limit - balance);
 
     // 查找已关联的债务（按名称匹配）
     const debtRows = await conn.query(

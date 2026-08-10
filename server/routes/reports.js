@@ -463,11 +463,12 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
     // 投资资产
     const investTotal = investments.reduce((s, i) => s + parseFloat(i.current_value), 0);
 
-    // 流动负债 = 信用卡未用额度（债务表的贷款视作非流动）
+    // 信用卡已用额度：余额为负时 = -balance（欠款）；余额为正时 = limit - balance（可用额度）
     const ccDebt = accounts.filter(a => a.credit_limit).reduce((s, a) => {
         const limit = parseFloat(a.credit_limit) || 0;
         const bal = parseFloat(a.balance) || 0;
-        return s + (limit > 0 && bal < limit ? (limit - bal) : 0);
+        if (bal <= 0) return s + Math.max(0, -bal);
+        return s + Math.max(0, limit - bal);
     }, 0);
 
     // 非流动负债 = 长期贷款（>1年）
@@ -520,7 +521,7 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
             },
             creditCard: {
                 total: Math.round(creditCardLiab * 100) / 100,
-                note: '信用卡已用额度（credit_limit - 可用余额）'
+                note: '信用卡已用额度（实时余额为负时表示欠款）'
             },
             longTerm: {
                 items: longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12 || d.type === 'loan').filter((d, idx, arr) => arr.findIndex(x => x.id === d.id) === idx).map(d => ({
