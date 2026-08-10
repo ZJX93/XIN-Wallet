@@ -44,8 +44,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.ui.Alignment
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -105,8 +105,9 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     Scaffold(
         topBar = { TopBar(if (isEdit) "编辑交易" else "记一笔", onBack = { navController.popBackStack() }) },
         snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = if (aiMode) null else {
-            Button(
+        bottomBar = {
+            if (!aiMode) {
+                Button(
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
                     if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return@Button }
@@ -133,6 +134,7 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             ) {
                 if (state.loading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
                 else Text(if (isEdit) "保存修改" else "保存")
+            }
             }
         }
     ) { padding ->
