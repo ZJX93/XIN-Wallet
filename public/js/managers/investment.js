@@ -469,6 +469,7 @@ const InvestmentManager = {
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
                 <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
+                    <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}" title="详情">🔍</button>
                     <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>
                     <button class="btn btn-ghost" data-action="edit-inv" data-id="${i.id}" title="编辑">✏️</button>
                     <button class="btn btn-ghost" data-action="reduce-inv" data-id="${i.id}" title="加仓/减仓">💰</button>
@@ -512,12 +513,18 @@ const InvestmentManager = {
             btn.addEventListener('click', () => this.openInvGrid(btn.dataset.type));
         });
 
-        // 事件委托：点击单张牌 → 弹出该卡详情（点在操作按钮上则交给按钮处理）
+        // 事件委托：🔍 详情按钮 → 弹单卡详情
+        container.querySelectorAll('[data-action="inv-detail"]').forEach(btn => {
+            btn.addEventListener('click', () => this.openInvDetail(parseInt(btn.dataset.id)));
+        });
+
+        // 事件委托：点击单张牌 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
         container.querySelectorAll('.inv-stack-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-action]')) return;
-                const id = parseInt(card.dataset.id);
-                if (!isNaN(id)) this.openInvDetail(id);
+                const wasPopped = card.classList.contains('popped');
+                container.querySelectorAll('.inv-stack-card.popped').forEach(c => c.classList.remove('popped'));
+                if (!wasPopped) card.classList.add('popped');
             });
         });
 

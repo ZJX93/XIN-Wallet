@@ -614,25 +614,43 @@
 .inv-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
 .inv-stack-cards {
-  padding: var(--space-2) var(--space-2) 0;
-  display: flex; flex-direction: column; gap: var(--space-2);
+  position: relative;
+  padding: 0 var(--space-2) calc((var(--n, 1) - 1) * var(--inv-stack-shift, 9px));
 }
 
-/* 持仓卡片：完整列表展示，hover/active 有动画 */
+/* 持仓卡片：收起态真实叠牌（绝对定位下移叠加，顶卡在流内撑高度） */
 .inv-stack-card {
-  position: relative;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  transform-origin: top center;
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px)));
+  z-index: calc(var(--n, 1) - var(--i, 0));
   cursor: pointer;
-  transition: transform var(--duration-150) var(--ease-out-quart),
-              box-shadow var(--duration-150) var(--ease-out-quart),
-              border-color var(--duration-150) var(--ease-out-quart);
-}
-.inv-stack-card:hover {
-  transform: translateY(-2px);
+  pointer-events: auto;
   box-shadow: var(--shadow-md);
+  transition: transform .45s var(--ease-out-quart),
+              box-shadow .3s var(--ease-out-quart),
+              border-color .3s var(--ease-out-quart);
+}
+/* 顶卡落在文档流里，撑开容器高度并作牌堆封面 */
+.inv-stack-card:first-child {
+  position: relative;
+  transform: none;
+  z-index: var(--n, 1);
+}
+/* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
+.inv-stack-card:hover {
+  z-index: 900;
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px) - 10px)) scale(1.015);
+  box-shadow: var(--shadow-lg);
   border-color: var(--accent-500);
 }
-.inv-stack-card:active {
-  transform: translateY(0) scale(0.995);
+/* 点击：弹出一点（置顶 + 上浮 + 微旋转 + 放大），露出操作按钮 */
+.inv-stack-card.popped {
+  z-index: 1000;
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px) - 18px)) scale(1.04) rotate(-1.5deg);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--accent-500);
 }
 .inv-stack-card .goal-actions {
   pointer-events: auto;
@@ -764,25 +782,43 @@
 .acc-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
 .acc-stack-cards {
-  padding: var(--space-2) var(--space-2) 0;
-  display: flex; flex-direction: column; gap: var(--space-2);
+  position: relative;
+  padding: 0 var(--space-2) calc((var(--n, 1) - 1) * var(--acc-stack-shift, 9px));
 }
 
-/* 账户卡片：完整列表展示，hover/active 有动画 */
+/* 账户卡片：收起态真实叠牌（绝对定位下移叠加，顶卡在流内撑高度） */
 .acc-stack-card {
-  position: relative;
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  transform-origin: top center;
+  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 9px)));
+  z-index: calc(var(--n, 1) - var(--i, 0));
   cursor: pointer;
-  transition: transform var(--duration-150) var(--ease-out-quart),
-              box-shadow var(--duration-150) var(--ease-out-quart),
-              border-color var(--duration-150) var(--ease-out-quart);
-}
-.acc-stack-card:hover {
-  transform: translateY(-2px);
+  pointer-events: auto;
   box-shadow: var(--shadow-md);
+  transition: transform .45s var(--ease-out-quart),
+              box-shadow .3s var(--ease-out-quart),
+              border-color .3s var(--ease-out-quart);
+}
+/* 顶卡落在文档流里，撑开容器高度并作牌堆封面 */
+.acc-stack-card:first-child {
+  position: relative;
+  transform: none;
+  z-index: var(--n, 1);
+}
+/* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
+.acc-stack-card:hover {
+  z-index: 900;
+  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 9px) - 10px)) scale(1.015);
+  box-shadow: var(--shadow-lg);
   border-color: var(--accent-500);
 }
-.acc-stack-card:active {
-  transform: translateY(0) scale(0.995);
+/* 点击：弹出一点（置顶 + 上浮 + 微旋转 + 放大），露出操作按钮 */
+.acc-stack-card.popped {
+  z-index: 1000;
+  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 9px) - 18px)) scale(1.04) rotate(-1.5deg);
+  box-shadow: var(--shadow-xl);
+  border-color: var(--accent-500);
 }
 .acc-stack-card .account-actions {
   pointer-events: auto;

@@ -119,12 +119,13 @@ const AccountManager = {
             btn.addEventListener('click', () => this.openAccGrid(btn.dataset.type));
         });
 
-        // 事件委托：点击单张账户卡 → 弹出资金明细（点在操作按钮上则交给按钮处理）
+        // 事件委托：点击单张账户卡 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
         container.querySelectorAll('.acc-stack-card').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-action]')) return;
-                const id = parseInt(card.dataset.id);
-                if (!isNaN(id)) this.openDetail(id);
+                const wasPopped = card.classList.contains('popped');
+                container.querySelectorAll('.acc-stack-card.popped').forEach(c => c.classList.remove('popped'));
+                if (!wasPopped) card.classList.add('popped');
             });
         });
 
