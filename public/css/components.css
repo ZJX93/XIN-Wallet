@@ -613,33 +613,29 @@
 .inv-cover-total { font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 .inv-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
-.inv-stack-cards { padding: 0 var(--space-2); position: relative; isolation: isolate; }
+.inv-stack-cards {
+  padding: var(--space-2) var(--space-2) 0;
+  display: flex; flex-direction: column; gap: var(--space-2);
+}
 
-/* 收起态：平行下移叠牌（绝对定位，不撑开容器） */
-.inv-stack:not([data-expanded="true"]) .inv-stack-cards {
-  padding-bottom: calc((var(--n, 1) - 1) * var(--inv-stack-shift, 9px));  /* 容纳平行下移溢出 */
-}
-.inv-stack:not([data-expanded="true"]) .inv-stack-card {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  transform-origin: top center;
-  transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));  /* 平行下移，无旋转 */
-  z-index: calc(var(--n) - var(--i));
-  box-shadow: var(--shadow-md);
+/* 持仓卡片：完整列表展示，hover/active 有动画 */
+.inv-stack-card {
+  position: relative;
   cursor: pointer;
-  pointer-events: auto;          /* 每张牌都可点出详情 */
-  transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
+  transition: transform var(--duration-150) var(--ease-out-quart),
+              box-shadow var(--duration-150) var(--ease-out-quart),
+              border-color var(--duration-150) var(--ease-out-quart);
 }
-.inv-stack:not([data-expanded="true"]) .inv-stack-card:first-child {
-  position: relative;            /* 顶卡在流内，撑开容器高度（不撑开 grid 行） */
-  transform: none;
-  z-index: calc(var(--n) + 1);
+.inv-stack-card:hover {
+  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  border-color: var(--accent-500);
 }
-/* 收起态锁死位移，规避 hover 把卡片弹出牌堆 */
-.inv-stack:not([data-expanded="true"]) .inv-stack-card:hover {
-  transform: translateY(calc(var(--i) * var(--inv-stack-shift, 9px)));
-  box-shadow: var(--shadow-md);
+.inv-stack-card:active {
+  transform: translateY(0) scale(0.995);
+}
+.inv-stack-card .goal-actions {
+  pointer-events: auto;
 }
 
 /* 注：展开态已改为「查看全部」全屏网格（openInvGrid），不再就地流式展开 */
@@ -767,33 +763,29 @@
 .acc-cover-total { font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
 .acc-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
-.acc-stack-cards { padding: 0 var(--space-2); position: relative; isolation: isolate; }
+.acc-stack-cards {
+  padding: var(--space-2) var(--space-2) 0;
+  display: flex; flex-direction: column; gap: var(--space-2);
+}
 
-/* 收起态：平行下移叠牌（绝对定位，不撑开容器） */
-.acc-stack:not([data-expanded="true"]) .acc-stack-cards {
-  padding-bottom: calc((var(--n, 1) - 1) * var(--acc-stack-shift, 9px));
-}
-.acc-stack:not([data-expanded="true"]) .acc-stack-card {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  transform-origin: top center;
-  transform: translateY(calc(var(--i) * var(--acc-stack-shift, 9px)));
-  z-index: calc(var(--n) - var(--i));
-  box-shadow: var(--shadow-md);
-  cursor: pointer;
-  pointer-events: auto;
-  transition: transform .5s var(--ease-out-quart), box-shadow .3s var(--ease-out-quart);
-}
-.acc-stack:not([data-expanded="true"]) .acc-stack-card:first-child {
+/* 账户卡片：完整列表展示，hover/active 有动画 */
+.acc-stack-card {
   position: relative;
-  transform: none;
-  z-index: calc(var(--n) + 1);
-  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: transform var(--duration-150) var(--ease-out-quart),
+              box-shadow var(--duration-150) var(--ease-out-quart),
+              border-color var(--duration-150) var(--ease-out-quart);
 }
-/* 收起态锁死位移，规避 hover 把卡片弹出牌堆 */
-.acc-stack:not([data-expanded="true"]) .acc-stack-card:hover {
-  transform: translateY(calc(var(--i) * var(--acc-stack-shift, 9px)));
+.acc-stack-card:hover {
+  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  border-color: var(--accent-500);
+}
+.acc-stack-card:active {
+  transform: translateY(0) scale(0.995);
+}
+.acc-stack-card .account-actions {
+  pointer-events: auto;
 }
 
 /* 注：展开态已改为「查看全部」全屏网格（openAccGrid），不再就地流式展开 */
