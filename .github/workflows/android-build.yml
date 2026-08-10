@@ -91,7 +91,7 @@ jobs:
       - name: 重命名 APK 为 XIN-Wallet 格式
         if: success()
         run: |
-          APK_DIR="android/app/build/outputs/apk/debug"
+          APK_DIR="app/build/outputs/apk/debug"
           mv "$APK_DIR/app-debug.apk" "$APK_DIR/XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk"
           echo "APK renamed to: XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk"
 
