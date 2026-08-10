@@ -59,7 +59,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
-import com.xinwallet.app.ui.components.DatePickerField
+import com.xinwallet.app.ui.components.DateTimePickerField
 import com.xinwallet.app.ui.components.DropdownField
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.LoadingBox
@@ -248,7 +248,7 @@ fun AiScanContent(navController: NavHostController, contentPadding: androidx.com
                             onToggle = { vm.toggle(row.key) },
                             onAmount = { vm.setAmount(row.key, it) },
                             onNote = { vm.setNote(row.key, it) },
-                            onDate = { vm.setDate(row.key, it) },
+                            onDateTime = { vm.setDateTime(row.key, it) },
                             onType = { vm.setType(row.key, it) },
                             onCategory = { id -> state.categories.find { it.id == id }?.let { vm.setCategory(row.key, it) } }
                         )
@@ -310,7 +310,7 @@ private fun ScanRowCard(
     onToggle: () -> Unit,
     onAmount: (Double) -> Unit,
     onNote: (String) -> Unit,
-    onDate: (String) -> Unit,
+    onDateTime: (String) -> Unit,
     onType: (String) -> Unit,
     onCategory: (Int) -> Unit
 ) {
@@ -369,7 +369,11 @@ private fun ScanRowCard(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            DatePickerField(label = "日期", date = row.date, onDateChange = onDate)
+            DateTimePickerField(
+                label = "日期时间",
+                value = "${row.date} ${row.time}",
+                onValueChange = onDateTime
+            )
         }
     }
 }

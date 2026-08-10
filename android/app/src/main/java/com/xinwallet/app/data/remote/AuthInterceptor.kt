@@ -4,6 +4,7 @@ import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.RefreshRequest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -45,7 +46,8 @@ class AuthInterceptor(
         val rt = session.refreshToken() ?: return null
         return try {
             val api = apiProvider() ?: return null
-            val resp = api.refresh(RefreshRequest(rt))
+            // 刷新 token 不应占用长超时（OCR 读写 60s），卡住会导致页面长时间 loading
+            val resp = withTimeout(10_000) { api.refresh(RefreshRequest(rt)) }
             if (resp.isSuccessful && resp.body()?.success == true) {
                 val auth = resp.body()!!.data
                 if (auth != null && auth.token.isNotEmpty()) {

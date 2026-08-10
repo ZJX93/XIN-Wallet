@@ -7,6 +7,7 @@ import com.xinwallet.app.data.model.RefreshRequest
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AuthRepository(
     private val session: SessionManager,
@@ -43,4 +44,30 @@ class AuthRepository(
     suspend fun hasSession(): Boolean = session.accessToken().isNotEmpty()
     suspend fun logout() = session.clearSession()
     suspend fun username(): String = session.username()
+
+    /**
+     * 冷启动时验证会话有效性：
+     * - 有 refreshToken 则尝试刷新（拿到新 accessToken），成功视为已登录；
+     * - refresh 失败/无 refreshToken/超时，则清空本地会话并返回 false，让 UI 回到登录页。
+     * 避免仅检查 accessToken 是否存在导致的「过期 token 进首页 -> 请求 401 -> 刷新失败卡 loading」问题。
+     */
+    suspend fun validateSession(): Boolean {
+        return withTimeoutOrNull(10_000) {
+            val rt = session.refreshToken()
+            if (rt.isNullOrBlank()) {
+                session.clearSession()
+                return@withTimeoutOrNull false
+            }
+            when (val r = refresh()) {
+                is ApiResult.Success -> true
+                is ApiResult.Error -> {
+                    session.clearSession()
+                    false
+                }
+            }
+        } ?: run {
+            session.clearSession()
+            false
+        }
+    }
 }

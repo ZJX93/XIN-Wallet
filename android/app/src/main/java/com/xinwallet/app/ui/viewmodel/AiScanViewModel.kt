@@ -125,6 +125,11 @@ class AiScanViewModel(
     fun toggle(key: Int) = updateRow(key) { it.copy(selected = !it.selected) }
     fun setAmount(key: Int, amount: Double) = updateRow(key) { it.copy(amount = amount) }
     fun setDate(key: Int, date: String) = updateRow(key) { it.copy(date = date) }
+    fun setDateTime(key: Int, datetime: String) = updateRow(key) {
+        val d = datetime.substringBefore(' ').takeIf { it.length == 10 } ?: it.date
+        val t = datetime.substringAfter(' ', "").takeIf { it.length == 8 } ?: it.time
+        it.copy(date = d, time = t)
+    }
     fun setNote(key: Int, note: String) = updateRow(key) { it.copy(name = note) }
     fun setType(key: Int, type: String) = updateRow(key) {
         // 换类型后原分类可能不再适用，清空强制重选
