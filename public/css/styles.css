@@ -978,7 +978,7 @@ button { font-family: inherit; cursor: pointer; }
 .report-kpi-card.income { border-top: 3px solid var(--income); }
 .report-kpi-card.expense { border-top: 3px solid var(--expense); }
 .report-kpi-card.balance { border-top: 3px solid var(--primary); }
-.report-kpi-card.rate { border-top: 3px solid var(--warning); }
+.report-kpi-card.rate { border-top: 3px solid var(--warning-500); }
 .report-kpi-label { font-size: var(--text-caption); color: var(--text-tertiary); margin-bottom: 4px; }
 .report-kpi-value { font-size: 24px; font-weight: var(--fw-bold); color: var(--text-primary); }
 .report-kpi-card.income .report-kpi-value { color: var(--income); }
@@ -1158,6 +1158,8 @@ button { font-family: inherit; cursor: pointer; }
   .report-kpi-card.expense .report-kpi-value { color: #2e7d32; }
   .report-kpi-card.balance { border-top: 3px solid #1976d2; }
   .report-kpi-card.balance .report-kpi-value { color: #1976d2; }
+  .report-kpi-card.rate { border-top: 3px solid #ed6c02; }
+  .report-kpi-card.rate .report-kpi-value { color: #ed6c02; }
   /* 图表区域 */
   .report-charts-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .report-chart-card { padding: 8px; break-inside: avoid; min-height: 260px; }
