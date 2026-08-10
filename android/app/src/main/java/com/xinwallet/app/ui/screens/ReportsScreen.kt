@@ -147,6 +147,21 @@ private fun ReportContent(
     onShift: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var expenseParent by remember { mutableStateOf<Int?>(null) }
+    var incomeParent by remember { mutableStateOf<Int?>(null) }
+
+    val topExpenseItems = remember(report.expenseByCategory, expenseParent) {
+        if (expenseParent == null) report.expenseByCategory.filter { it.parentId == null }
+        else report.expenseByCategory.filter { it.parentId == expenseParent }
+    }
+    val topIncomeItems = remember(report.incomeByCategory, incomeParent) {
+        if (incomeParent == null) report.incomeByCategory.filter { it.parentId == null }
+        else report.incomeByCategory.filter { it.parentId == incomeParent }
+    }
+
+    fun hasChildren(parentId: Int, items: List<com.xinwallet.app.data.model.ReportCategorySlice>) =
+        items.any { it.parentId == parentId }
+
     LazyColumn(modifier.padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             // 周期类型切换 + 上/下周期
@@ -172,12 +187,46 @@ private fun ReportContent(
             item { Spacer(Modifier.height(8.dp)) }
         }
 
-        item { SectionTitle("支出分类占比") }
-        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryPie(report.expenseByCategory) } } }
+        item { CategorySectionTitle(
+            title = if (expenseParent == null) "支出分类占比" else "支出 · ${report.expenseByCategory.find { it.id == expenseParent }?.name ?: ""}",
+            showBack = expenseParent != null,
+            onBack = { expenseParent = null }
+        ) }
+        item {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(12.dp)) {
+                    CategoryPie(
+                        items = topExpenseItems,
+                        onSliceClick = { slice ->
+                            if (expenseParent == null && hasChildren(slice.id, report.expenseByCategory)) {
+                                expenseParent = slice.id
+                            }
+                        }
+                    )
+                }
+            }
+        }
         item { Spacer(Modifier.height(8.dp)) }
 
-        item { SectionTitle("收入分类占比") }
-        item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.padding(12.dp)) { CategoryPie(report.incomeByCategory) } } }
+        item { CategorySectionTitle(
+            title = if (incomeParent == null) "收入分类占比" else "收入 · ${report.incomeByCategory.find { it.id == incomeParent }?.name ?: ""}",
+            showBack = incomeParent != null,
+            onBack = { incomeParent = null }
+        ) }
+        item {
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.padding(12.dp)) {
+                    CategoryPie(
+                        items = topIncomeItems,
+                        onSliceClick = { slice ->
+                            if (incomeParent == null && hasChildren(slice.id, report.incomeByCategory)) {
+                                incomeParent = slice.id
+                            }
+                        }
+                    )
+                }
+            }
+        }
         item { Spacer(Modifier.height(8.dp)) }
 
         item { SectionTitle("趋势（收入/支出）") }
@@ -285,5 +334,21 @@ private fun LegendDot(color: Color, label: String) {
         Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
         Spacer(Modifier.width(4.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CategorySectionTitle(title: String, showBack: Boolean, onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (showBack) {
+            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.ChevronLeft, contentDescription = "返回")
+            }
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }

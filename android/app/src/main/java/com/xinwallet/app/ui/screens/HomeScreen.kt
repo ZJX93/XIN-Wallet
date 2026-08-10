@@ -39,14 +39,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.BalanceCard
-import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LinearProgress
 import com.xinwallet.app.ui.components.LoadingBox
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.components.TrendLineChart
-import com.xinwallet.app.ui.components.TransactionRow
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.viewmodel.DashboardViewModel
@@ -99,7 +97,6 @@ fun HomeScreen(navController: NavHostController) {
                 val savingsRate = if (totalAssets > 0) (d.totalSavings / totalAssets * 100.0) else 0.0
                 val todayExp = d.today?.expense ?: 0.0
                 val monthly = d.debt?.totalMonthly ?: 0.0
-                val holdings = d.inv?.holdings ?: emptyList()
 
                 LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
                     item {
@@ -206,57 +203,6 @@ fun HomeScreen(navController: NavHostController) {
                         }
                     }
 
-                    if (holdings.isNotEmpty()) {
-                        item { Spacer(Modifier.height(16.dp)); SectionTitle("理财持仓") }
-                        items(holdings.take(5)) { h ->
-                            val gain = h.profit >= 0
-                            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(40.dp)) {
-                                        Box(contentAlignment = Alignment.Center) { Text(h.typeIcon ?: "📈", style = MaterialTheme.typography.titleMedium) }
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(h.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                        Text(h.typeName ?: "理财", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(formatMoney(h.currentValue), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                        Text("${if (gain) "+" else ""}${String.format("%.2f", h.profitRate)}%", style = MaterialTheme.typography.labelSmall, color = if (gain) IncomeColor else ExpenseColor)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    d.debt?.let { dt ->
-                        if (dt.totalRemaining > 0 || dt.count > 0) {
-                            item { Spacer(Modifier.height(16.dp)); SectionTitle("债务概览") }
-                            item {
-                                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                                    Column(Modifier.padding(14.dp)) {
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Column { Text("总负债", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(dt.totalRemaining), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = ExpenseColor) }
-                                            Column(horizontalAlignment = Alignment.End) { Text("月供", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(formatMoney(dt.totalMonthly), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) }
-                                        }
-                                        Spacer(Modifier.height(8.dp))
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("本月需还 ${formatMoney(dt.dueAmount)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            if (dt.overdue > 0) Text("逾期 ${dt.overdue} 笔", style = MaterialTheme.typography.labelSmall, color = ExpenseColor)
-                                            else Text("活跃 ${dt.activeCount} 笔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    item { Spacer(Modifier.height(16.dp)); SectionTitle("最近交易") }
-                    if (d.recentTrans.isEmpty()) {
-                        item { EmptyState("暂无交易") }
-                    } else {
-                        items(d.recentTrans) { tx -> TransactionRow(tx) }
-                    }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
             }

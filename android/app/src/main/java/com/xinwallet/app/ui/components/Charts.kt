@@ -2,6 +2,7 @@ package com.xinwallet.app.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,9 +86,15 @@ fun TrendLineChart(
  * 分类占比饼图：左侧 Canvas 自绘扇形，右侧图例（色块 + 图标名称 + 百分比 + 金额）。
  *
  * 分类多时只画前 6 个，剩下的合并成「其他」，否则扇区太碎、图例也放不下。
+ *
+ * @param onSliceClick 点击图例/扇区回调；ReportsScreen 用它实现「点击一级分类进入二级明细」。
  */
 @Composable
-fun CategoryPie(items: List<ReportCategorySlice>, modifier: Modifier = Modifier) {
+fun CategoryPie(
+    items: List<ReportCategorySlice>,
+    modifier: Modifier = Modifier,
+    onSliceClick: ((ReportCategorySlice) -> Unit)? = null
+) {
     val slices = remember(items) { toPieSlices(items) }
     if (slices.isEmpty()) {
         EmptyState("该周期暂无数据")
@@ -125,7 +132,9 @@ fun CategoryPie(items: List<ReportCategorySlice>, modifier: Modifier = Modifier)
         Column(Modifier.weight(1f)) {
             slices.forEachIndexed { idx, slice ->
                 Row(
-                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    Modifier.fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .clickable(enabled = onSliceClick != null) { onSliceClick?.invoke(slice.source) },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -160,16 +169,21 @@ fun CategoryPie(items: List<ReportCategorySlice>, modifier: Modifier = Modifier)
     }
 }
 
-private data class PieSlice(val icon: String, val name: String, val total: Double)
+private data class PieSlice(
+    val icon: String,
+    val name: String,
+    val total: Double,
+    val source: ReportCategorySlice
+)
 
 private fun toPieSlices(items: List<ReportCategorySlice>, maxSlices: Int = 7): List<PieSlice> {
     val positive = items.filter { it.total > 0 }.sortedByDescending { it.total }
     if (positive.size <= maxSlices) {
-        return positive.map { PieSlice(it.icon ?: "📌", it.name, it.total) }
+        return positive.map { PieSlice(it.icon ?: "📌", it.name, it.total, it) }
     }
-    val head = positive.take(maxSlices - 1).map { PieSlice(it.icon ?: "📌", it.name, it.total) }
+    val head = positive.take(maxSlices - 1).map { PieSlice(it.icon ?: "📌", it.name, it.total, it) }
     val rest = positive.drop(maxSlices - 1).sumOf { it.total }
-    return head + PieSlice("🗂", "其他", rest)
+    return head + PieSlice("🗂", "其他", rest, ReportCategorySlice(name = "其他", icon = "🗂"))
 }
 
 /** 占比文案：≥10% 取整，小占比保留一位小数，避免一堆 0% */
