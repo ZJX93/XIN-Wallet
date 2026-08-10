@@ -24,7 +24,11 @@ class SessionManager(private val context: Context) {
     }
 
     suspend fun saveTokens(access: String, refresh: String) {
-        context.dataStore.edit { it[ACCESS_TOKEN] = access; it[REFRESH_TOKEN] = refresh }
+        // 后端 refresh 可能不返回新 refreshToken；空串时不要覆盖本地已有的，避免会话失效
+        context.dataStore.edit {
+            it[ACCESS_TOKEN] = access
+            if (refresh.isNotBlank()) it[REFRESH_TOKEN] = refresh
+        }
     }
 
     suspend fun saveBaseUrl(url: String) {

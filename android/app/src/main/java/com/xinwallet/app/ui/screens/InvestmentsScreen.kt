@@ -99,7 +99,7 @@ fun InvestmentsScreen(navController: NavHostController) {
 private fun InvestmentRow(inv: Investment, onClick: () -> Unit) {
     val dark = LocalIsDark.current
     val gain = inv.profit >= 0
-    val profitColor = if (gain) (if (dark) ExpenseColorDark else ExpenseColor) else (if (dark) IncomeColorDark else IncomeColor)
+    val profitColor = if (gain) (if (dark) IncomeColorDark else IncomeColor) else (if (dark) ExpenseColorDark else ExpenseColor)
     Row(
         Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically

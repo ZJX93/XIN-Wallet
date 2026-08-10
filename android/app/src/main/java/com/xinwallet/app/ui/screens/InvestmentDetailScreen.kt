@@ -75,7 +75,7 @@ fun InvestmentDetailScreen(navController: NavHostController, id: Int) {
 private fun InvestmentDetailContent(inv: Investment, modifier: Modifier = Modifier) {
     val dark = LocalIsDark.current
     val gain = inv.profit >= 0
-    val profitColor = if (gain) (if (dark) ExpenseColorDark else ExpenseColor) else (if (dark) IncomeColorDark else IncomeColor)
+    val profitColor = if (gain) (if (dark) IncomeColorDark else IncomeColor) else (if (dark) ExpenseColorDark else ExpenseColor)
     LazyColumn(modifier.padding(horizontal = 16.dp)) {
         item {
             Spacer(Modifier.height(12.dp))

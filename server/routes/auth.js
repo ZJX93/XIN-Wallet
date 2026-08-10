@@ -181,7 +181,8 @@ router.post('/refresh', validate({
                     return res.status(401).json(fail('用户不存在或已被禁用'));
                 }
                 const newToken = signToken(user);
-                res.json(success({ token: newToken }, '令牌刷新成功'));
+                const newRefreshToken = signRefreshToken(user);
+                res.json(success({ token: newToken, refreshToken: newRefreshToken }, '令牌刷新成功'));
             })
             .catch(err => {
                 console.error('refresh: db error', err.message);

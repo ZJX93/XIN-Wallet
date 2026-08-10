@@ -60,7 +60,7 @@ function signRefreshToken(user) {
     return jwt.sign(
         { id: Number(user.id), type: 'refresh' },
         refreshSecret,
-        { algorithm: 'HS256', expiresIn: '7d' }
+        { algorithm: 'HS256', expiresIn: '30d' }
     );
 }
 
