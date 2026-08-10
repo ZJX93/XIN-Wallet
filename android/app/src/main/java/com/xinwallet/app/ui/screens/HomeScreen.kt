@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +57,7 @@ fun HomeScreen(navController: NavHostController) {
     val vm: DashboardViewModel = viewModel(factory = viewModelFactory { DashboardViewModel(AppContainer.dashboardRepository) })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { vm.load() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
@@ -66,7 +68,16 @@ fun HomeScreen(navController: NavHostController) {
     ) { padding ->
         when {
             state.loading -> LoadingBox()
-            state.error != null -> ErrorState(state.error!!) { vm.load() }
+            state.error != null -> ErrorState(
+                state.error!!,
+                onRetry = { vm.load() },
+                onLogin = {
+                    scope.launch {
+                        AppContainer.authRepository.logout()
+                        AppContainer.authExpired.emit(Unit)
+                    }
+                }
+            )
             state.data != null -> {
                 val d = state.data!!
                 val totalAssets = if (d.totalAssets > 0) d.totalAssets

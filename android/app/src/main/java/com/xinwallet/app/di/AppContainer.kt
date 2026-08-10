@@ -18,6 +18,7 @@ import com.xinwallet.app.data.repository.DashboardRepository
 import com.xinwallet.app.data.repository.InvestmentRepository
 import com.xinwallet.app.data.repository.SavingsGoalRepository
 import com.xinwallet.app.data.repository.TransactionRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -63,6 +64,9 @@ object AppContainer {
     lateinit var csvRepository: CsvRepository
         private set
 
+    /** 全局认证过期事件：AuthInterceptor 在 401 且刷新失败时发射，AppRoot 收集后回到登录页 */
+    val authExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
 
@@ -71,7 +75,7 @@ object AppContainer {
 
         val gson = GsonBuilder().setLenient().create()
         val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
-        val interceptor = AuthInterceptor(session) { if (::api.isInitialized) api else null }
+        val interceptor = AuthInterceptor(session, authExpired) { if (::api.isInitialized) api else null }
         okHttpClient = OkHttpClient.Builder()
             .addInterceptor(interceptor)
             .addInterceptor(logging)

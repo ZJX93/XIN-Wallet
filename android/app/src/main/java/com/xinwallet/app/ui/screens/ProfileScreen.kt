@@ -132,9 +132,20 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
             SectionTitle("外观主题")
-            SingleChoiceSegmentedButtonRow {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 themeOptions.forEachIndexed { index, (value, label) ->
-                    SegmentedButton(selected = state.themeMode == value, onClick = { vm.setTheme(value) }, shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size)) {
+                    SegmentedButton(
+                        selected = state.themeMode == value,
+                        onClick = { vm.setTheme(value) },
+                        shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size),
+                        colors = SegmentedButtonDefaults.colors(
+                            activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            inactiveContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(label)
                     }
                 }

@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.Transaction
+import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
@@ -427,7 +430,20 @@ private fun utcMidnightMillis(year: Int, month: Int, day: Int): Long =
     }.timeInMillis
 
 @Composable
-fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
+fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null) {
+    val scope = rememberCoroutineScope()
+    val isAuthError = remember(message) {
+        message.contains("登录") || message.contains("过期") || message.contains("401") ||
+            message.contains("Unauthorized", ignoreCase = true) || message.contains("token", ignoreCase = true)
+    }
+    val effectiveOnLogin = onLogin ?: if (isAuthError) {
+        {
+            scope.launch {
+                AppContainer.authRepository.logout()
+                AppContainer.authExpired.emit(Unit)
+            }
+        }
+    } else null
     Column(
         Modifier.fillMaxWidth().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -436,9 +452,13 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
         Icon(Icons.Filled.ErrorOutline, "错误", tint = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(8.dp))
         Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        if (effectiveOnLogin != null) {
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = effectiveOnLogin) { Text("重新登录") }
+        }
         if (onRetry != null) {
             Spacer(Modifier.height(8.dp))
-            Button(onClick = onRetry) { Text("重试") }
+            OutlinedButton(onClick = onRetry) { Text("重试") }
         }
     }
 }

@@ -2,6 +2,7 @@ package com.xinwallet.app.data.remote
 
 import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.RefreshRequest
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -12,6 +13,7 @@ import okhttp3.Response
  */
 class AuthInterceptor(
     private val session: SessionManager,
+    private val authExpired: MutableSharedFlow<Unit>,
     private val apiProvider: () -> ApiService?
 ) : Interceptor {
 
@@ -29,6 +31,11 @@ class AuthInterceptor(
             if (refreshed != null) {
                 val retry = original.newBuilder().header("Authorization", "Bearer $refreshed").build()
                 return chain.proceed(retry)
+            }
+            // 刷新失败：清掉会话并通知 AppRoot 回到登录页
+            runBlocking {
+                session.clearSession()
+                authExpired.tryEmit(Unit)
             }
         }
         return response
