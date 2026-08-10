@@ -5,7 +5,7 @@
 #       做真编译验证（非静态核对），随后自动创建 GitHub Release 并上传 APK 安装包。
 # 版本：安卓端使用独立命名空间 android-vX.Y.Z，不污染 Web 端 v0.x 版本线，
 #       每次成功构建 patch +1（首次 android-v0.1.0）。
-# 产物：GitHub Release 里的 app-debug.apk（debug 签名，可侧载安装，无需 Google Play）。
+# 产物：GitHub Release 里的 XIN-Wallet android-vX.Y.Z.apk（debug 签名，可侧载安装，无需 Google Play）。
 # ============================================
 name: Android Build
 
@@ -88,6 +88,13 @@ jobs:
           echo "new_tag=$NEW" >> "$GITHUB_OUTPUT"
           echo "Next Android version: $NEW"
 
+      - name: 重命名 APK 为 XIN-Wallet 格式
+        if: success()
+        run: |
+          APK_DIR="android/app/build/outputs/apk/debug"
+          mv "$APK_DIR/app-debug.apk" "$APK_DIR/XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk"
+          echo "APK renamed to: XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk"
+
       - name: 创建 GitHub Release 并上传 APK
         if: success()
         working-directory: ${{ github.workspace }}
@@ -95,6 +102,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ steps.android_version.outputs.new_tag }}" \
-            --title "鑫钱包 Android 客户端 ${{ steps.android_version.outputs.new_tag }}" \
-            --notes "自动构建的安卓 debug 安装包（debug 签名，可侧载安装，无需 Google Play）。\n\n安装方式：下载 app-debug.apk 传到手机，允许「未知来源」后点击安装；或用 adb install app-debug.apk。" \
-            android/app/build/outputs/apk/debug/*.apk
+            --title "XIN-Wallet ${{ steps.android_version.outputs.new_tag }}" \
+            --notes "自动构建的安卓 debug 安装包（debug 签名，可侧载安装，无需 Google Play）。\n\n安装方式：下载 XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk 传到手机，允许「未知来源」后点击安装；或用 adb install \"XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk\"。" \
+            "android/app/build/outputs/apk/debug/XIN-Wallet ${{ steps.android_version.outputs.new_tag }}.apk"

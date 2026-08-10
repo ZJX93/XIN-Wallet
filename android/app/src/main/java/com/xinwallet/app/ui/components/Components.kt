@@ -437,7 +437,7 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> U
         message.contains("登录") || message.contains("过期") || message.contains("401") ||
             message.contains("Unauthorized", ignoreCase = true) || message.contains("token", ignoreCase = true)
     }
-    val effectiveOnLogin = onLogin ?: if (isAuthError) {
+    val effectiveOnLogin: (() -> Unit)? = onLogin ?: if (isAuthError) {
         {
             scope.launch {
                 AppContainer.authRepository.logout()
