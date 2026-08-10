@@ -438,7 +438,7 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
             [userId]
         ),
         db.query(
-            `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, it.category 
+            `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, it.category, it.name AS type_name 
              FROM investments i 
              LEFT JOIN investment_types it ON i.investment_type_id = it.id 
              WHERE i.user_id = ? AND i.status = 'holding'`,
@@ -511,18 +511,22 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
             total: Math.round(total * 100) / 100
         }));
 
-    // 投资资产按品类汇总
+    // 投资资产按品类汇总；「其他」类按具体投资类型名拆分显示
     const investByCategory = {};
     investments.forEach(i => {
-        const key = i.category || 'other';
-        investByCategory[key] = (investByCategory[key] || 0) + parseFloat(i.current_value);
+        const cat = i.category || 'other';
+        const isOther = cat === 'other';
+        const key = isOther ? `other:${i.type_name || '其他'}` : cat;
+        const name = isOther ? (i.type_name || '其他') : (investmentCategoryNames[cat] || '其他');
+        if (!investByCategory[key]) investByCategory[key] = { name, total: 0 };
+        investByCategory[key].total += parseFloat(i.current_value);
     });
     const investmentItems = Object.entries(investByCategory)
-        .filter(([, total]) => Math.abs(total) > 0.005)
-        .map(([category, total]) => ({
-            category,
-            name: investmentCategoryNames[category] || '其他',
-            total: Math.round(total * 100) / 100
+        .filter(([, item]) => Math.abs(item.total) > 0.005)
+        .map(([, item]) => ({
+            category: 'other',
+            name: item.name,
+            total: Math.round(item.total * 100) / 100
         }));
 
     // 非流动负债 = 长期贷款（>1年）
