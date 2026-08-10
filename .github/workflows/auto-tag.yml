@@ -51,14 +51,14 @@ jobs:
           if [ -z "$LATEST_TAG" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "new_tag=android-v0.1.0" >> $GITHUB_OUTPUT
-            echo "No existing tags, starting at v0.1.0"
+            echo "No existing tags, starting at android-v0.1.0"
             exit 0
           fi
 
           echo "Latest tag: $LATEST_TAG"
 
-          # 解析当前版本号
-          VERSION=${LATEST_TAG#v}
+          # 解析当前版本号（去掉 android-v 前缀，得到 X.Y.Z）
+          VERSION=${LATEST_TAG#android-v}
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
           MINOR=$(echo "$VERSION" | cut -d. -f2)
           PATCH=$(echo "$VERSION" | cut -d. -f3)
