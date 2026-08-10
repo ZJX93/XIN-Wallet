@@ -1,34 +1,42 @@
 package com.xinwallet.app.ui.screens
 
 import android.Manifest
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,20 +44,25 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -61,7 +74,9 @@ import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
 import com.xinwallet.app.util.prepareImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -72,9 +87,9 @@ fun ChatScreen(navController: NavHostController) {
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
-    // 云端录音需要 RECORD_AUDIO 权限
+    // 云端录音需要 RECORD_AUDIO 权限；授权后直接开始录音
     val recordPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) vm.startCloudVoice() else vm.onInputChange(vm.state.value.input)
     }
@@ -82,7 +97,7 @@ fun ChatScreen(navController: NavHostController) {
     fun consume(uri: Uri?) {
         if (uri == null) return
         scope.launch {
-            val prepared = kotlinx.coroutines.withContext(Dispatchers.IO) { prepareImage(context, uri) }
+            val prepared = withContext(Dispatchers.IO) { prepareImage(context, uri) }
             if (prepared == null) snackbar.showSnackbar("图片读取失败，请换一张试试")
             else vm.sendImage(Base64.encodeToString(prepared.bytes, Base64.NO_WRAP), "image/jpeg")
         }
@@ -115,28 +130,36 @@ fun ChatScreen(navController: NavHostController) {
         }
     }
 
+    // 录音计时（仅在录音中走动）
+    var elapsed by remember { mutableStateOf(0) }
+    LaunchedEffect(state.voiceMode == "cloud") {
+        if (state.voiceMode == "cloud") {
+            elapsed = 0
+            while (state.voiceMode == "cloud") { delay(500); elapsed += 500 }
+        }
+    }
+
     Scaffold(
         topBar = { TopBar("AI 对话记账") },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            ChatInputBar(
-                input = state.input,
-                onInput = { vm.onInputChange(it) },
-                voiceActive = state.voiceMode != null,
-                onVoice = {
-                    when (state.voiceMode) {
-                        null -> {
-                            if (vm.speechAvailable) vm.startVoice { vm.onInputChange(it) }
-                            else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                        "device" -> vm.stopVoice()
-                        "cloud" -> vm.stopCloudVoice()
-                    }
-                },
-                onImage = { showImageMenu = true },
-                onSend = { vm.sendText() },
-                sending = state.sending
-            )
+            if (state.voiceMode == "cloud") {
+                RecordingBar(elapsedMs = elapsed.toLong()) { vm.stopCloudVoice() }
+            } else {
+                ChatInputBar(
+                    input = state.input,
+                    onInput = { vm.onInputChange(it) },
+                    recording = false,
+                    onVoice = {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (granted) vm.startCloudVoice() else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
+                    },
+                    onImage = { showImageMenu = true },
+                    onSend = { vm.sendText() },
+                    sending = state.sending
+                )
+            }
 
             if (showImageMenu) {
                 AlertDialog(
@@ -164,12 +187,28 @@ fun ChatScreen(navController: NavHostController) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.messages.isEmpty() && !state.thinking) {
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.fillMaxSize().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text("AI 对话记账", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "用文字、语音或截图告诉 AI 帮你记账，例如：\n· 早餐花了 12 块，微信支付\n· 这个月餐饮一共多少\n· [截图] 帮我记这笔",
+                        "用文字、语音或截图告诉 AI 帮你记账，例如记下一笔、查某类支出。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(20.dp))
+                    val examples = listOf(
+                        "早餐花了 12 块，微信支付",
+                        "这个月餐饮一共多少",
+                        "记一笔工资到账 8000"
+                    )
+                    examples.forEach { ex ->
+                        SuggestionChip(ex) { vm.sendText(ex) }
+                        Spacer(Modifier.height(10.dp))
+                    }
                 }
             } else {
                 LazyColumn(
@@ -191,13 +230,73 @@ fun ChatScreen(navController: NavHostController) {
 }
 
 @Composable
+private fun SuggestionChip(text: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("💡", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.width(10.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun RecordingBar(elapsedMs: Long, onStop: () -> Unit) {
+    val secs = (elapsedMs / 1000).toInt()
+    val time = "%02d:%02d".format(secs / 60, secs % 60)
+    val transition = rememberInfiniteTransition()
+    val alpha by transition.animateFloat(
+        initialValue = 1f, targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse)
+    )
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(14.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = alpha))
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("正在聆听…说完点停止", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+            }
+            Button(onClick = onStop) {
+                Icon(Icons.Filled.Stop, "停止", modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("停止")
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatBubble(msg: ChatMessage) {
     val isUser = msg.role == "user"
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
+        Text(
+            if (isUser) "我" else "AI",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+        )
         // 用户发的截图缩略图
         if (isUser && msg.imageBase64 != null) {
             val bytes = Base64.decode(msg.imageBase64, Base64.NO_WRAP)
-            val bmp = remember(msg.imageBase64) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+            val bmp = remember(msg.imageBase64) { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -287,7 +386,7 @@ private fun ThinkingBubble() {
 private fun ChatInputBar(
     input: String,
     onInput: (String) -> Unit,
-    voiceActive: Boolean,
+    recording: Boolean,
     onVoice: () -> Unit,
     onImage: () -> Unit,
     onSend: () -> Unit,
@@ -311,7 +410,7 @@ private fun ChatInputBar(
                 singleLine = false
             )
             IconButton(onClick = onVoice, enabled = !sending) {
-                Icon(if (voiceActive) Icons.Filled.Stop else Icons.Filled.Mic, if (voiceActive) "停止" else "语音")
+                Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "停止" else "语音")
             }
             IconButton(onClick = onSend, enabled = input.isNotBlank() && !sending) {
                 Icon(Icons.Filled.Send, "发送")

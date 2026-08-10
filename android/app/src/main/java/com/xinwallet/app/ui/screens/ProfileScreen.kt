@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
@@ -67,9 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.BuildConfig
 import com.xinwallet.app.di.AppContainer
-import com.xinwallet.app.ui.components.AccountListItem
 import com.xinwallet.app.ui.components.BalanceCard
-import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.navigation.Screen
@@ -211,29 +208,13 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
 
             Spacer(Modifier.height(20.dp))
             SectionTitle("资产账户")
-            BalanceCard("总资产", accState.totalAssets, "所有活跃账户余额合计", Modifier.padding(bottom = 12.dp))
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    if (accState.accounts.isEmpty()) {
-                        EmptyState("还没有账户，点下方「管理账户」添加")
-                    } else {
-                        accState.accounts.forEach { acc ->
-                            AccountListItem(acc) { navController.navigate(Screen.AccountDetail.create(acc.id)) }
-                            HorizontalDivider()
-                        }
-                        SettingRow(
-                            icon = Icons.Filled.AccountBalanceWallet,
-                            label = "管理账户",
-                            sub = "新增 / 编辑 / 销户",
-                            onClick = { navController.navigate(Screen.Accounts.route) }
-                        )
-                    }
-                }
-            }
+            BalanceCard(
+                title = "总资产",
+                amount = accState.totalAssets,
+                subtitle = "点击查看与管理账户",
+                modifier = Modifier.padding(bottom = 12.dp),
+                onClick = { navController.navigate(Screen.Accounts.route) }
+            )
 
             Spacer(Modifier.height(20.dp))
             SectionTitle("报表中心")
