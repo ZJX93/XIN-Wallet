@@ -837,14 +837,16 @@ router.post('/chat', async (req, res) => {
             }
         }
 
-        const system = `你是「鑫钱包」的智能记账助手，帮助用户通过自然语言完成记账与查账。
+        const system = `你是「鑫钱包」的智能记账助手，帮助用户通过自然语言完成记账、查账、改账。
 规则：
 1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
 2. 信息不全（金额、收支方向或账户不明）时，用一句中文追问，不要臆造。
-3. 记账优先调用工具：create_transaction（收入/支出）、create_transfer（转账）、query_stats（查账问答）。
-4. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止编造 id。
-5. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
-6. 记账成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）"）。
+3. 可用工具：create_transaction（收入/支出）、create_transfer（转账）、list_transactions（查找交易）、update_transaction（修改交易）、delete_transaction（删除交易）、query_stats（查账问答）。
+4. 用户说"把XX改成YY""这笔记错了""删了这笔"时，先调用 list_transactions 定位目标交易，再调用 update_transaction 或 delete_transaction。
+5. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止编造 id。
+6. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
+7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
+8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
 
 可用类目：
 ${catRef}
@@ -882,6 +884,48 @@ ${accRef}`;
                         note: { type: 'string' }
                     },
                     required: ['from_account_id', 'to_account_id', 'amount']
+                }
+            },
+            {
+                name: 'list_transactions',
+                description: '按关键词、金额、日期范围列出最近交易，用于定位用户想修改或删除的目标。返回交易 id、时间、金额、类型、备注、分类、账户。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        keyword: { type: 'string', description: '备注/分类/账户关键词，可省略' },
+                        amount: { type: 'number', description: '精确金额，可省略' },
+                        date_from: { type: 'string', description: 'YYYY-MM-DD，可省略' },
+                        date_to: { type: 'string', description: 'YYYY-MM-DD，可省略' },
+                        limit: { type: 'integer', description: '默认 10，最大 20' }
+                    }
+                }
+            },
+            {
+                name: 'update_transaction',
+                description: '修改一笔已存在的普通收入/支出交易（不能修改转账）。transaction_id 必须先从 list_transactions 获取。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        transaction_id: { type: 'integer', description: '交易 id' },
+                        type: { type: 'string', enum: ['income', 'expense'], description: '新的收支方向' },
+                        amount: { type: 'number', description: '新金额（正数）' },
+                        category_id: { type: 'integer', description: '新分类 id' },
+                        account_id: { type: 'integer', description: '新账户 id' },
+                        date: { type: 'string', description: 'YYYY-MM-DD HH:mm:ss，可省略表示不变' },
+                        note: { type: 'string', description: '新备注，可省略表示不变' }
+                    },
+                    required: ['transaction_id', 'type', 'amount', 'category_id', 'account_id']
+                }
+            },
+            {
+                name: 'delete_transaction',
+                description: '删除一笔已存在的交易（包括转账，会级联删除配对记录）。transaction_id 必须先从 list_transactions 获取。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        transaction_id: { type: 'integer', description: '交易 id' }
+                    },
+                    required: ['transaction_id']
                 }
             },
             {
@@ -998,12 +1042,103 @@ ${accRef}`;
                 }
                 return { ok: false, error: '不支持的查询类型' };
             }
+            if (name === 'list_transactions') {
+                const keyword = args.keyword ? `%${args.keyword}%` : null;
+                const amount = toAmount(args.amount);
+                const dateFrom = args.date_from || null;
+                const dateTo = args.date_to || null;
+                const limit = Math.min(Math.max(parseInt(args.limit) || 10, 1), 20);
+                let sql = `SELECT t.id, t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
+                           FROM transactions t
+                           LEFT JOIN categories c ON t.category_id=c.id
+                           LEFT JOIN accounts a ON t.account_id=a.id
+                           WHERE t.user_id=?`;
+                const params = [req.userId];
+                if (keyword) { sql += ' AND (t.note LIKE ? OR c.name LIKE ? OR a.name LIKE ?)'; params.push(keyword, keyword, keyword); }
+                if (amount !== null && amount > 0) { sql += ' AND t.amount = ?'; params.push(amount); }
+                if (dateFrom) { sql += ' AND t.date::date >= ?'; params.push(dateFrom); }
+                if (dateTo) { sql += ' AND t.date::date <= ?'; params.push(dateTo); }
+                sql += ' ORDER BY t.date DESC, t.id DESC LIMIT ?';
+                params.push(limit);
+                const rows = await db.query(sql, params);
+                return {
+                    ok: true,
+                    rows: rows.map(r => ({
+                        transaction_id: r.id, amount: parseFloat(r.amount), type: r.type,
+                        note: r.note, date: fmtDateTime(r.date), category: r.cat, account: r.acc
+                    }))
+                };
+            }
+            if (name === 'update_transaction') {
+                const txId = parseInt(args.transaction_id);
+                const type = args.type;
+                if (!txId) return { ok: false, error: '缺少交易 id' };
+                if (type !== 'income' && type !== 'expense') return { ok: false, error: '只能修改普通收入/支出' };
+                const amount = toAmount(args.amount);
+                if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
+                const accountId = parseInt(args.account_id), categoryId = parseInt(args.category_id);
+                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accountId, req.userId]);
+                if (!acc) return { ok: false, error: '账户不存在' };
+                const cat = await db.queryOne('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)', [categoryId, req.userId]);
+                if (!cat) return { ok: false, error: '分类不存在' };
+                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [txId, req.userId]);
+                if (!old) return { ok: false, error: '交易不存在' };
+                if (old.type === 'transfer_in' || old.type === 'transfer_out') return { ok: false, error: '转账请删除后重新记账' };
+                const date = args.date || fmtDateTime(old.date);
+                const note = args.note !== undefined ? args.note : old.note;
+                const src = type === 'expense' ? accountId : null;
+                const dst = type === 'income' ? accountId : null;
+                await db.transaction(async (conn) => {
+                    await conn.query(
+                        `UPDATE transactions SET account_id=?, category_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=? WHERE id=?`,
+                        [accountId, categoryId, type, amount, note || '', date, src, dst, txId]
+                    );
+                    const affected = new Set([parseInt(old.account_id), accountId]);
+                    const newBalances = {};
+                    for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+                    for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                    for (const aid of affected) {
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await syncCreditCardDebt(conn, req.userId, aid);
+                    }
+                });
+                return { ok: true, transaction_id: txId, action: 'updated', type, amount };
+            }
+            if (name === 'delete_transaction') {
+                const txId = parseInt(args.transaction_id);
+                if (!txId) return { ok: false, error: '缺少交易 id' };
+                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [txId, req.userId]);
+                if (!old) return { ok: false, error: '交易不存在' };
+                let deletedType = old.type;
+                await db.transaction(async (conn) => {
+                    const affectedAccounts = new Set([parseInt(old.account_id)]);
+                    if (old.transfer_id) {
+                        const paired = await conn.query(
+                            'SELECT id, account_id FROM transactions WHERE transfer_id = ? AND id != ? AND user_id = ?',
+                            [old.transfer_id, txId, req.userId]
+                        );
+                        paired.forEach(p => { affectedAccounts.add(parseInt(p.account_id)); });
+                        await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ?', [old.transfer_id, req.userId]);
+                        await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ?', [old.transfer_id, req.userId]);
+                    } else {
+                        await conn.query('DELETE FROM transactions WHERE id = ?', [txId]);
+                    }
+                    const newBalances = {};
+                    for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
+                    for (const aid of affectedAccounts) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
+                    for (const aid of affectedAccounts) {
+                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await syncCreditCardDebt(conn, req.userId, aid);
+                    }
+                });
+                return { ok: true, transaction_id: txId, action: 'deleted', type: deletedType, amount: parseFloat(old.amount) };
+            }
             return { ok: false, error: '未知工具 ' + name };
         }
 
         const conv = [{ role: 'system', content: system }, ...norm];
         let reply = '';
-        const created = [];
+        const mutations = [];
         const MAX_LOOPS = 5;
         for (let i = 0; i < MAX_LOOPS; i++) {
             const msg = await chatWithTools(provider, conv, tools);
@@ -1013,18 +1148,28 @@ ${accRef}`;
                 const result = await executeTool(tc.name, tc.arguments || {});
                 conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
                 if (result.ok && result.transaction_id) {
-                    const t = await db.queryOne(
-                        `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
-                         FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
-                         WHERE t.id=? AND t.user_id=?`,
-                        [result.transaction_id, req.userId]
-                    );
-                    if (t) created.push({ id: result.transaction_id, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
+                    const action = result.action || 'created';
+                    if (action === 'deleted') {
+                        mutations.push({
+                            id: result.transaction_id, action,
+                            type: result.type || 'expense',
+                            amount: parseFloat(result.amount || 0),
+                            categoryName: '', accountName: '', date: ''
+                        });
+                    } else {
+                        const t = await db.queryOne(
+                            `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
+                             FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
+                             WHERE t.id=? AND t.user_id=?`,
+                            [result.transaction_id, req.userId]
+                        );
+                        if (t) mutations.push({ id: result.transaction_id, action, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
+                    }
                 }
             }
         }
         if (!reply) reply = '已完成处理。';
-        res.json(success({ reply, transactions: created }));
+        res.json(success({ reply, transactions: mutations }));
     } catch (err) {
         handleServerError(res, err, 'AI 对话');
     }

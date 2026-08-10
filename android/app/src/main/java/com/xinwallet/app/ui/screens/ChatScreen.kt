@@ -226,28 +226,47 @@ private fun ChatBubble(msg: ChatMessage) {
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                // 助手消息里已建交易确认卡
+                // 助手消息里的交易变更确认卡（新增/更新/删除）
                 msg.transactions.forEach { tx ->
-                    val sign = if (tx.type == "income") "+" else "-"
-                    val label = when (tx.type) {
+                    val actionLabel = when (tx.action) {
+                        "updated" -> "已更新"
+                        "deleted" -> "已删除"
+                        else -> "已记一笔"
+                    }
+                    val typeLabel = when (tx.type) {
                         "income" -> "收入"
                         "transfer" -> "转账"
                         else -> "支出"
                     }
+                    val sign = when {
+                        tx.action == "deleted" -> ""
+                        tx.type == "income" -> "+"
+                        else -> "-"
+                    }
+                    val containerColor = when (tx.action) {
+                        "updated" -> MaterialTheme.colorScheme.secondaryContainer
+                        "deleted" -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    }
+                    val contentColor = when (tx.action) {
+                        "updated" -> MaterialTheme.colorScheme.onSecondaryContainer
+                        "deleted" -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
+                    }
                     Card(
                         Modifier.fillMaxWidth().padding(top = 8.dp),
                         shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                        colors = CardDefaults.cardColors(containerColor = containerColor)
                     ) {
                         Column(Modifier.padding(10.dp)) {
-                            Text("已记一笔 · $label", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                            Text("$actionLabel · $typeLabel", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium, color = contentColor)
                             Text(
-                                "${sign}${formatMoney(tx.amount)}",
+                                "$sign${formatMoney(tx.amount)}",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                color = contentColor
                             )
                             val sub = listOfNotNull(tx.categoryName, tx.accountName, tx.date).joinToString(" · ")
-                            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelSmall, color = contentColor)
                         }
                     }
                 }

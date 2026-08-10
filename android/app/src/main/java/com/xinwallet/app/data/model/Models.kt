@@ -335,6 +335,7 @@ data class ChatRequest(
 
 data class ChatTxn(
     val id: Int = 0,
+    val action: String = "created", // created | updated | deleted
     val type: String = "",
     val amount: Double = 0.0,
     val categoryName: String? = null,
