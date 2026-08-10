@@ -39,6 +39,8 @@ android {
 
     buildFeatures {
         compose = true
+        // AGP 8.x 默认不再生成 BuildConfig，应用内升级需要读取 BuildConfig.VERSION_NAME，必须显式开启
+        buildConfig = true
     }
 
     packaging {
