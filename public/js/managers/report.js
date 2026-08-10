@@ -433,9 +433,9 @@ const ReportManager = {
                             <div class="bs-section-title">流动资产 <span class="bs-total">${fmt(bs.assets.current.total)}</span></div>
                             ${bs.assets.current.items.length === 0 ? '<div class="bs-empty">无账户</div>' :
                               bs.assets.current.items.map(a => `
-                                <div class="bs-row clickable" data-account-id="${a.id || ''}">
+                                <div class="bs-row">
                                     <span>${escapeHtml(a.name)}</span>
-                                    <span>${fmt(a.balance)}</span>
+                                    <span>${fmt(a.total)}</span>
                                 </div>
                               `).join('')}
                         </div>
@@ -445,7 +445,7 @@ const ReportManager = {
                               bs.assets.investment.items.map(i => `
                                 <div class="bs-row">
                                     <span>${escapeHtml(i.name)}</span>
-                                    <span>${fmt(i.current_value)}</span>
+                                    <span>${fmt(i.total)}</span>
                                 </div>
                               `).join('')}
                         </div>

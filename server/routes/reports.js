@@ -471,8 +471,58 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
         return s + Math.max(0, limit - bal);
     }, 0);
 
+        // 账户类型 → 显示名称
+    const accountTypeNames = {
+        cash: '现金',
+        bank_card: '银行卡',
+        credit_card: '信用卡',
+        electronic_payment: '电子支付',
+        financial_account: '理财账户',
+        digital: '数字钱包',
+        other: '其他'
+    };
+    // 投资品类 → 显示名称
+    const investmentCategoryNames = {
+        stock: 'A股',
+        fund: '基金',
+        deposit: '理财产品',
+        crypto: '加密货币',
+        hk_stock: '港股',
+        us_stock: '美股',
+        commodity: '商品',
+        forex: '外汇',
+        other: '其他'
+    };
+
+    // 流动资产按账户类型汇总（信用卡只在负债端展示，已用额度不计入资产）
+    const currentByType = {};
+    liquidAssets.forEach(a => {
+        const key = a.type || 'other';
+        currentByType[key] = (currentByType[key] || 0) + parseFloat(a.balance);
+    });
+    const currentItems = Object.entries(currentByType)
+        .filter(([, total]) => Math.abs(total) > 0.005)
+        .map(([type, total]) => ({
+            type,
+            name: accountTypeNames[type] || '其他',
+            total: Math.round(total * 100) / 100
+        }));
+
+    // 投资资产按品类汇总
+    const investByCategory = {};
+    investments.forEach(i => {
+        const key = i.category || 'other';
+        investByCategory[key] = (investByCategory[key] || 0) + parseFloat(i.current_value);
+    });
+    const investmentItems = Object.entries(investByCategory)
+        .filter(([, total]) => Math.abs(total) > 0.005)
+        .map(([category, total]) => ({
+            category,
+            name: investmentCategoryNames[category] || '其他',
+            total: Math.round(total * 100) / 100
+        }));
+
     // 非流动负债 = 长期贷款（>1年）
-    // 长期负债：term >= 12 个月的贷款（含 loan 类型）
     const longTermDebt = longTermDebts.filter(d => (parseInt(d.term_months) || 0) >= 12)
         .reduce((s, d) => s + parseFloat(d.remaining), 0);
     // 短期负债：term < 12 个月 或 term = 0（如个人借款、无期限）且 type != credit_card
@@ -486,27 +536,19 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
     const netWorth = totalAssets - totalLiabilities;
 
     // 期末/期初对比：通过查 periodStart 之前的资产估算期初
-    // 简化方案：期初资产 ≈ 期末 - 净变化（用本期交易净额 + 还款 + 投资变化估算）
-    // 为了精确，需要逐账户快照；这里用简化算法（基于本期净额）
     const netBefore = parseFloat(txBefore.net);
-    const openingAssets = totalAssets - netBefore; // 极简估算
+    const openingAssets = totalAssets - netBefore;
     const openingNetWorth = openingAssets - totalLiabilities;
 
     return {
         period: { start: periodStart, end: periodEnd },
         assets: {
             current: {
-                items: liquidAssets.map(a => ({
-                    name: a.name, type: a.type, balance: parseFloat(a.balance),
-                    credit_limit: parseFloat(a.credit_limit) || 0
-                })),
+                items: currentItems,
                 total: Math.round(liquidTotal * 100) / 100
             },
             investment: {
-                items: investments.map(i => ({
-                    name: i.name, current_value: parseFloat(i.current_value),
-                    total_cost: parseFloat(i.total_cost)
-                })),
+                items: investmentItems,
                 total: Math.round(investTotal * 100) / 100
             },
             total: Math.round(totalAssets * 100) / 100,
