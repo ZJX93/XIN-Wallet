@@ -133,10 +133,10 @@ fun ChatScreen(navController: NavHostController) {
 
     // 录音计时（仅在录音中走动）
     var elapsed by remember { mutableStateOf(0) }
-    LaunchedEffect(state.voiceMode == "cloud") {
-        if (state.voiceMode == "cloud") {
+    LaunchedEffect(state.recording) {
+        if (state.recording) {
             elapsed = 0
-            while (state.voiceMode == "cloud") { delay(500); elapsed += 500 }
+            while (state.recording) { delay(500); elapsed += 500 }
         }
     }
 
@@ -144,23 +144,24 @@ fun ChatScreen(navController: NavHostController) {
         topBar = { TopBar("AI 对话记账") },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (state.voiceMode == "cloud") {
-                RecordingBar(elapsedMs = elapsed.toLong()) { vm.stopCloudVoice() }
-            } else {
-                ChatInputBar(
-                    input = state.input,
-                    onInput = { vm.onInputChange(it) },
-                    recording = false,
-                    onVoice = {
+            ChatInputBar(
+                input = state.input,
+                onInput = { vm.onInputChange(it) },
+                recording = state.recording,
+                elapsedMs = elapsed.toLong(),
+                onVoice = {
+                    if (state.recording) {
+                        vm.stopCloudVoice()
+                    } else {
                         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                             android.content.pm.PackageManager.PERMISSION_GRANTED
                         if (granted) vm.startCloudVoice() else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
-                    },
-                    onImage = { showImageMenu = true },
-                    onSend = { vm.sendText() },
-                    sending = state.sending
-                )
-            }
+                    }
+                },
+                onImage = { showImageMenu = true },
+                onSend = { vm.sendText() },
+                sending = state.sending
+            )
 
             if (showImageMenu) {
                 AlertDialog(
@@ -244,42 +245,6 @@ private fun SuggestionChip(text: String, onClick: () -> Unit) {
             Text("💡", style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun RecordingBar(elapsedMs: Long, onStop: () -> Unit) {
-    val secs = (elapsedMs / 1000).toInt()
-    val time = "%02d:%02d".format(secs / 60, secs % 60)
-    val transition = rememberInfiniteTransition()
-    val alpha by transition.animateFloat(
-        initialValue = 1f, targetValue = 0.25f,
-        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse)
-    )
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier.size(14.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.error.copy(alpha = alpha))
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("正在聆听…说完点停止", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onErrorContainer)
-                Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
-            }
-            Button(onClick = onStop) {
-                Icon(Icons.Filled.Stop, "停止", modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("停止")
-            }
         }
     }
 }
@@ -388,12 +353,37 @@ private fun ChatInputBar(
     input: String,
     onInput: (String) -> Unit,
     recording: Boolean,
+    elapsedMs: Long = 0,
     onVoice: () -> Unit,
     onImage: () -> Unit,
     onSend: () -> Unit,
     sending: Boolean
 ) {
     Column(Modifier.fillMaxWidth().padding(8.dp)) {
+        // 录音状态指示：内联在输入栏顶部，不替换整个按钮栏，避免布局跳动 / 遮住按钮
+        if (recording) {
+            val transition = rememberInfiniteTransition()
+            val alpha by transition.animateFloat(
+                initialValue = 1f, targetValue = 0.25f,
+                animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse)
+            )
+            val secs = (elapsedMs / 1000).toInt()
+            val time = "%02d:%02d".format(secs / 60, secs % 60)
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier.size(10.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = alpha))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("正在聆听…说完点麦克风停止", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.weight(1f))
+                Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+            }
+        }
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
@@ -408,7 +398,8 @@ private fun ChatInputBar(
                 placeholder = { Text("说点什么，或发张截图…") },
                 modifier = Modifier.weight(1f),
                 maxLines = 4,
-                singleLine = false
+                singleLine = false,
+                enabled = !recording
             )
             IconButton(onClick = onVoice, enabled = !sending) {
                 Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "停止" else "语音")

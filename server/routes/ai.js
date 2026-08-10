@@ -1187,14 +1187,23 @@ router.post('/transcribe', async (req, res) => {
         const url = baseUrl + '/audio/transcriptions';
         const boundary = '----xinwallet' + Date.now();
         const fileData = Buffer.from(audio, 'base64');
+        // 文件名后缀必须与实际音频格式一致：多数 whisper 服务端按扩展名判定容器格式，
+        // 硬编码 voice.webm 而实际是 m4a 字节会导致「格式不支持」拒收。
+        const extMap = {
+            'audio/mp4': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a',
+            'audio/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3',
+            'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/ogg': 'ogg', 'audio/oga': 'ogg'
+        };
+        const ext = extMap[mime] || 'bin';
+        const ctype = mime || 'application/octet-stream';
         const body = Buffer.concat([
-            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.webm"\r\nContent-Type: ${mime || 'audio/webm'}\r\n\r\n`),
+            Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.${ext}"\r\nContent-Type: ${ctype}\r\n\r\n`),
             fileData,
             Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--${boundary}--\r\n`)
         ]);
         const data = await httpsPostRaw(url, { 'Authorization': `Bearer ${provider.api_key}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body);
         const text = (typeof data === 'string') ? data : (data && data.text);
-        if (!text) return res.status(502).json(fail('语音转写失败，服务商可能不支持音频接口'));
+        if (!text) return res.status(502).json(fail('语音转写失败：服务商未返回文字。请确认该 AI 服务商支持 OpenAI 兼容的音频转写接口（/audio/transcriptions，whisper-1），或改用 OpenAI 官方 Key'));
         res.json(success({ text }));
     } catch (err) {
         handleServerError(res, err, '语音转写');
