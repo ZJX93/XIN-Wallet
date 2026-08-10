@@ -438,7 +438,10 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
             [userId]
         ),
         db.query(
-            `SELECT id, name, total_cost, current_value, investment_type_id FROM investments WHERE user_id = ? AND status = 'holding'`,
+            `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, it.category 
+             FROM investments i 
+             LEFT JOIN investment_types it ON i.investment_type_id = it.id 
+             WHERE i.user_id = ? AND i.status = 'holding'`,
             [userId]
         ),
         db.query(
