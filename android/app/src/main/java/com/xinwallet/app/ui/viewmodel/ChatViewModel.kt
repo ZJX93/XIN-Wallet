@@ -106,12 +106,12 @@ class ChatViewModel(
                     _state.value = _state.value.copy(thinking = false, voiceMode = null, error = "语音识别失败（code $error）")
                 }
                 override fun onResults(results: Bundle?) {
-                    val text = results?.getStringArrayListExtra(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     if (text.isNotBlank()) _state.value = _state.value.copy(input = (_state.value.input + text).trim())
                     _state.value = _state.value.copy(thinking = false, voiceMode = null)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
-                    val text = partialResults?.getStringArrayListExtra(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     if (text.isNotBlank()) onPartial(text)
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) {}

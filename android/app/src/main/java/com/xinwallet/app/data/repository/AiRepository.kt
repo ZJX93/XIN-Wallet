@@ -1,5 +1,7 @@
 package com.xinwallet.app.data.repository
 
+import com.xinwallet.app.data.model.ChatRequest
+import com.xinwallet.app.data.model.TranscribeRequest
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
