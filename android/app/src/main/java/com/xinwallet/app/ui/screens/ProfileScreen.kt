@@ -5,6 +5,8 @@ import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,9 +50,13 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.di.AppContainer
+import com.xinwallet.app.ui.components.AccountListItem
+import com.xinwallet.app.ui.components.BalanceCard
+import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.navigation.Screen
+import com.xinwallet.app.ui.viewmodel.AccountsViewModel
 import com.xinwallet.app.ui.viewmodel.CsvViewModel
 import com.xinwallet.app.ui.viewmodel.ProfileViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
@@ -58,6 +64,8 @@ import com.xinwallet.app.util.todayDate
 import java.io.File
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Sell
@@ -72,6 +80,8 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
     val csvVm: CsvViewModel = viewModel(factory = viewModelFactory { CsvViewModel(AppContainer.csvRepository) })
     val state by vm.state.collectAsState()
     val csvState by csvVm.state.collectAsState()
+    val accVm: AccountsViewModel = viewModel(factory = viewModelFactory { AccountsViewModel(AppContainer.accountRepository) })
+    val accState by accVm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -81,6 +91,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
     LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
     LaunchedEffect(csvState.toast) { csvState.toast?.let { snackbar.showSnackbar(it); csvVm.consumeToast() } }
     LaunchedEffect(csvState.error) { csvState.error?.let { snackbar.showSnackbar(it); csvVm.consumeError() } }
+    LaunchedEffect(Unit) { accVm.load() }
 
     val pickCsv = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -117,7 +128,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
     val busy = csvState.busy
 
     Scaffold(topBar = { TopBar("我的") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -127,6 +138,49 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                     Text("当前用户", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Text(state.username.ifBlank { "未登录" }, style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            SectionTitle("资产账户")
+            BalanceCard("总资产", accState.totalAssets, "所有活跃账户余额合计", Modifier.padding(bottom = 12.dp))
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    if (accState.accounts.isEmpty()) {
+                        EmptyState("还没有账户，点下方「管理账户」添加")
+                    } else {
+                        accState.accounts.forEach { acc ->
+                            AccountListItem(acc) { navController.navigate(Screen.AccountDetail.create(acc.id)) }
+                            HorizontalDivider()
+                        }
+                        SettingRow(
+                            icon = Icons.Filled.AccountBalanceWallet,
+                            label = "管理账户",
+                            sub = "新增 / 编辑 / 销户",
+                            onClick = { navController.navigate(Screen.Accounts.route) }
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            SectionTitle("报表中心")
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    SettingRow(
+                        icon = Icons.Filled.BarChart,
+                        label = "报表中心",
+                        sub = "收支趋势 / 资产负债表",
+                        onClick = { navController.navigate(Screen.Reports.route) }
+                    )
                 }
             }
 

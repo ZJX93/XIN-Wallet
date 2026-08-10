@@ -3,9 +3,7 @@ package com.xinwallet.app.ui.navigation
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -69,17 +67,16 @@ sealed class Screen(val route: String) {
 
 private val bottomItems = listOf(
     Screen.Home to ("首页" to Icons.Filled.Home),
-    Screen.Accounts to ("账户" to Icons.Filled.AccountBalanceWallet),
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
     Screen.Planning to ("规划" to Icons.Filled.Savings),
-    Screen.Reports to ("报表" to Icons.Filled.BarChart),
     Screen.Chat to ("对话" to Icons.Filled.Chat),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
 
 fun routeKey(route: String?): String? = when {
     route == null -> null
-    route.startsWith("account") -> Screen.Accounts.route
+    route.startsWith("account") -> Screen.Profile.route
+    route.startsWith("reports") -> Screen.Profile.route
     route.startsWith("edit") -> Screen.Transactions.route
     route.startsWith("ai") -> Screen.Transactions.route
     route.startsWith("chat") -> Screen.Chat.route
