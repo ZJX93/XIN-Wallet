@@ -12,8 +12,10 @@ android {
         applicationId = "com.xinwallet.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // 版本号由 CI 在构建时通过 -PappVersionName / -PappVersionCode 注入，
+        // 让 APK 自身携带真实版本号，供应用内「升级」功能比对；本地调试缺省为 1 / 0.1.0。
+        versionCode = (project.findProperty("appVersionCode") as? String)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("appVersionName") as? String) ?: "0.1.0"
     }
 
     buildTypes {

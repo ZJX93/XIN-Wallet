@@ -9,6 +9,9 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
+    <!-- 应用内直接下载并安装 APK 升级包（Android 8.0+ 需在设置中授权「未知来源」） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!--
         故意不声明 android.permission.CAMERA：
         我们只用 MediaStore.ACTION_IMAGE_CAPTURE 调起系统相机 App 拍照，不直接访问相机硬件。
@@ -17,6 +20,14 @@
     -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- 包可见性：允许本应用解析并拉起系统安装器来安装 .apk（Android 11+ 需要） -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
 
     <application
         android:name=".XWalletApplication"

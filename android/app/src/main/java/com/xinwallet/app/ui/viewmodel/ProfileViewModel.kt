@@ -1,10 +1,14 @@
 package com.xinwallet.app.ui.viewmodel
 
+import android.content.Context
+import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.repository.AuthRepository
+import com.xinwallet.app.data.repository.UpdateRepository
 import com.xinwallet.app.di.AppContainer
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,16 +20,33 @@ data class ProfileUiState(
     val message: String? = null
 )
 
+/** 应用内升级状态机 */
+data class UpdateUiState(
+    val checking: Boolean = false,
+    val currentVersion: String = "",
+    val latestVersion: String = "",
+    val apkUrl: String = "",
+    val hasUpdate: Boolean = false,
+    val error: String? = null,
+    val downloading: Boolean = false,
+    val progress: Int = 0,
+    val localApkPath: String? = null
+)
+
 private fun isPlaceholderUrl(url: String): Boolean =
     url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
 
 class ProfileViewModel(
     private val session: SessionManager,
-    private val authRepo: AuthRepository
+    private val authRepo: AuthRepository,
+    private val updateRepo: UpdateRepository = UpdateRepository()
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileUiState())
     val state: StateFlow<ProfileUiState> = _state
+
+    private val _updateState = MutableStateFlow(UpdateUiState())
+    val updateState: StateFlow<UpdateUiState> = _updateState
 
     init {
         viewModelScope.launch {
@@ -63,5 +84,68 @@ class ProfileViewModel(
 
     fun logout() {
         viewModelScope.launch { authRepo.logout() }
+    }
+
+    // ---------- 应用内升级 ----------
+
+    fun checkUpdate(currentVersion: String) {
+        val s = _updateState.value
+        if (s.checking || s.downloading) return
+        viewModelScope.launch {
+            _updateState.value = s.copy(checking = true, error = null, currentVersion = currentVersion)
+            try {
+                val rel = updateRepo.latestAndroidRelease()
+                val newer = isVersionNewer(rel.version, currentVersion)
+                _updateState.value = _updateState.value.copy(
+                    checking = false,
+                    latestVersion = rel.version,
+                    apkUrl = rel.apkUrl,
+                    hasUpdate = newer
+                )
+            } catch (e: Exception) {
+                _updateState.value = _updateState.value.copy(checking = false, error = e.message ?: "检查更新失败")
+            }
+        }
+    }
+
+    fun downloadUpdate(context: Context) {
+        val s = _updateState.value
+        val url = s.apkUrl
+        if (url.isBlank() || s.downloading) return
+        viewModelScope.launch {
+            val dir = context.applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: run {
+                    _updateState.value = s.copy(error = "无法访问本机存储")
+                    return@launch
+                }
+            val dest = File(dir, "xinwallet_update.apk")
+            _updateState.value = s.copy(downloading = true, progress = 0, error = null, localApkPath = null)
+            try {
+                updateRepo.downloadApk(url, dest) { p ->
+                    _updateState.value = _updateState.value.copy(progress = p)
+                }
+                _updateState.value = _updateState.value.copy(downloading = false, localApkPath = dest.absolutePath)
+            } catch (e: Exception) {
+                _updateState.value = _updateState.value.copy(downloading = false, error = e.message ?: "下载失败")
+            }
+        }
+    }
+
+    fun consumeUpdateError() {
+        _updateState.value = _updateState.value.copy(error = null)
+    }
+
+    /** 语义化版本比较：latest 是否比 current 新（X.Y.Z 数值逐段比较） */
+    private fun isVersionNewer(latest: String, current: String): Boolean {
+        val parse: (String) -> List<Int> = { v -> v.split('.').map { it.toIntOrNull() ?: 0 } }
+        val l = parse(latest)
+        val c = parse(current)
+        val n = maxOf(l.size, c.size)
+        for (i in 0 until n) {
+            val a = l.getOrElse(i) { 0 }
+            val b = c.getOrElse(i) { 0 }
+            if (a != b) return a > b
+        }
+        return false
     }
 }
