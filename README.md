@@ -117,7 +117,7 @@ xin-wallet/
 │   ├── _helpers.test.js
 │   ├── debt-summary.test.js
 │   └── integration.test.js
-├── .github/workflows/      # CI：pr-test.yml（测试门禁）/ release-image.yml（镜像构建）
+├── .github/workflows/      # CI：pr-test.yml（测试门禁）/ auto-tag.yml（统一版本号 android-vX.Y.Z）/ release-image.yml（镜像构建）/ android-build.yml（APK 构建）
 ├── Dockerfile              # 多阶段构建（生产依赖 + 非 root 运行）
 ├── docker-compose.yml      # 应用 + PostgreSQL，数据卷持久化
 ├── docker-compose.external.yml  # 仅应用容器，复用已有 PostgreSQL
@@ -1108,7 +1108,7 @@ AI 能力由用户自配置的「大模型服务商」驱动（API Key 经 AES-2
 
 ## 🐳 Docker / NAS 部署
 
-应用镜像已发布到 GitHub Container Registry（GHCR）：**`ghcr.io/zjx93/xin-wallet/xinwallet:latest`**（含 `linux/amd64` 与 `linux/arm64`，适配 x86 与 ARM 架构的 NAS）。每次推送 `main` 由 GitHub Actions（`.github/workflows/build-image.yml`）自动构建并发布，镜像与代码保持同步，且关联仓库为 public，**任何人无需登录即可匿名 `docker pull`**。
+应用镜像已发布到 GitHub Container Registry（GHCR）：**`ghcr.io/zjx93/xin-wallet/xinwallet:latest`**（含 `linux/amd64` 与 `linux/arm64`，适配 x86 与 ARM 架构的 NAS）。镜像版本号与安卓客户端**完全统一**（同为 `android-vX.Y.Z`）——仓库只有一套版本线，由 `auto-tag.yml` 在每次发布时派发 `release-image.yml`（构建镜像）与 `android-build.yml`（构建 APK），因此你拉到的镜像版本永远等于安卓 App 里显示的版本。关联仓库为 public，**任何人无需登录即可匿名 `docker pull`**。也可固定到具体版本：`ghcr.io/zjx93/xin-wallet/xinwallet:android-v0.1.22`。
 
 提供两种部署模式，按需选择：
 

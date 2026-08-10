@@ -1,8 +1,10 @@
 # ============================================
-# 鑫钱包 · 自动版本标签
+# 鑫钱包 · 自动版本标签（统一版本线）
 # 触发条件：PR Test Gate workflow 在 main 分支 push 后成功完成
-# 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 vX.Y.Z tag
-# 连锁效果：tag push 自动触发 release-image.yml 构建并推送 Docker 镜像到 GHCR
+# 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 android-vX.Y.Z tag
+#       （整个仓库——Web/后端 + 安卓客户端——共用这一套版本号，保证镜像与 APK 版本对齐）
+# 连锁效果：tag 创建后主动派发 release-image.yml（构建 Docker 镜像）与 android-build.yml（构建 APK），
+#           二者均使用该 android-vX.Y.Z 标签，从而 Docker 镜像版本与安卓客户端版本始终保持一致。
 # 版本规则：
 #   feat:           → minor bump (0.2.3 → 0.3.0)
 #   fix/refactor:   → patch bump (0.2.3 → 0.2.4)
@@ -44,11 +46,11 @@ jobs:
         id: version
         run: |
           # 获取按版本号排序的最新 tag
-          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+          LATEST_TAG=$(git tag --list 'android-v*.*.*' --sort=-v:refname | head -1)
 
           if [ -z "$LATEST_TAG" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "new_tag=v0.1.0" >> $GITHUB_OUTPUT
+            echo "new_tag=android-v0.1.0" >> $GITHUB_OUTPUT
             echo "No existing tags, starting at v0.1.0"
             exit 0
           fi
@@ -105,7 +107,7 @@ jobs:
             PATCH=$((PATCH + 1))
           fi
 
-          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="android-v${MAJOR}.${MINOR}.${PATCH}"
           echo "skip=false" >> $GITHUB_OUTPUT
           echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
           echo "Bump type: ${BUMP}"
@@ -121,7 +123,7 @@ jobs:
           git push origin "${{ steps.version.outputs.new_tag }}"
 
       # GITHUB_TOKEN pushed tags do not trigger other workflows (GitHub anti-loop)
-      # Therefore we explicitly trigger the image build after tag creation
+      # Therefore we explicitly trigger downstream builds after tag creation
       - name: Trigger image build
         if: steps.version.outputs.skip == 'false'
         env:
@@ -131,3 +133,14 @@ jobs:
             -f tag="${{ steps.version.outputs.new_tag }}" \
             -r main
           echo "Triggered release-image.yml for ${{ steps.version.outputs.new_tag }}"
+
+      # 同源 tag 同时派发安卓构建，保证 APK 与镜像版本号完全一致
+      - name: Trigger Android build
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run android-build.yml \
+            -f tag="${{ steps.version.outputs.new_tag }}" \
+            -r main
+          echo "Triggered android-build.yml for ${{ steps.version.outputs.new_tag }}"

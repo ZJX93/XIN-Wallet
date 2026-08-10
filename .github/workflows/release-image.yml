@@ -1,8 +1,11 @@
 # ============================================
 # 鑫钱包 · 自动构建 Docker 镜像
-# 触发条件：推送形如 vX.Y.Z 的 tag（如 v0.0.1）
+# 触发条件：
+#   - 手动 workflow_dispatch（tag 输入，由 auto-tag.yml 派发，形如 android-vX.Y.Z）
+#   - 推送形如 vX.Y.Z / android-vX.Y.Z 的 tag（人工兜底）
 # 行为：构建多架构镜像（amd64 + arm64），推送到 GitHub Container Registry
-# 版本号：从 v0.0.1 开始
+# 版本号：与安卓客户端共用 android-vX.Y.Z（由 auto-tag.yml 统一推导），镜像 tag 同步为
+#         ghcr.io/zjx93/xin-wallet/xinwallet:android-vX.Y.Z 外加 :latest
 # ============================================
 name: Build & Publish Docker Image
 
@@ -15,6 +18,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+      - 'android-v*.*.*'
   workflow_dispatch:
     inputs:
       tag:
