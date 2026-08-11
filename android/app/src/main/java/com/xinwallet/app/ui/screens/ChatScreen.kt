@@ -11,7 +11,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,14 +39,12 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -392,14 +396,50 @@ private fun ChatInputBar(
             IconButton(onClick = onImage) {
                 Icon(Icons.Filled.PhotoLibrary, "截图")
             }
-            OutlinedTextField(
+            // 微信式输入框：最小高度与 IconButton(48dp) 对齐，随内容自动增高到最多 4 行
+            val interactionSource = remember { MutableInteractionSource() }
+            val isFocused by interactionSource.collectIsFocusedAsState()
+            val enabled = !recording
+            BasicTextField(
                 value = input,
                 onValueChange = onInput,
-                placeholder = { Text("说点什么，或发张截图…") },
-                modifier = Modifier.weight(1f),
-                maxLines = 4,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp, max = 120.dp),
+                enabled = enabled,
                 singleLine = false,
-                enabled = !recording
+                maxLines = 4,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                interactionSource = interactionSource,
+                decorationBox = { innerTextField ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp, max = 120.dp)
+                            .border(
+                                width = 1.dp,
+                                color = when {
+                                    !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                    isFocused -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.outline
+                                },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (input.isBlank()) {
+                            Text(
+                                "说点什么，或发张截图…",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
             )
             IconButton(onClick = onVoice, enabled = !sending) {
                 Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "停止" else "语音")
