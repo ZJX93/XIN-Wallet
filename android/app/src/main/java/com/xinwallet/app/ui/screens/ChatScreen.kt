@@ -1,6 +1,9 @@
 package com.xinwallet.app.ui.screens
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,9 +97,53 @@ fun ChatScreen(navController: NavHostController) {
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val scope = rememberCoroutineScope()
 
-    // 语音识别需要 RECORD_AUDIO 权限；授权后直接开始设备端识别
-    val recordPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) vm.startVoice() else vm.onInputChange(vm.state.value.input)
+    // 系统默认语音输入（尊重「设置-默认应用-语音输入」，如华为小艺）通过 Activity Result 返回识别文字
+    val voiceResultLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.RESULTS_RECOGNITION)
+            val text = matches?.firstOrNull()?.trim().orEmpty()
+            if (text.isNotBlank()) vm.appendVoiceText(text) else vm.setVoiceWaiting(false)
+        } else {
+            vm.setVoiceWaiting(false)
+        }
+    }
+
+    // 云端语音转写需要 RECORD_AUDIO 权限；仅在系统语音输入不可用时回退使用
+    var pendingCloudVoice by remember { mutableStateOf(false) }
+    val recordPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            pendingCloudVoice = false
+            vm.startCloudVoice()
+        } else {
+            pendingCloudVoice = false
+            scope.launch { snackbar.showSnackbar("需要录音权限才能使用语音输入") }
+        }
+    }
+
+    fun startVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "请说话，识别后自动填入输入框")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        }
+        if (intent.resolveActivity(context.packageManager) != null) {
+            vm.setVoiceWaiting(true)
+            try {
+                voiceResultLauncher.launch(intent)
+            } catch (e: Exception) {
+                vm.setVoiceWaiting(false)
+                fallbackCloudVoice()
+            }
+        } else {
+            fallbackCloudVoice()
+        }
+    }
+
+    fun fallbackCloudVoice() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) vm.startCloudVoice() else { pendingCloudVoice = true; recordPermLauncher.launch(Manifest.permission.RECORD_AUDIO) }
     }
 
     fun consume(uri: Uri?) {
@@ -152,14 +199,13 @@ fun ChatScreen(navController: NavHostController) {
                 input = state.input,
                 onInput = { vm.onInputChange(it) },
                 recording = state.recording,
+                voiceWaiting = state.voiceWaiting,
                 elapsedMs = elapsed.toLong(),
                 onVoice = {
                     if (state.recording) {
                         vm.stopVoice()
-                    } else {
-                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                            android.content.pm.PackageManager.PERMISSION_GRANTED
-                        if (granted) vm.startVoice() else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
+                    } else if (!state.voiceWaiting) {
+                        startVoiceInput()
                     }
                 },
                 onImage = { showImageMenu = true },
@@ -357,6 +403,7 @@ private fun ChatInputBar(
     input: String,
     onInput: (String) -> Unit,
     recording: Boolean,
+    voiceWaiting: Boolean = false,
     elapsedMs: Long = 0,
     onVoice: () -> Unit,
     onImage: () -> Unit,
@@ -386,6 +433,15 @@ private fun ChatInputBar(
                 Text("正在聆听…说完点麦克风停止", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.weight(1f))
                 Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+            }
+        } else if (voiceWaiting) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(Modifier.width(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("正在语音输入…（使用系统默认语音输入）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
         Row(

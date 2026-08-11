@@ -21,11 +21,14 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
-    <!-- 包可见性：允许本应用解析并拉起系统安装器来安装 .apk（Android 11+ 需要） -->
+    <!-- 包可见性（Android 11+ 需要）：允许本应用解析并拉起系统默认语音输入（如华为小艺） -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
     </queries>
 

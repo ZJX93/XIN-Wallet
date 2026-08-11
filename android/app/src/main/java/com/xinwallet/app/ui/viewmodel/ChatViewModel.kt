@@ -1,13 +1,8 @@
 package com.xinwallet.app.ui.viewmodel
 
 import android.app.Application
-import android.content.Intent
 import android.media.MediaRecorder
 import android.os.Build
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.model.ChatMessage
@@ -26,6 +21,7 @@ data class ChatUiState(
     val thinking: Boolean = false,
     val recording: Boolean = false,
     val voiceMode: String? = null, // null | "cloud"
+    val voiceWaiting: Boolean = false, // 系统语音输入 UI 已唤起，等待返回结果
     val recordingStart: Long? = null, // 录音起始时间戳（毫秒），用于显示时长
     val error: String? = null,
     val toast: String? = null
@@ -86,110 +82,29 @@ class ChatViewModel(
         }
     }
 
-    // ---- 语音输入：优先设备端语音识别，不可用则回退云端 Whisper 转写 ----
-    private var speechRecognizer: SpeechRecognizer? = null
-    private var lastDeviceResult: String = ""
-
-    fun startVoice() {
-        if (SpeechRecognizer.isRecognitionAvailable(app)) {
-            startDeviceVoice()
-        } else {
-            startCloudVoice()
-        }
+    // ---- 语音输入：优先调用系统默认语音输入（尊重「设置-默认应用-语音输入」，如华为小艺）----
+    //      通过 ACTION_RECOGNIZE_SPEECH 拉起系统/厂商语音 UI 并返回文字；
+    //      若设备上没有可用的语音输入实现，则回退到云端 Whisper 转写 ----
+    fun appendVoiceText(text: String) {
+        val t = text.trim()
+        if (t.isBlank()) return
+        _state.value = _state.value.copy(
+            input = (_state.value.input + t).trim(),
+            voiceWaiting = false
+        )
     }
 
+    fun setVoiceWaiting(waiting: Boolean) {
+        _state.value = _state.value.copy(voiceWaiting = waiting)
+    }
+
+    // 停止云端录音（系统语音输入走 Activity Result，无需本应用主动停止）
     fun stopVoice() {
-        when (_state.value.voiceMode) {
-            "device" -> stopDeviceVoice()
-            "cloud" -> stopCloudVoice()
-            else -> _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null)
-        }
+        if (_state.value.voiceMode == "cloud") stopCloudVoice()
     }
 
-    // 设备端语音识别：不依赖 AI 服务商，直接把识别文字填入输入框
-    private fun startDeviceVoice() {
-        try {
-            lastDeviceResult = ""
-            speechRecognizer?.destroy()
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        _state.value = _state.value.copy(recording = true, voiceMode = "device", recordingStart = System.currentTimeMillis())
-                    }
-                    override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {}
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {
-                        _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null)
-                    }
-                    override fun onError(error: Int) {
-                        val msg = when (error) {
-                            SpeechRecognizer.ERROR_NO_MATCH -> "未能识别到语音，请再试一次"
-                            SpeechRecognizer.ERROR_NETWORK -> "网络异常，请检查网络后重试"
-                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "识别超时，请重试"
-                            SpeechRecognizer.ERROR_AUDIO -> "麦克风异常，请检查权限"
-                            SpeechRecognizer.ERROR_CLIENT -> "识别服务异常"
-                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
-                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "识别服务忙，请稍后再试"
-                            SpeechRecognizer.ERROR_SERVER -> "识别服务暂不可用"
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有听到声音，请重试"
-                            else -> "语音识别失败（错误码 $error）"
-                        }
-                        _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null, error = msg)
-                    }
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull()?.trim() ?: ""
-                        lastDeviceResult = text
-                        if (text.isNotBlank()) {
-                            _state.value = _state.value.copy(
-                                input = (_state.value.input + text).trim(),
-                                recording = false,
-                                voiceMode = null,
-                                recordingStart = null
-                            )
-                        }
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        // 不实时写入 input，避免与最终 onResults 重复；仅记录最新中间结果用于兜底
-                        partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                            ?.firstOrNull()?.let { lastDeviceResult = it.trim() }
-                    }
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                }
-                startListening(intent)
-            }
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null, error = "无法启动语音识别：${e.message}，将回退云端转写")
-            startCloudVoice()
-        }
-    }
-
-    private fun stopDeviceVoice() {
-        try {
-            speechRecognizer?.stopListening()
-        } catch (_: Exception) {}
-        // 若已经收到 onResults，input 已自动更新；否则使用 lastDeviceResult 兜底
-        if (lastDeviceResult.isNotBlank()) {
-            _state.value = _state.value.copy(
-                input = (_state.value.input + lastDeviceResult).trim(),
-                recording = false,
-                voiceMode = null,
-                recordingStart = null
-            )
-        } else {
-            _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null)
-        }
-    }
-
-    // 云端语音转写（录音上传后端，由 OpenAI 兼容接口的 whisper 转写）—— 设备端不可用时回退
-    private fun startCloudVoice() {
+    // 云端语音转写（录音上传后端，由 OpenAI 兼容接口的 whisper 转写）—— 系统语音输入不可用时回退
+    fun startCloudVoice() {
         if (recorder != null) return
         try {
             val dir = File(app.cacheDir, "audio").apply { mkdirs() }
@@ -240,6 +155,5 @@ class ChatViewModel(
     override fun onCleared() {
         super.onCleared()
         try { recorder?.release() } catch (_: Exception) {}
-        try { speechRecognizer?.destroy() } catch (_: Exception) {}
     }
 }
