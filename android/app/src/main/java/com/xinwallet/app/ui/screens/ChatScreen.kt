@@ -133,15 +133,15 @@ fun ChatScreen(navController: NavHostController) {
             putExtra(RecognizerIntent.EXTRA_PROMPT, "请说话，识别后自动填入输入框")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         }
-        if (intent.resolveActivity(context.packageManager) != null) {
-            vm.setVoiceWaiting(true)
-            try {
-                voiceResultLauncher.launch(intent)
-            } catch (e: Exception) {
-                vm.setVoiceWaiting(false)
-                fallbackCloudVoice()
-            }
-        } else {
+        // 华为等国产 ROM 上 resolveActivity 可能误判为 null，直接 try-launch 更可靠
+        vm.setVoiceWaiting(true)
+        try {
+            voiceResultLauncher.launch(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            vm.setVoiceWaiting(false)
+            fallbackCloudVoice()
+        } catch (e: Exception) {
+            vm.setVoiceWaiting(false)
             fallbackCloudVoice()
         }
     }
