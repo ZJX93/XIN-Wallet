@@ -25,8 +25,8 @@ data class ReleaseInfo(
 
 class UpdateRepository(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .build()
 ) {
 
@@ -56,7 +56,9 @@ class UpdateRepository(
 
     /** 下载 APK 到 dest，回调进度 0..100 */
     suspend fun downloadApk(url: String, dest: File, onProgress: (Int) -> Unit) = withContext(Dispatchers.IO) {
-        val req = Request.Builder().url(url).build()
+        val req = Request.Builder().url(url)
+            .header("User-Agent", "XIN-Wallet-Android")
+            .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("下载失败 ${resp.code}")
             val total = resp.body?.contentLength() ?: -1L

@@ -9,6 +9,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -355,6 +358,17 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("重试")
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val cm = context.getSystemService(ClipboardManager::class.java)
+                                cm.setPrimaryClip(ClipData.newPlainText("apkUrl", updateState.apkUrl))
+                                Toast.makeText(context, "下载链接已复制，可粘贴到手机浏览器打开", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("复制下载链接")
                         }
                     }
                 }

@@ -120,13 +120,35 @@ class ProfileViewModel(
                 }
             val dest = File(dir, "xinwallet_update.apk")
             _updateState.value = s.copy(downloading = true, progress = 0, error = null, localApkPath = null)
-            try {
-                updateRepo.downloadApk(url, dest) { p ->
-                    _updateState.value = _updateState.value.copy(progress = p)
+            // 主域名（github.com 302 到 release-assets.githubusercontent.com）不通时，回退到公共镜像加速器
+            val candidates = buildList {
+                add(url)
+                if (!url.contains("ghproxy", ignoreCase = true)) {
+                    add("https://ghproxy.net/$url")
+                    add("https://mirror.ghproxy.com/$url")
                 }
-                _updateState.value = _updateState.value.copy(downloading = false, localApkPath = dest.absolutePath)
-            } catch (e: Exception) {
-                _updateState.value = _updateState.value.copy(downloading = false, error = e.message ?: "下载失败")
+            }
+            var lastErr: String? = null
+            var ok = false
+            for (cand in candidates) {
+                try {
+                    updateRepo.downloadApk(cand, dest) { p ->
+                        _updateState.value = _updateState.value.copy(progress = p)
+                    }
+                    ok = true
+                    break
+                } catch (e: Exception) {
+                    lastErr = e.message ?: "下载失败"
+                }
+            }
+            if (ok) {
+                _updateState.value = _updateState.value.copy(downloading = false, localApkPath = dest.absolutePath, error = null)
+            } else {
+                _updateState.value = _updateState.value.copy(
+                    downloading = false,
+                    localApkPath = null,
+                    error = "下载失败：$lastErr\n可能是手机网络访问 GitHub 下载服务器不稳定。可点下方“复制链接”在手机浏览器中打开下载，或开启网络代理后重试。"
+                )
             }
         }
     }
