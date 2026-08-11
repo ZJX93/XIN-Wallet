@@ -164,7 +164,7 @@ class ChatViewModel(
                                 _state.value = _state.value.copy(input = (accumulated + p).trim())
                             }
                         }
-                        val f = parseVoskText(recognizer.finalResult())
+                        val f = parseVoskText(recognizer.finalResult)
                         if (f.isNotBlank()) accumulated = (accumulated + f).trim()
                         _state.value = _state.value.copy(input = accumulated)
                     } catch (e: Exception) {
