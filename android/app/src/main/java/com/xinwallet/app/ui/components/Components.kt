@@ -3,6 +3,7 @@ package com.xinwallet.app.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -191,7 +192,7 @@ fun LinearProgress(percent: Float, color: Color, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.Inbox) {
+fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.ReceiptLong) {
     Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         icon?.let {
             Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), modifier = Modifier.size(48.dp))
