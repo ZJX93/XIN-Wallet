@@ -100,7 +100,7 @@ fun ChatScreen(navController: NavHostController) {
     // 系统默认语音输入（尊重「设置-默认应用-语音输入」，如华为小艺）通过 Activity Result 返回识别文字
     val voiceResultLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.RESULTS_RECOGNITION)
+            val matches = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             val text = matches?.firstOrNull()?.trim().orEmpty()
             if (text.isNotBlank()) vm.appendVoiceText(text) else vm.setVoiceWaiting(false)
         } else {
@@ -118,6 +118,12 @@ fun ChatScreen(navController: NavHostController) {
             pendingCloudVoice = false
             scope.launch { snackbar.showSnackbar("需要录音权限才能使用语音输入") }
         }
+    }
+
+    fun fallbackCloudVoice() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) vm.startCloudVoice() else { pendingCloudVoice = true; recordPermLauncher.launch(Manifest.permission.RECORD_AUDIO) }
     }
 
     fun startVoiceInput() {
@@ -138,12 +144,6 @@ fun ChatScreen(navController: NavHostController) {
         } else {
             fallbackCloudVoice()
         }
-    }
-
-    fun fallbackCloudVoice() {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (granted) vm.startCloudVoice() else { pendingCloudVoice = true; recordPermLauncher.launch(Manifest.permission.RECORD_AUDIO) }
     }
 
     fun consume(uri: Uri?) {
