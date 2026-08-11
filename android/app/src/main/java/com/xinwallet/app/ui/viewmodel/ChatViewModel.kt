@@ -7,8 +7,8 @@ import android.media.MediaRecorder
 import android.content.res.AssetManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.alphacephei.vosk.Model
-import com.alphacephei.vosk.Recognizer
+import org.vosk.Model
+import org.vosk.Recognizer
 import com.xinwallet.app.data.model.ChatMessage
 import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.remote.ApiResult
