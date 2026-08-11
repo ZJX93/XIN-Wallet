@@ -1,17 +1,24 @@
 package com.xinwallet.app.ui.viewmodel
 
 import android.app.Application
+import android.media.AudioFormat
+import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.os.Build
+import android.content.res.AssetManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.alphacephei.vosk.Model
+import com.alphacephei.vosk.Recognizer
 import com.xinwallet.app.data.model.ChatMessage
 import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AiRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.File
 
 data class ChatUiState(
@@ -20,8 +27,6 @@ data class ChatUiState(
     val sending: Boolean = false,
     val thinking: Boolean = false,
     val recording: Boolean = false,
-    val voiceMode: String? = null, // null | "cloud"
-    val voiceWaiting: Boolean = false, // 系统语音输入 UI 已唤起，等待返回结果
     val recordingStart: Long? = null, // 录音起始时间戳（毫秒），用于显示时长
     val error: String? = null,
     val toast: String? = null
@@ -34,9 +39,6 @@ class ChatViewModel(
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
-
-    private var recorder: MediaRecorder? = null
-    private var recordFile: File? = null
 
     fun onInputChange(text: String) { _state.value = _state.value.copy(input = text) }
     fun clearError() { _state.value = _state.value.copy(error = null) }
@@ -82,78 +84,123 @@ class ChatViewModel(
         }
     }
 
-    // ---- 语音输入：优先调用系统默认语音输入（尊重「设置-默认应用-语音输入」，如华为小艺）----
-    //      通过 ACTION_RECOGNIZE_SPEECH 拉起系统/厂商语音 UI 并返回文字；
-    //      若设备上没有可用的语音输入实现，则回退到云端 Whisper 转写 ----
-    fun appendVoiceText(text: String) {
-        val t = text.trim()
-        if (t.isBlank()) return
-        _state.value = _state.value.copy(
-            input = (_state.value.input + t).trim(),
-            voiceWaiting = false
-        )
-    }
+    // ---- 离线语音识别（Vosk）：手机本地把语音转成文字填入输入框 ----
+    //      不依赖系统语音助手（华为小艺不暴露标准接口）也不依赖云端 AI（Anthropic 不支持转写），华为等国产 ROM 上可用 ----
+    private var voskModel: Model? = null
+    private var recognizer: Recognizer? = null
+    private var audioRecord: AudioRecord? = null
+    private var recordingJob: Job? = null
+    private val modelAssetPath = "models/vosk-model-small-cn-0.22" // assets 内相对路径
+    private val modelDirName = "vosk-model-small-cn-0.22"         // 拷贝到 files 后的目录名
 
-    fun setVoiceWaiting(waiting: Boolean) {
-        _state.value = _state.value.copy(voiceWaiting = waiting)
-    }
-
-    // 停止云端录音（系统语音输入走 Activity Result，无需本应用主动停止）
-    fun stopVoice() {
-        if (_state.value.voiceMode == "cloud") stopCloudVoice()
-    }
-
-    // 云端语音转写（录音上传后端，由 OpenAI 兼容接口的 whisper 转写）—— 系统语音输入不可用时回退
-    fun startCloudVoice() {
-        if (recorder != null) return
-        try {
-            val dir = File(app.cacheDir, "audio").apply { mkdirs() }
-            val file = File(dir, "voice_${System.currentTimeMillis()}.m4a")
-            recordFile = file
-            recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(app) else MediaRecorder()
-            recorder?.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setOutputFile(file.absolutePath)
-                prepare()
-                start()
-            }
-            _state.value = _state.value.copy(recording = true, voiceMode = "cloud", recordingStart = System.currentTimeMillis())
+    /** 确保 Vosk 模型就绪：首次运行把 assets 内的模型目录拷贝到 files 并加载 Model（须 IO 线程调用） */
+    private fun ensureModelLoaded(): Boolean {
+        if (voskModel != null) return true
+        return try {
+            val dest = File(app.filesDir, modelDirName)
+            if (!dest.exists()) copyAssetDir(app.assets, modelAssetPath, dest)
+            voskModel = Model(dest.absolutePath)
+            true
         } catch (e: Exception) {
-            _state.value = _state.value.copy(recording = false, voiceMode = null, recordingStart = null, error = "无法录音：${e.message}")
+            _state.value = _state.value.copy(error = "语音模型加载失败：${e.message}")
+            false
         }
     }
 
-    private fun stopCloudVoice() {
-        val rec = recorder ?: run { _state.value = _state.value.copy(voiceMode = null, recordingStart = null); return }
-        recorder = null
-        _state.value = _state.value.copy(recording = false, thinking = true, voiceMode = null, recordingStart = null)
-        try { rec.stop() } catch (_: Exception) {}
-        try { rec.release() } catch (_: Exception) {}
-        val file = recordFile ?: run { _state.value = _state.value.copy(thinking = false); return }
-        viewModelScope.launch {
+    /** 递归把 assets 子目录拷贝到目标 File 目录 */
+    private fun copyAssetDir(am: AssetManager, assetPath: String, dest: File) {
+        dest.mkdirs()
+        val entries = am.list(assetPath) ?: return
+        if (entries.isEmpty()) {
+            am.open(assetPath).use { input ->
+                File(dest, assetPath.substringAfterLast('/')).outputStream().use { out -> input.copyTo(out) }
+            }
+            return
+        }
+        for (name in entries) {
+            val childAsset = if (assetPath.isEmpty()) name else "$assetPath/$name"
+            val childFile = File(dest, name)
+            val childList = am.list(childAsset)
+            if (childList == null || childList.isEmpty()) {
+                // list 返回 null 表示该路径是文件（Android 的 AssetManager.list 对文件返回 null）
+                am.open(childAsset).use { input -> childFile.outputStream().use { out -> input.copyTo(out) } }
+            } else {
+                copyAssetDir(am, childAsset, childFile)
+            }
+        }
+    }
+
+    /** 开始离线语音识别：录音并通过 Vosk 流式识别，实时把文字填入输入框 */
+    fun startVoice() {
+        if (_state.value.recording) return
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!ensureModelLoaded()) return@launch
+            val model = voskModel ?: return@launch
             try {
-                val bytes = file.readBytes()
-                val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                when (val r = aiRepo.transcribe(b64, "audio/mp4")) {
-                    is ApiResult.Success -> {
-                        val text = r.data.text
-                        if (text.isNotBlank()) _state.value = _state.value.copy(input = (_state.value.input + text).trim(), thinking = false)
-                        else _state.value = _state.value.copy(thinking = false, error = "云端转写未返回文字，请重试或改用文字输入")
+                val sampleRate = 16000
+                val minBuf = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                val bufSize = if (minBuf > 8192) minBuf else 8192
+                val rec = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+                val recognizer = Recognizer(model, sampleRate.toFloat())
+                audioRecord = rec
+                this@ChatViewModel.recognizer = recognizer
+                rec.startRecording()
+                _state.value = _state.value.copy(recording = true, recordingStart = System.currentTimeMillis(), error = null)
+                var accumulated = _state.value.input
+                val buffer = ByteArray(bufSize)
+                recordingJob = launch(Dispatchers.IO) {
+                    try {
+                        while (_state.value.recording) {
+                            val read = rec.read(buffer, 0, buffer.size)
+                            if (read <= 0) continue
+                            if (recognizer.acceptWaveForm(buffer, read)) {
+                                val t = parseVoskText(recognizer.result)
+                                if (t.isNotBlank()) {
+                                    accumulated = (accumulated + t).trim()
+                                    _state.value = _state.value.copy(input = accumulated)
+                                }
+                            } else {
+                                val p = parseVoskText(recognizer.partialResult)
+                                _state.value = _state.value.copy(input = (accumulated + p).trim())
+                            }
+                        }
+                        val f = parseVoskText(recognizer.finalResult())
+                        if (f.isNotBlank()) accumulated = (accumulated + f).trim()
+                        _state.value = _state.value.copy(input = accumulated)
+                    } catch (e: Exception) {
+                        // 仅在仍在录音状态下报错；主动停止导致的协程取消不提示
+                        if (_state.value.recording) _state.value = _state.value.copy(error = "语音识别中断：${e.message}")
+                    } finally {
+                        try { rec.stop() } catch (_: Exception) {}
+                        try { rec.release() } catch (_: Exception) {}
+                        audioRecord = null
                     }
-                    is ApiResult.Error -> _state.value = _state.value.copy(thinking = false, error = "语音转写失败：${r.message}（请确认 AI 服务支持语音转写）")
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(thinking = false, error = "读取录音失败：${e.message}")
-            } finally {
-                try { file.delete() } catch (_: Exception) {}
+                _state.value = _state.value.copy(recording = false, recordingStart = null, error = "无法启动录音：${e.message}")
             }
         }
+    }
+
+    /** 停止录音与识别，保留已识别的文字；音频资源由录音协程的 finally 释放 */
+    fun stopVoice() {
+        if (!_state.value.recording) return
+        _state.value = _state.value.copy(recording = false, recordingStart = null)
+        recordingJob = null
+    }
+
+    private fun parseVoskText(json: String): String {
+        return try {
+            val obj = JSONObject(json)
+            obj.optString("text", obj.optString("partial", "")).trim()
+        } catch (_: Exception) { "" }
     }
 
     override fun onCleared() {
         super.onCleared()
-        try { recorder?.release() } catch (_: Exception) {}
+        recordingJob?.cancel()
+        try { audioRecord?.release() } catch (_: Exception) {}
+        try { recognizer?.close() } catch (_: Exception) {}
+        try { voskModel?.close() } catch (_: Exception) {}
     }
 }
