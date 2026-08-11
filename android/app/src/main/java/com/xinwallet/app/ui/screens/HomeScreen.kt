@@ -42,6 +42,7 @@ import com.xinwallet.app.ui.components.BalanceCard
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LinearProgress
 import com.xinwallet.app.ui.components.LoadingBox
+import com.xinwallet.app.ui.components.PullRefreshBox
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.components.TrendLineChart
@@ -66,8 +67,8 @@ fun HomeScreen(navController: NavHostController) {
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         when {
-            state.loading -> LoadingBox()
-            state.error != null -> ErrorState(
+            state.loading && state.data == null -> LoadingBox()
+            state.error != null && state.data == null -> ErrorState(
                 state.error!!,
                 onRetry = { vm.load() },
                 onLogin = {
@@ -98,7 +99,12 @@ fun HomeScreen(navController: NavHostController) {
                 val todayExp = d.today?.expense ?: 0.0
                 val monthly = d.debt?.totalMonthly ?: 0.0
 
-                LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+                PullRefreshBox(
+                    refreshing = state.loading,
+                    onRefresh = { vm.load() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                ) {
+                    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
                     item {
                         Spacer(Modifier.height(12.dp))
                         BalanceCard("总资产", totalAssets, "账户余额 + 理财市值")
@@ -204,6 +210,7 @@ fun HomeScreen(navController: NavHostController) {
                     }
 
                     item { Spacer(Modifier.height(16.dp)) }
+                    }
                 }
             }
         }

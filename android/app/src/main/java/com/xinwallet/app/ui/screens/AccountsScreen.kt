@@ -55,6 +55,7 @@ import com.xinwallet.app.ui.components.BalanceCard
 import com.xinwallet.app.ui.components.DropdownField
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
+import com.xinwallet.app.ui.components.PullRefreshBox
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.components.accountTypeLabel
@@ -161,7 +162,12 @@ fun AccountsScreen(navController: NavHostController) {
                     val list = state.accounts.filter { it.type == t }
                     if (list.isEmpty()) null else t to list
                 }
-                LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+                PullRefreshBox(
+                    refreshing = state.loading,
+                    onRefresh = { vm.load() },
+                    modifier = Modifier.fillMaxSize().padding(padding)
+                ) {
+                LazyColumn(Modifier.fillMaxSize()) {
                     item {
                         Spacer(Modifier.height(12.dp))
                         BalanceCard("总资产", state.totalAssets, "所有活跃账户余额合计", Modifier.padding(horizontal = 16.dp))
@@ -182,6 +188,7 @@ fun AccountsScreen(navController: NavHostController) {
                         }
                     }
                     item { Spacer(Modifier.height(88.dp)) }
+                    }
                 }
             }
         }

@@ -50,6 +50,7 @@ import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
+import com.xinwallet.app.ui.components.PullRefreshBox
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.ui.theme.ExpenseColor
@@ -167,10 +168,15 @@ fun TransactionsScreen(navController: NavHostController) {
             TypeFilterRow(state.typeFilter) { vm.selectType(it) }
 
             when {
-                state.loading -> LoadingBox()
+                state.loading && state.items.isEmpty() -> LoadingBox()
                 state.error != null && state.items.isEmpty() -> ErrorState(state.error!!) { vm.refresh() }
                 else -> {
                     val grouped = state.items.groupBy { it.date.take(10) }.toList().sortedByDescending { it.first }
+                    PullRefreshBox(
+                        refreshing = state.loading,
+                        onRefresh = { vm.refresh() },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                     LazyColumn(Modifier.fillMaxSize()) {
                         item {
                             Spacer(Modifier.height(8.dp))
@@ -193,6 +199,7 @@ fun TransactionsScreen(navController: NavHostController) {
                         item { Spacer(Modifier.height(80.dp)) }
                     }
                 }
+            }
             }
         }
     }

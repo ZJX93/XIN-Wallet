@@ -35,6 +35,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -188,8 +191,12 @@ fun LinearProgress(percent: Float, color: Color, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun EmptyState(message: String, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+fun EmptyState(message: String, modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector? = Icons.Filled.Inbox) {
+    Column(modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        icon?.let {
+            Icon(it, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f), modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(12.dp))
+        }
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -198,6 +205,25 @@ fun EmptyState(message: String, modifier: Modifier = Modifier) {
 fun LoadingBox() {
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
+    }
+}
+
+/**
+ * 下拉刷新容器：包裹可滚动内容（LazyColumn / LazyRow / Column(scroll)），
+ * 顶部居中显示 Material3 风格的刷新指示器。refreshing 传入 VM 的 loading/refreshing 状态。
+ */
+@Composable
+fun PullRefreshBox(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentAlignment: Alignment = Alignment.TopStart,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val state = rememberPullRefreshState(refreshing, onRefresh)
+    Box(modifier.pullRefresh(state), contentAlignment = contentAlignment) {
+        content()
+        PullRefreshIndicator(refreshing, state, Modifier.align(Alignment.TopCenter))
     }
 }
 
