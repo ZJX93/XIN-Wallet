@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -214,6 +215,7 @@ fun LoadingBox() {
  * 下拉刷新容器：包裹可滚动内容（LazyColumn / LazyRow / Column(scroll)），
  * 顶部居中显示 Material3 风格的刷新指示器。refreshing 传入 VM 的 loading/refreshing 状态。
  */
+@OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun PullRefreshBox(
     refreshing: Boolean,
