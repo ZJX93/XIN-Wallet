@@ -94,9 +94,9 @@ fun ChatScreen(navController: NavHostController) {
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val scope = rememberCoroutineScope()
 
-    // 云端录音需要 RECORD_AUDIO 权限；授权后直接开始录音
+    // 语音识别需要 RECORD_AUDIO 权限；授权后直接开始设备端识别
     val recordPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) vm.startCloudVoice() else vm.onInputChange(vm.state.value.input)
+        if (granted) vm.startVoice() else vm.onInputChange(vm.state.value.input)
     }
 
     fun consume(uri: Uri?) {
@@ -155,11 +155,11 @@ fun ChatScreen(navController: NavHostController) {
                 elapsedMs = elapsed.toLong(),
                 onVoice = {
                     if (state.recording) {
-                        vm.stopCloudVoice()
+                        vm.stopVoice()
                     } else {
                         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                             android.content.pm.PackageManager.PERMISSION_GRANTED
-                        if (granted) vm.startCloudVoice() else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
+                        if (granted) vm.startVoice() else recordPerm.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
                 onImage = { showImageMenu = true },
