@@ -50,7 +50,7 @@ import com.xinwallet.app.util.formatMoney
 
 @Composable
 fun AccountDetailScreen(navController: NavHostController, accountId: Int) {
-    val vm: TransactionsViewModel = viewModel(factory = viewModelFactory { TransactionsViewModel(AppContainer.transactionRepository) })
+    val vm: TransactionsViewModel = viewModel(factory = viewModelFactory { TransactionsViewModel(AppContainer.transactionRepository, AppContainer.accountRepository) })
     val state by vm.state.collectAsState()
     var account by remember { mutableStateOf<Account?>(null) }
     val snackbar = remember { SnackbarHostState() }

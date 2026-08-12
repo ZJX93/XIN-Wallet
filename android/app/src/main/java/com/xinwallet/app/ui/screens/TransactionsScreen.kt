@@ -109,7 +109,7 @@ fun TransactionsScreen(navController: NavHostController) {
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
     // 搜索框防抖：输入停止 300ms 后再拉取，避免逐字符请求
-    val searchQuery by remember { mutableStateOf(state.search) }
+    var searchQuery by remember { mutableStateOf(state.search) }
     LaunchedEffect(Unit) {
         snapshotFlow { searchQuery }
             .debounce(300)

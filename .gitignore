@@ -21,4 +21,6 @@ inspect-build-preview.mjs
 server/routes.js.original
 # 一次性审计报告（应在 docs/ 或被 .gitignore）
 code-review-report.html
+# 本地 SDK / 构建配置，不入库（每台机器路径不同）
+local.properties
 
