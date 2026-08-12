@@ -577,7 +577,8 @@
 .goal-actions .btn { font-size: var(--text-caption); height: 32px; padding: 0 var(--space-3); flex: 1; justify-content: center; }
 
 /* ============ 理财持仓：按类型真实叠牌 ============ */
-.inv-stack { margin-bottom: var(--space-4); --inv-stack-shift: 9px; }
+/* 最多露出 3 张叠牌，错距收窄，避免 14+ 产品时封面比单卡高出太多 */
+.inv-stack { margin-bottom: var(--space-4); --inv-stack-shift: 5px; }
 
 /* 牌堆封面：作为牌堆第一张（.inv-stack-card:first-child）参与堆叠，外观交给 .goal-card */
 /* 旧 .inv-deck-cover 横条样式已废弃（封面现已并入叠牌序列），此处不再保留 */
@@ -596,8 +597,12 @@
 
 .inv-stack-cards {
   position: relative;
-  padding: 0 var(--space-2) calc((var(--n, 1) - 1) * var(--inv-stack-shift, 9px));
+  /* 底部预留空间按 min(产品数, 3) 张计算，防止封面整体过高 */
+  padding: 0 var(--space-2) calc(min(3, var(--n, 1) - 1) * var(--inv-stack-shift, 5px));
 }
+
+/* 超过 3 张产品牌时隐藏后面的，只保留封面 + 前 3 张作为视觉叠层 */
+.inv-stack-card:nth-child(n+5) { display: none; }
 
 /* 持仓卡片：收起态真实叠牌（绝对定位下移叠加，顶卡在流内撑高度） */
 .inv-stack-card {
@@ -605,7 +610,7 @@
   top: 0; left: 0; right: 0;
   min-height: 220px;
   transform-origin: top center;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px)));
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 5px)));
   z-index: calc(var(--n, 1) - var(--i, 0));
   cursor: pointer;
   pointer-events: auto;
@@ -649,14 +654,14 @@
 /* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
 .inv-stack-card:hover {
   z-index: 900;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px) - 10px)) scale(1.015);
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 5px) - 10px)) scale(1.015);
   box-shadow: var(--shadow-lg);
   border-color: var(--accent-500);
 }
 /* 点击：弹出一点（置顶 + 上浮 + 微旋转 + 放大），露出操作按钮 */
 .inv-stack-card.popped {
   z-index: 1000;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px) - 18px)) scale(1.04) rotate(-1.5deg);
+  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 5px) - 18px)) scale(1.04) rotate(-1.5deg);
   box-shadow: var(--shadow-xl);
   border-color: var(--accent-500);
 }

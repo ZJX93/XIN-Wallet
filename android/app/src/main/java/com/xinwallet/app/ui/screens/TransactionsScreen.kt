@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -31,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -113,8 +116,17 @@ fun TransactionsScreen(navController: NavHostController) {
     LaunchedEffect(Unit) {
         snapshotFlow { searchQuery }
             .debounce(300)
-            .collectLatest { q -> if (q != state.search) vm.setSearch(q) }
+            .collectLatest { q ->
+                if (q != state.search) {
+                    vm.setSearch(q)
+                    vm.refresh()
+                }
+            }
     }
+
+    // 月份选择器 & 账户选择器弹窗状态
+    var showMonthPicker by remember { mutableStateOf(false) }
+    var showAccountPicker by remember { mutableStateOf(false) }
 
     acting?.let { item ->
         AlertDialog(
@@ -180,6 +192,29 @@ fun TransactionsScreen(navController: NavHostController) {
         )
     }
 
+    if (showMonthPicker) {
+        MonthYearPickerDialog(
+            initial = state.month,
+            onDismiss = { showMonthPicker = false },
+            onConfirm = { m ->
+                showMonthPicker = false
+                vm.selectMonth(m)
+            }
+        )
+    }
+
+    if (showAccountPicker) {
+        AccountPickerDialog(
+            accounts = state.accounts,
+            selected = state.accountFilter,
+            onDismiss = { showAccountPicker = false },
+            onSelect = { id ->
+                showAccountPicker = false
+                vm.selectAccount(id)
+            }
+        )
+    }
+
     Scaffold(topBar = { TopBar("账单") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             // 搜索框：备注 / 分类名关键字，300ms 防抖后拉取
@@ -188,9 +223,9 @@ fun TransactionsScreen(navController: NavHostController) {
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
-            MonthFilterRow(state.months, state.month) { vm.selectMonth(it) }
+            MonthFilterRow(state.months, state.month, { vm.selectMonth(it) }) { showMonthPicker = true }
             TypeFilterRow(state.typeFilter) { vm.selectType(it) }
-            AccountFilterRow(state.accounts, state.accountFilter) { vm.selectAccount(it) }
+            AccountFilterRow(state.accounts, state.accountFilter, { vm.selectAccount(it) }) { showAccountPicker = true }
 
             when {
                 state.loading && state.items.isEmpty() -> LoadingBox()
@@ -263,17 +298,31 @@ private fun SearchBarField(
 }
 
 @Composable
-private fun MonthFilterRow(months: List<String>, selected: String, onSelect: (String) -> Unit) {
+private fun MonthFilterRow(
+    months: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onOpenPicker: () -> Unit
+) {
     // 后端只返回有交易的月份；当前月若无记录也要能选中，故补进去
     val list = remember(months, selected) {
-        (if (months.contains(selected)) months else listOf(selected) + months).distinct()
+        (if (months.contains(selected)) months else listOf(selected) + months).distinct().take(6)
     }
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         items(list, key = { it }) { m ->
             FilterChip(selected = m == selected, onClick = { onSelect(m) }, label = { Text(prettyMonth(m)) })
+        }
+        item(key = "picker") {
+            FilterChip(
+                selected = false,
+                onClick = onOpenPicker,
+                label = { Text("选择月份") },
+                leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(18.dp)) }
+            )
         }
     }
 }
@@ -291,23 +340,62 @@ private fun TypeFilterRow(selected: String?, onSelect: (String?) -> Unit) {
 }
 
 @Composable
-private fun AccountFilterRow(accounts: List<Account>, selected: Int?, onSelect: (Int?) -> Unit) {
+private fun AccountFilterRow(
+    accounts: List<Account>,
+    selected: Int?,
+    onSelect: (Int?) -> Unit,
+    onOpenPicker: () -> Unit
+) {
     if (accounts.isEmpty()) return
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item(key = "acc-all") {
-            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("全部账户") })
-        }
-        items(accounts, key = { it.id }) { acc ->
-            FilterChip(
-                selected = selected == acc.id,
-                onClick = { onSelect(acc.id) },
-                label = { Text(listOfNotNull(acc.icon, acc.name).joinToString(" ")) }
-            )
+    // 账户多时只露出「全部」+ 当前选中/前两个 + 「更多」，避免横向长条呆板
+    val maxInline = 2
+    val selectedAcc = accounts.find { it.id == selected }
+    val inlineAccounts = remember(accounts, selected) {
+        when {
+            accounts.size <= maxInline -> accounts
+            selectedAcc != null -> listOf(selectedAcc)
+            else -> accounts.take(maxInline)
         }
     }
+    val hasMore = inlineAccounts.size < accounts.size
+
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        item(key = "acc-all") {
+            FilterChip(
+                selected = selected == null,
+                onClick = { onSelect(null) },
+                label = { Text("全部账户") }
+            )
+        }
+        items(inlineAccounts, key = { "acc-${it.id}" }) { acc ->
+            val isSelected = selected == acc.id
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(acc.id) },
+                label = { Text(accountShortLabel(acc), maxLines = 1) }
+            )
+        }
+        if (hasMore) {
+            item(key = "acc-more") {
+                FilterChip(
+                    selected = false,
+                    onClick = onOpenPicker,
+                    label = { Text("更多账户") },
+                    leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(18.dp)) }
+                )
+            }
+        }
+    }
+}
+
+private fun accountShortLabel(acc: Account): String {
+    val icon = acc.icon?.takeIf { it.isNotBlank() } ?: ""
+    val name = acc.name.takeIf { it.isNotBlank() } ?: "账户"
+    return "$icon ${name.take(6)}"
 }
 
 @Composable
@@ -386,6 +474,110 @@ private fun TransactionRowClickable(item: TransactionItem, onClick: () -> Unit) 
             style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color
         )
     }
+}
+
+@Composable
+private fun MonthYearPickerDialog(
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val parts = initial.split("-")
+    val initialYear = parts.getOrNull(0)?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+    val initialMonth = parts.getOrNull(1)?.toIntOrNull() ?: (Calendar.getInstance().get(Calendar.MONTH) + 1)
+
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val years = remember { ((currentYear - 10)..(currentYear + 5)).toList() }
+    val months = remember { (1..12).toList() }
+
+    var selYear by remember { mutableStateOf(initialYear) }
+    var selMonth by remember { mutableStateOf(initialMonth) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择月份") },
+        text = {
+            Row(Modifier.fillMaxWidth().height(240.dp)) {
+                // 年份列
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(years, key = { it }) { y ->
+                        val selected = y == selYear
+                        TextButton(onClick = { selYear = y }) {
+                            Text(
+                                "$y 年",
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                // 月份列
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(months, key = { it }) { m ->
+                        val selected = m == selMonth
+                        TextButton(onClick = { selMonth = m }) {
+                            Text(
+                                "$m 月",
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(String.format("%04d-%02d", selYear, selMonth)) }) {
+                Text("确定")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+@Composable
+private fun AccountPickerDialog(
+    accounts: List<Account>,
+    selected: Int?,
+    onDismiss: () -> Unit,
+    onSelect: (Int?) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择账户") },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(null) }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = selected == null, onClick = { onSelect(null) })
+                        Spacer(Modifier.width(8.dp))
+                        Text("全部账户")
+                    }
+                }
+                items(accounts, key = { it.id }) { acc ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onSelect(acc.id) }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = selected == acc.id, onClick = { onSelect(acc.id) })
+                        Spacer(Modifier.width(8.dp))
+                        Text(accountShortLabel(acc), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
 }
 
 private fun prettyMonth(m: String): String {

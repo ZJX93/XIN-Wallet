@@ -146,7 +146,9 @@ class ChatViewModel(
                 this@ChatViewModel.recognizer = recognizer
                 rec.startRecording()
                 _state.value = _state.value.copy(recording = true, recordingStart = System.currentTimeMillis(), error = null)
-                var accumulated = _state.value.input
+                var committed = _state.value.input.trim()
+                var curSeg = ""                       // 当前句：跨 partial 稳定累积，避免一两个字跳动
+                var lastInput = _state.value.input    // 仅在文本真正变化时更新，减少重组抖动
                 val buffer = ByteArray(bufSize)
                 recordingJob = launch(Dispatchers.IO) {
                     try {
@@ -154,19 +156,35 @@ class ChatViewModel(
                             val read = rec.read(buffer, 0, buffer.size)
                             if (read <= 0) continue
                             if (recognizer.acceptWaveForm(buffer, read)) {
-                                val t = parseVoskText(recognizer.result)
-                                if (t.isNotBlank()) {
-                                    accumulated = (accumulated + t).trim()
-                                    _state.value = _state.value.copy(input = accumulated)
+                                val seg = parseVoskText(recognizer.result).trim()
+                                if (seg.isNotBlank()) {
+                                    // 极短片段（<=2字）先留在 curSeg 继续累积，避免一句话被切成多个碎块
+                                    if (seg.length <= 2 && committed.isNotEmpty()) {
+                                        curSeg = if (curSeg.isEmpty()) seg else mergePartial(curSeg, seg)
+                                    } else {
+                                        committed = if (committed.isEmpty()) seg else committed + seg
+                                        curSeg = ""
+                                    }
+                                    val next = if (committed.isEmpty()) curSeg else committed + curSeg
+                                    if (next != lastInput) { lastInput = next; _state.value = _state.value.copy(input = next) }
                                 }
                             } else {
-                                val p = parseVoskText(recognizer.partialResult)
-                                _state.value = _state.value.copy(input = (accumulated + p).trim())
+                                val p = parseVoskText(recognizer.partialResult).trim()
+                                if (p.isNotEmpty()) {
+                                    curSeg = mergePartial(curSeg, p)   // 平滑合并：延长时采用新文本、回退/修正时保持前缀
+                                    val next = if (committed.isEmpty()) curSeg else committed + curSeg
+                                    if (next != lastInput) { lastInput = next; _state.value = _state.value.copy(input = next) }
+                                }
                             }
                         }
-                        val f = parseVoskText(recognizer.finalResult)
-                        if (f.isNotBlank()) accumulated = (accumulated + f).trim()
-                        _state.value = _state.value.copy(input = accumulated)
+                        // 录音结束：把当前句剩余文本固化（finalResult 通常已空，用 curSeg 兜底）
+                        val fin = parseVoskText(recognizer.finalResult).trim()
+                        if (fin.isNotBlank()) curSeg = mergePartial(curSeg, fin)
+                        if (curSeg.isNotBlank()) {
+                            committed = if (committed.isEmpty()) curSeg else committed + curSeg
+                            curSeg = ""
+                        }
+                        if (committed != lastInput) _state.value = _state.value.copy(input = committed)
                     } catch (e: Exception) {
                         // 仅在仍在录音状态下报错；主动停止导致的协程取消不提示
                         if (_state.value.recording) _state.value = _state.value.copy(error = "语音识别中断：${e.message}")
@@ -187,6 +205,18 @@ class ChatViewModel(
         if (!_state.value.recording) return
         _state.value = _state.value.copy(recording = false, recordingStart = null)
         recordingJob = null
+    }
+
+    /** partial 结果平滑合并：延长时采用更完整的 new；回退/修正时保留两者公共前缀；避免文字反复改写、两个字两个字地跳 */
+    private fun mergePartial(old: String, new: String): String {
+        if (new.isEmpty()) return old
+        if (old.isEmpty()) return new
+        if (new.startsWith(old)) return new        // 当前句正在变长，直接用最新假设
+        if (old.startsWith(new)) return old        // Vosk 回退，保留较长者保持稳定
+        val n = minOf(old.length, new.length)      // 出现分歧（修正了前面的字）：取最长公共前缀
+        var i = 0
+        while (i < n && old[i] == new[i]) i++
+        return old.substring(0, i)
     }
 
     private fun parseVoskText(json: String): String {
