@@ -18,14 +18,19 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -39,12 +44,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.EmptyState
@@ -61,6 +68,8 @@ import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.TransactionsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 
 private val TYPE_FILTERS = listOf<Pair<String, String?>>(
     "全部" to null,
@@ -75,7 +84,9 @@ private val TYPE_FILTERS = listOf<Pair<String, String?>>(
  */
 @Composable
 fun TransactionsScreen(navController: NavHostController) {
-    val vm: TransactionsViewModel = viewModel(factory = viewModelFactory { TransactionsViewModel(AppContainer.transactionRepository) })
+    val vm: TransactionsViewModel = viewModel(factory = viewModelFactory {
+        TransactionsViewModel(AppContainer.transactionRepository, AppContainer.accountRepository)
+    })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var acting by remember { mutableStateOf<TransactionItem?>(null) }
@@ -97,6 +108,13 @@ fun TransactionsScreen(navController: NavHostController) {
     }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
+    // 搜索框防抖：输入停止 300ms 后再拉取，避免逐字符请求
+    val searchQuery by remember { mutableStateOf(state.search) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { searchQuery }
+            .debounce(300)
+            .collectLatest { q -> if (q != state.search) vm.setSearch(q) }
+    }
 
     acting?.let { item ->
         AlertDialog(
@@ -164,8 +182,15 @@ fun TransactionsScreen(navController: NavHostController) {
 
     Scaffold(topBar = { TopBar("账单") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            // 搜索框：备注 / 分类名关键字，300ms 防抖后拉取
+            SearchBarField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+            )
             MonthFilterRow(state.months, state.month) { vm.selectMonth(it) }
             TypeFilterRow(state.typeFilter) { vm.selectType(it) }
+            AccountFilterRow(state.accounts, state.accountFilter) { vm.selectAccount(it) }
 
             when {
                 state.loading && state.items.isEmpty() -> LoadingBox()
@@ -188,7 +213,9 @@ fun TransactionsScreen(navController: NavHostController) {
                             Spacer(Modifier.height(8.dp))
                         }
                         if (grouped.isEmpty()) {
-                            item { EmptyState("${state.month} 暂无流水记录") }
+                            val emptyMsg = if (state.search.isNotBlank() || state.accountFilter != null || state.typeFilter != null)
+                                "未找到匹配的交易" else "${state.month} 暂无流水记录"
+                            item { EmptyState(emptyMsg) }
                         }
                         grouped.forEach { (day, list) ->
                             item(key = "h-$day") { DayHeader(day, list) }
@@ -203,6 +230,36 @@ fun TransactionsScreen(navController: NavHostController) {
             }
         }
     }
+}
+
+@Composable
+private fun SearchBarField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        placeholder = { Text("搜索备注、分类或账户") },
+        leadingIcon = { Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(Icons.Filled.Close, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedBorderColor = MaterialTheme.colorScheme.primary
+        )
+    )
 }
 
 @Composable
@@ -229,6 +286,26 @@ private fun TypeFilterRow(selected: String?, onSelect: (String?) -> Unit) {
     ) {
         TYPE_FILTERS.forEach { (label, value) ->
             FilterChip(selected = selected == value, onClick = { onSelect(value) }, label = { Text(label) })
+        }
+    }
+}
+
+@Composable
+private fun AccountFilterRow(accounts: List<Account>, selected: Int?, onSelect: (Int?) -> Unit) {
+    if (accounts.isEmpty()) return
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "acc-all") {
+            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("全部账户") })
+        }
+        items(accounts, key = { it.id }) { acc ->
+            FilterChip(
+                selected = selected == acc.id,
+                onClick = { onSelect(acc.id) },
+                label = { Text(listOfNotNull(acc.icon, acc.name).joinToString(" ")) }
+            )
         }
     }
 }

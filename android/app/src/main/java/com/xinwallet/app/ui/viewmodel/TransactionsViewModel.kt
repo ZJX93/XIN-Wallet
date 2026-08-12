@@ -2,9 +2,11 @@ package com.xinwallet.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.data.model.TxSummary
 import com.xinwallet.app.data.remote.ApiResult
+import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.TransactionRepository
 import com.xinwallet.app.util.currentMonth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,16 +24,23 @@ data class TxUiState(
     val typeFilter: String? = null,
     /** 备注 / 分类名关键字搜索 */
     val search: String = "",
+    /** 账户筛选：null = 全部账户 */
+    val accountFilter: Int? = null,
+    /** 账户筛选选项（来自账户列表） */
+    val accounts: List<Account> = emptyList(),
     val summary: TxSummary? = null,
     /** 一次性提示（删除成功等） */
     val toast: String? = null
 )
 
-class TransactionsViewModel(private val repo: TransactionRepository) : ViewModel() {
+class TransactionsViewModel(
+    private val repo: TransactionRepository,
+    private val accountRepo: AccountRepository
+) : ViewModel() {
     private val _state = MutableStateFlow(TxUiState(loading = true))
     val state: StateFlow<TxUiState> = _state
 
-    /** 账户详情页复用：只按账户拉流水，不关心月份筛选 */
+    /** 账户详情页复用：只按账户拉流水，不关心月份/类型/搜索筛选 */
     fun load(month: String? = null, accountId: Int? = null) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
@@ -42,13 +51,14 @@ class TransactionsViewModel(private val repo: TransactionRepository) : ViewModel
         }
     }
 
-    /** 账单页首次进入：拉月份列表 + 当前月流水与汇总 */
+    /** 账单页首次进入：拉账户列表 + 月份列表 + 当前月流水与汇总 */
     fun init() {
         viewModelScope.launch {
+            val accounts = (accountRepo.getAccounts() as? ApiResult.Success)?.data?.accounts.orEmpty()
             val monthsResult = repo.getMonths()
             val months = (monthsResult as? ApiResult.Success)?.data.orEmpty()
             val target = months.firstOrNull() ?: currentMonth()
-            _state.value = _state.value.copy(months = months, month = target)
+            _state.value = _state.value.copy(accounts = accounts, months = months, month = target)
             refresh()
         }
     }
@@ -65,17 +75,29 @@ class TransactionsViewModel(private val repo: TransactionRepository) : ViewModel
         refresh()
     }
 
+    fun selectAccount(id: Int?) {
+        if (id == _state.value.accountFilter) return
+        _state.value = _state.value.copy(accountFilter = id)
+        refresh()
+    }
+
     /** 输入时只改状态不发请求，由 UI 在提交/防抖后调 refresh */
     fun setSearch(text: String) {
         _state.value = _state.value.copy(search = text)
     }
 
-    /** 按当前 month + typeFilter 重新拉取流水与汇总 */
+    /** 按当前 month + typeFilter + accountFilter + search 重新拉取流水与汇总 */
     fun refresh() {
         viewModelScope.launch {
             val s = _state.value
             _state.value = s.copy(loading = true, error = null)
-            val listResult = repo.getTransactions(month = s.month, type = s.typeFilter, search = s.search, limit = 300)
+            val listResult = repo.getTransactions(
+                month = s.month,
+                type = s.typeFilter,
+                accountId = s.accountFilter,
+                search = s.search,
+                limit = 300
+            )
             val sumResult = repo.getSummary(s.month)
             val cur = _state.value
             when (listResult) {
