@@ -33,7 +33,7 @@ class UpdateRepository(
     /** 扫描最近的 Release，返回第一个 android-v 前缀且含 .apk 资产的版本 */
     suspend fun latestAndroidRelease(): ReleaseInfo = withContext(Dispatchers.IO) {
         val req = Request.Builder()
-            .url("https://api.github.com/repos/ZJX93/XIN-Wallet/releases?per_page=30")
+            .url("https://api.github.com/repos/ZJX93/XinWallet/releases?per_page=30")
             .header("Accept", "application/vnd.github+json")
             .build()
         client.newCall(req).execute().use { resp ->
@@ -57,7 +57,7 @@ class UpdateRepository(
     /** 下载 APK 到 dest，回调进度 0..100 */
     suspend fun downloadApk(url: String, dest: File, onProgress: (Int) -> Unit) = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url)
-            .header("User-Agent", "XIN-Wallet-Android")
+            .header("User-Agent", "XinWallet-Android")
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw Exception("下载失败 ${resp.code}")

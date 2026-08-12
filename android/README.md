@@ -1,6 +1,6 @@
-# 鑫钱包 · Android 客户端 (XIN-Wallet App)
+# 鑫钱包 · Android 客户端 (XinWallet App)
 
-基于现有 Web 全栈项目 **XIN-Wallet** 的官方安卓客户端，直连 NAS 上运行的 XIN-Wallet 后端 REST API，与 Web 端共享同一份数据。
+基于现有 Web 全栈项目 **XinWallet** 的官方安卓客户端，直连 NAS 上运行的 XinWallet 后端 REST API，与 Web 端共享同一份数据。
 
 ## 技术栈
 
@@ -18,14 +18,14 @@
 - JDK 17
 - Android SDK Platform 34 + Build-Tools 34.0.0
 - Gradle 8.9（项目已内置 wrapper）
-- 一台运行 XIN-Wallet 后端的 NAS / 服务器（首次启动需在 App 内填写真实地址）
+- 一台运行 XinWallet 后端的 NAS / 服务器（首次启动需在 App 内填写真实地址）
 
 ## 配置与运行
 
 1. 用 Android Studio 打开 `android/` 目录。
 2. 连接设备或启动模拟器（API ≥ 24）。
 3. 直接运行 `app` module。
-4. 首次进入登录页后，在顶部「服务器地址」填写你 NAS 上 XIN-Wallet 后端的访问地址，例如：
+4. 首次进入登录页后，在顶部「服务器地址」填写你 NAS 上 XinWallet 后端的访问地址，例如：
    `https://your-nas.com:18888` 或 `http://192.168.1.50:18888`
    （端口与 Web 端一致；App 会自动补全 `/api/` 路径后缀）
 5. 使用 Web 端同名账号登录，或点击「体验 Demo」快速进入。
@@ -67,7 +67,7 @@ app/src/main/java/com/xinwallet/app/
 
 ## API 契约对照
 
-客户端严格对接 XIN-Wallet 后端（端口 18888，`/api` 前缀）：
+客户端严格对接 XinWallet 后端（端口 18888，`/api` 前缀）：
 
 | 能力 | 端点 |
 | --- | --- |

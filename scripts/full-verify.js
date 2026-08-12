@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* ============================================
-   XIN-Wallet 全功能端到端验证脚本
+   XinWallet 全功能端到端验证脚本
    覆盖：认证、账户、交易、分类、预算、标签、
    转账、理财、储蓄、统计、账本、报表、CSV、AI
    ============================================ */
@@ -37,7 +37,7 @@ function ok(name, result, expect = true) {
 function log(msg) { console.log(`\n${'='.repeat(50)}\n📋 ${msg}\n${'='.repeat(50)}`); }
 
 (async () => {
-console.log('🔬 XIN-Wallet 全功能端到端验证\n');
+console.log('🔬 XinWallet 全功能端到端验证\n');
 
 // ================================================================
 log('模块一：认证 (Auth)');

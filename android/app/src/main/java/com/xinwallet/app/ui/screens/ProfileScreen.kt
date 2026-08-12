@@ -268,7 +268,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             SectionTitle("服务器地址")
             Text(
-                "App 直连 NAS 上的 XIN-Wallet 后端，修改后即时生效。",
+                "App 直连 NAS 上的 XinWallet 后端，修改后即时生效。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

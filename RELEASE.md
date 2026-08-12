@@ -32,7 +32,7 @@ docker pull ghcr.io/zjx93/xin-wallet/xinwallet:v0.0.1
 
 ## 🔧 配置 GitHub Packages 权限（首次）
 
-1. 进入 https://github.com/ZJX93/XIN-Wallet/settings/actions
+1. 进入 https://github.com/ZJX93/XinWallet/settings/actions
 2. "Workflow permissions" 选择 **Read and write permissions**
 3. 勾选 "Allow GitHub Actions to create and approve pull requests"
 4. 保存
@@ -41,9 +41,9 @@ docker pull ghcr.io/zjx93/xin-wallet/xinwallet:v0.0.1
 
 ## 📊 查看构建进度
 
-- 镜像构建：https://github.com/ZJX93/XIN-Wallet/actions/workflows/release-image.yml
-- 安卓构建：https://github.com/ZJX93/XIN-Wallet/actions/workflows/android-build.yml
-- 版本编排：https://github.com/ZJX93/XIN-Wallet/actions/workflows/auto-tag.yml
+- 镜像构建：https://github.com/ZJX93/XinWallet/actions/workflows/release-image.yml
+- 安卓构建：https://github.com/ZJX93/XinWallet/actions/workflows/android-build.yml
+- 版本编排：https://github.com/ZJX93/XinWallet/actions/workflows/auto-tag.yml
 
 ## 🔄 本地测试构建
 

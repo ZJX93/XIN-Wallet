@@ -1,7 +1,7 @@
 /* ============================================
    鑫钱包 · 数据库集成测试
    覆盖：复式记账核心路径（账户/交易/转账/余额推导）
-   运行前置：需 MariaDB 连接（通过 .env 或默认 localhost:3306）
+   运行前置：需 PostgreSQL 连接（通过 .env 或默认 localhost:5432）
    ============================================ */
 const test = require('node:test');
 const assert = require('node:assert');

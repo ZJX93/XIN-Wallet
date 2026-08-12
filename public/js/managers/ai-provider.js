@@ -1,7 +1,7 @@
 /**
  * AIProviderManager - AI 服务商与 OCR 配置管理
  *
- * 拆分来源：C:\Users\XIN\WorkBuddy\XIN-Wallet\js\app.js
+ * 拆分来源：public/js/app.js
  * 原始位置：app.js 第 4728 ~ 4979 行（const AIProviderManager = { ... };）
  * 拆分说明：从单体 app.js 按对象真实边界提取，完整保留原代码；
  *          依赖项（api / showToast / cache / AIRecognition / escapeHtml 等）

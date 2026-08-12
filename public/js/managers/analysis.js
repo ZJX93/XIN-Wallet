@@ -1,6 +1,6 @@
 // ==========================================
 // AnalysisManager — 消费分析
-// 拆分自 C:\Users\XIN\WorkBuddy\XIN-Wallet\js\app.js
+// 拆分自 public/js/app.js
 // 原始位置: 第 3724 行 — 第 3915 行 (const AnalysisManager = { ... };)
 // ==========================================
 

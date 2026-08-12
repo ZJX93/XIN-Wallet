@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $tmpDir = "$env:TEMP\docker-cn"
 $targetDir = "C:\Program Files\Docker\Docker\frontend"
-$backupDir = "C:\Users\XIN\WorkBuddy\XIN-Wallet\docker-backup"
+$backupDir = "C:\Users\XIN\WorkBuddy\XinWallet\docker-backup"
 
 Write-Host "=== Docker Desktop 4.83.0 汉化 ===" -ForegroundColor Cyan
 

@@ -18,7 +18,7 @@ function test(name, ok, detail) {
 }
 
 (async () => {
-    console.log('🧪 XIN-Wallet API 冒烟测试\n');
+    console.log('🧪 XinWallet API 冒烟测试\n');
 
     // Auth
     console.log('📋 认证');

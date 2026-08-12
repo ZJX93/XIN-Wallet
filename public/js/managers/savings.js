@@ -1,6 +1,6 @@
 // ==========================================
 // SavingsGoalManager — 储蓄目标管理
-// 拆分自 C:\Users\XIN\WorkBuddy\XIN-Wallet\js\app.js
+// 拆分自 public/js/app.js
 // 原始位置: 第 4441 行 — 第 4682 行 (const SavingsGoalManager = { ... };)
 // 整合理财模块，参考 Firefly III piggy banks
 // ==========================================

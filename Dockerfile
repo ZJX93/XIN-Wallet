@@ -54,7 +54,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="XIN Wallet" \
       org.opencontainers.image.description="鑫钱包 - 个人财务助手 (Node.js + Express + PostgreSQL)" \
-      org.opencontainers.image.source="https://github.com/ZJX93/XIN-Wallet" \
+      org.opencontainers.image.source="https://github.com/ZJX93/XinWallet" \
       org.opencontainers.image.vendor="ZJX93" \
       org.opencontainers.image.licenses="MIT"
 

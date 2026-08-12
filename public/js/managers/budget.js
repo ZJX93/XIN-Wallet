@@ -1,6 +1,6 @@
 // ==========================================
 // BudgetManager — 预算管理
-// 拆分自 C:\Users\XIN\WorkBuddy\XIN-Wallet\js\app.js
+// 拆分自 public/js/app.js
 // 原始位置: 第 1745 行 — 第 1905 行 (const BudgetManager = { ... };)
 // ==========================================
 

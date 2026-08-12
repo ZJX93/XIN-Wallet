@@ -8,7 +8,7 @@ const spec = {
     title: '鑫钱包 API',
     version: '2.0.0',
     description: '个人财务助手后端 API · Node.js + Express + PostgreSQL · 复式记账 · 含账户/交易/转账/预算/理财/储蓄/债务/报表/AI 分析',
-    contact: { name: 'ZJX93', url: 'https://github.com/ZJX93/XIN-Wallet' },
+    contact: { name: 'ZJX93', url: 'https://github.com/ZJX93/XinWallet' },
   },
   servers: [
     { url: '/', description: '当前主机' },

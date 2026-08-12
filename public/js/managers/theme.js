@@ -1,4 +1,4 @@
-// 从 C:\Users\XIN\WorkBuddy\XIN-Wallet\js\app.js 拆分而来（原文件第 199-215 行）
+// 从 public/js/app.js 拆分而来（原文件第 199-215 行）
 // ThemeManager: 主题切换管理（light / dark / system）
 const ThemeManager = {
     _systemMql: null,

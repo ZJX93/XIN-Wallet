@@ -68,7 +68,7 @@ function splitSqlStatements(sql) {
 
 /**
  * 检测是否为 INSERT 语句且未包含 RETURNING，自动补全 RETURNING id。
- * 返回的 rows 数组上挂载 insertId 属性（兼容 MariaDB 风格代码）。
+ * 返回的 rows 数组上挂载 insertId 属性（兼容 MySQL 风格代码（insertId））。
  */
 function autoReturning(sql) {
   const trimmed = sql.trim();
@@ -128,6 +128,16 @@ async function transaction(fn) {
 /**
  * 初始化数据库（幂等：自动建库 + 执行 schema.sql + 迁移）
  */
+/**
+ * 幂等迁移告警：建表 / 加列等迁移常因「已存在 / 重复」而报错，属预期，忽略；
+ * 其余错误才输出告警，避免 ~19 处重复的「已存在就静默」判断逻辑。
+ */
+function warnUnlessAlreadyExists(label, err) {
+  if (!err) return;
+  if (/already exists|duplicate/i.test(err.message)) return; // 幂等迁移的预期噪声
+  console.warn(`⚠️ ${label}`, err.message);
+}
+
 async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
@@ -174,9 +184,7 @@ async function initDatabase() {
       try {
         await pool.query(stmt);
       } catch (err) {
-        if (!/already exists|duplicate key/i.test(err.message)) {
-          console.warn('⚠️ Schema 执行警告:', err.message);
-        }
+        warnUnlessAlreadyExists('Schema 执行警告:', err);
       }
     }
 
@@ -189,7 +197,7 @@ async function initDatabase() {
     ];
     for (const [col, ddl] of userCols) {
       try { await pool.query(ddl); } catch (err) {
-        if (!/already exists|duplicate/i.test(err.message)) console.warn(`⚠️ users.${col} 迁移警告:`, err.message);
+        warnUnlessAlreadyExists(`users.${col} 迁移警告:`, err);
       }
     }
 
@@ -197,7 +205,7 @@ async function initDatabase() {
     try {
       await pool.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS user_id INT DEFAULT NULL`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.user_id 迁移警告:', err.message);
+      warnUnlessAlreadyExists('categories.user_id 迁移警告:', err);
     }
 
     // 4.1) 幂等迁移：categories.code（结构化编码 E0101=支出餐饮早午晚餐）
@@ -247,7 +255,7 @@ async function initDatabase() {
       // 系统分类已在 schema.sql 中以唯一 code 填充。此处不再强制 NOT NULL，否则用户自建分类插入必崩。
       await pool.query(`UPDATE categories SET code = NULL WHERE code = ''`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ categories.code 迁移警告:', err.message);
+      warnUnlessAlreadyExists('categories.code 迁移警告:', err);
     }
 
     // 4.2) 幂等迁移：accounts.code（结构化编码 A0201=银行卡-工商银行）
@@ -261,7 +269,7 @@ async function initDatabase() {
         WHERE code IS NULL
       `);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ accounts.code 迁移警告:', err.message);
+      warnUnlessAlreadyExists('accounts.code 迁移警告:', err);
     }
 
     // 4.3) 幂等迁移：investment_types.code（结构化编码 V0203=指数基金）
@@ -279,28 +287,28 @@ async function initDatabase() {
         WHERE code IS NULL
       `);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.code 迁移警告:', err.message);
+      warnUnlessAlreadyExists('investment_types.code 迁移警告:', err);
     }
 
     // 5) 幂等迁移：investments.nav_date
     try {
       await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS nav_date DATE DEFAULT NULL`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.nav_date 迁移警告:', err.message);
+      warnUnlessAlreadyExists('investments.nav_date 迁移警告:', err);
     }
 
     // 5.1) 幂等迁移：investments.risk_level（每持仓独立风险等级，覆盖类型默认）
     try {
       await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS risk_level VARCHAR(10) CHECK (risk_level IN ('low','medium','high','very_high'))`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.risk_level 迁移警告:', err.message);
+      warnUnlessAlreadyExists('investments.risk_level 迁移警告:', err);
     }
 
     // 6) 幂等迁移：transactions 复合索引
     try {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_account_date ON transactions (account_id, date)`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ transactions.idx_account_date 迁移警告:', err.message);
+      warnUnlessAlreadyExists('transactions.idx_account_date 迁移警告:', err);
     }
 
     // 7) 幂等迁移：debts.direction（区分应付/应收）
@@ -310,7 +318,7 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS direction VARCHAR(10) NOT NULL DEFAULT 'payable' CHECK (direction IN ('payable','receivable'))`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_debts_user_direction ON debts (user_id, direction)`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.direction 迁移警告:', err.message);
+      warnUnlessAlreadyExists('debts.direction 迁移警告:', err);
     }
 
     // 8) 幂等迁移：debts.account_id（可选关联账户）
@@ -319,14 +327,14 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS account_id INT DEFAULT NULL`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_debts_user_account ON debts (user_id, account_id)`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.account_id 迁移警告:', err.message);
+      warnUnlessAlreadyExists('debts.account_id 迁移警告:', err);
     }
 
     // 9) 幂等迁移：debts.create_transaction_id（创建应收借出时同步生成的台账交易，用于回滚）
     try {
       await pool.query(`ALTER TABLE debts ADD COLUMN IF NOT EXISTS create_transaction_id INT DEFAULT NULL`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ debts.create_transaction_id 迁移警告:', err.message);
+      warnUnlessAlreadyExists('debts.create_transaction_id 迁移警告:', err);
     }
 
     // 10) 幂等迁移：savings_goals.source_account_id（存入时默认来源账户，强关联）
@@ -334,14 +342,14 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE savings_goals ADD COLUMN IF NOT EXISTS source_account_id INT DEFAULT NULL`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_savings_user_source ON savings_goals (user_id, source_account_id)`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ savings_goals.source_account_id 迁移警告:', err.message);
+      warnUnlessAlreadyExists('savings_goals.source_account_id 迁移警告:', err);
     }
 
     // 11) 幂等迁移：investments.create_transaction_id（创建持仓时同步生成的台账交易，用于删除/编辑回滚）
     try {
       await pool.query(`ALTER TABLE investments ADD COLUMN IF NOT EXISTS create_transaction_id INT DEFAULT NULL`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investments.create_transaction_id 迁移警告:', err.message);
+      warnUnlessAlreadyExists('investments.create_transaction_id 迁移警告:', err);
     }
 
     // 12) 幂等迁移：investment_types.is_system（系统预置类型保护）
@@ -354,7 +362,7 @@ async function initDatabase() {
       // 回填 schema 预置的基础类型（id 1-16）；用户自建类型保持可编辑
       await pool.query(`UPDATE investment_types SET is_system = TRUE WHERE id <= 16 AND is_system = FALSE`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types.is_system 迁移警告:', err.message);
+      warnUnlessAlreadyExists('investment_types.is_system 迁移警告:', err);
     }
 
     // 13) 幂等迁移：扩展 investment_types.category CHECK 约束，支持新增品类
@@ -373,7 +381,7 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE investment_types ADD CONSTRAINT investment_types_category_check
         CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex'))`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ category CHECK 约束更新警告:', err.message);
+      warnUnlessAlreadyExists('category CHECK 约束更新警告:', err);
     }
 
     // 14) 幂等迁移：新增投资品类（港股/美股/加密货币/外汇/债券）+ 黄金迁移到 commodity
@@ -391,7 +399,7 @@ async function initDatabase() {
       // 将原有黄金(id=10)从 other 迁移到 commodity（支持腾讯行情刷新）
       await pool.query(`UPDATE investment_types SET category = 'commodity', description = '实物黄金/纸黄金/黄金ETF（支持实时行情）' WHERE id = 10 AND category = 'other'`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_types 品类扩展警告:', err.message);
+      warnUnlessAlreadyExists('investment_types 品类扩展警告:', err);
     }
 
     // 15) 幂等迁移：投资理财分类体系（一级 投资理财 + 二级 投资买入/理财保险）
@@ -434,7 +442,7 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE investment_types ADD CONSTRAINT investment_types_category_check
         CHECK (category IN ('fund','stock','deposit','other','hk_stock','us_stock','commodity','crypto','forex','insurance'))`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财分类迁移警告:', err.message);
+      warnUnlessAlreadyExists('投资理财分类迁移警告:', err);
     }
 
     // 16) 幂等迁移：修正「投资理财」一级排序号（100 → 10，落在第 10 位）
@@ -447,7 +455,7 @@ async function initDatabase() {
            AND (sort_order IS NULL OR sort_order <> 10)
       `);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 投资理财排序修正迁移警告:', err.message);
+      warnUnlessAlreadyExists('投资理财排序修正迁移警告:', err);
     }
 
     // 17) 幂等迁移：系统分类颜色按 type 统一（支出绿 / 收入红 / 转账蓝）
@@ -470,7 +478,7 @@ async function initDatabase() {
                                       END
       `);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ 系统分类颜色统一迁移警告:', err.message);
+      warnUnlessAlreadyExists('系统分类颜色统一迁移警告:', err);
     }
 
     // 18) 幂等迁移：accounts.credit_limit（信用卡/电子支付信用额度）
@@ -478,7 +486,7 @@ async function initDatabase() {
     try {
       await pool.query(`ALTER TABLE accounts ADD COLUMN IF NOT EXISTS credit_limit DECIMAL(15,2) DEFAULT 0`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ accounts.credit_limit 迁移警告:', err.message);
+      warnUnlessAlreadyExists('accounts.credit_limit 迁移警告:', err);
     }
 
     // 19) 幂等迁移：扩展 investment_transactions.type CHECK 约束，支持红利再投(reinvest)
@@ -501,7 +509,7 @@ async function initDatabase() {
       await pool.query(`ALTER TABLE investment_transactions ADD CONSTRAINT investment_transactions_type_check
         CHECK (type IN ('buy','sell','dividend','interest','fee','reinvest'))`);
     } catch (err) {
-      if (!/already exists|duplicate/i.test(err.message)) console.warn('⚠️ investment_transactions.type CHECK 约束更新警告:', err.message);
+      warnUnlessAlreadyExists('investment_transactions.type CHECK 约束更新警告:', err);
     }
 
     console.log('✅ 数据库表结构已初始化');
