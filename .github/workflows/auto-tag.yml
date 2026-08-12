@@ -1,18 +1,16 @@
 # ============================================
 # 鑫钱包 · 自动版本标签（统一版本线）
 # 触发条件：PR Test Gate workflow 在 main 分支 push 后成功完成
-# 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 android-vX.Y.Z tag
+# 行为：根据 Conventional Commits 规范自动计算版本号，创建并推送 vX.Y.Z tag
 #       （整个仓库——Web/后端 + 安卓客户端——共用这一套版本号，保证镜像与 APK 版本对齐）
 # 连锁效果：tag 创建后主动派发 release-image.yml（构建 Docker 镜像）与 android-build.yml（构建 APK），
-#           二者均使用该 android-vX.Y.Z 标签，从而 Docker 镜像版本与安卓客户端版本始终保持一致。
-# 版本规则：
-#   feat:           → minor bump (0.2.3 → 0.3.0)
-#   fix/refactor:   → patch bump (0.2.3 → 0.2.4)
-#   BREAKING CHANGE → major bump (0.2.3 → 1.0.0)
-#   docs/chore/ci:  → 跳过（不触发发布）
-#   style:          → patch bump（前端样式进镜像，需重建，避免"代码改了容器没更新"）
-# 注意：major 跳变只认「会发布的类型」(feat/fix/refactor/perf/build) 中的破坏性变更，
-#       ci/docs 等非发布提交的 BREAKING CHANGE 不会触发大版本跳变（避免误判）。
+#           二者均使用该 vX.Y.Z 标签，从而 Docker 镜像版本与安卓客户端版本始终保持一致。
+# 版本规则（简化）：
+#   版本号固定为 v0.0.Z —— 锁死 MAJOR.MINOR = 0.0，每次发布仅递增 PATCH(Z)。
+#   例：v0.0.0 → v0.0.1 → v0.0.2 …（不再做 major/minor 跳变）。
+#   是否发布仍取决于提交类型：docs/chore/ci 提交跳过打标签；
+#   feat/fix/refactor/perf/build/style 提交才会触发一次 Z+1 发布。
+# 注意：如需调整锁定的 X.Y，改下方 MAJOR/MINOR 两个常量即可。
 # ============================================
 name: Auto Tag
 
@@ -46,22 +44,22 @@ jobs:
         id: version
         run: |
           # 获取按版本号排序的最新 tag
-          LATEST_TAG=$(git tag --list 'android-v*.*.*' --sort=-v:refname | head -1)
+          LATEST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
 
           if [ -z "$LATEST_TAG" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "new_tag=android-v0.1.0" >> $GITHUB_OUTPUT
-            echo "No existing tags, starting at android-v0.1.0"
+            echo "new_tag=v0.0.0" >> $GITHUB_OUTPUT
+            echo "No existing tags, starting at v0.0.0"
             exit 0
           fi
 
           echo "Latest tag: $LATEST_TAG"
 
-          # 解析当前版本号（去掉 android-v 前缀，得到 X.Y.Z）
-          VERSION=${LATEST_TAG#android-v}
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          # 解析当前版本号：仅取 PATCH(Z)；MAJOR.MINOR 锁死为 0.0
+          VERSION=${LATEST_TAG#v}
           PATCH=$(echo "$VERSION" | cut -d. -f3)
+          MAJOR=0
+          MINOR=0
 
           # 获取自上次 tag 以来的所有 commit 主题（首行）
           COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s")
@@ -70,47 +68,20 @@ jobs:
           echo "$COMMITS"
           echo ""
 
-          # 如果只有 docs/chore/ci 类型的 commit，跳过打标签；style 视为可发布（patch bump）
+          # 如果只有 docs/chore/ci 类型的 commit，跳过打标签（不发布）
           if ! echo "$COMMITS" | grep -qE "^(feat|fix|refactor|perf|build|style)(\(.+\))?!?:"; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Only docs/chore/ci commits since last tag, skipping"
             exit 0
           fi
 
-          # major 跳变：仅统计「会发布的类型」(feat/fix/refactor/perf/build) 中的破坏性变更
-          #   - 主题带 !  (如 feat!: 或 fix(api)!:)
-          #   - 或主题是该类型且正文含 BREAKING CHANGE
-          # ci/docs 等非发布类型即使正文含 BREAKING CHANGE 也不触发 major（防误判）
-          MAJOR_BREAK=0
-          while read -r sha; do
-            s=$(git log -1 --pretty="%s" "$sha")
-            b=$(git log -1 --pretty="%b" "$sha")
-            if echo "$s" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!:"; then
-              MAJOR_BREAK=1; break
-            fi
-            if echo "$s" | grep -qE "^(feat|fix|refactor|perf|build)(\(.+\))?!?:" && \
-               echo "$b" | grep -qiE "BREAKING[ -]CHANGE"; then
-              MAJOR_BREAK=1; break
-            fi
-          done < <(git log "${LATEST_TAG}..HEAD" --pretty=format:"%H")
+          # 锁死 X.Y = 0.0，版本号只递增 PATCH(Z)：v0.0.N → v0.0.(N+1)
+          PATCH=$((PATCH + 1))
 
-          # feat: → minor bump
-          if [ "$MAJOR_BREAK" -eq 1 ]; then
-            BUMP="major"
-            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
-          elif echo "$COMMITS" | grep -qE "^feat(\(.+\))?:"; then
-            BUMP="minor"
-            MINOR=$((MINOR + 1)); PATCH=0
-          # fix/refactor/perf/build: → patch bump
-          else
-            BUMP="patch"
-            PATCH=$((PATCH + 1))
-          fi
-
-          NEW_TAG="android-v${MAJOR}.${MINOR}.${PATCH}"
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "skip=false" >> $GITHUB_OUTPUT
           echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
-          echo "Bump type: ${BUMP}"
+          echo "Bump type: patch (Z only, X.Y locked to 0.0)"
           echo "Next version: ${NEW_TAG}"
 
       - name: 创建并推送 tag
