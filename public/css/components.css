@@ -579,38 +579,19 @@
 /* ============ 理财持仓：按类型真实叠牌 ============ */
 .inv-stack { margin-bottom: var(--space-4); --inv-stack-shift: 9px; }
 
-/* 牌堆封面（可点击展开/收起） */
-.inv-deck-cover {
-  display: flex; align-items: center; gap: var(--space-3);
-  width: 100%; text-align: left; cursor: pointer;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface-card) 82%, var(--interactive-default) 8%);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  position: relative;
-  z-index: 10;
-  transition: background .2s var(--ease-out-quart), transform .2s var(--ease-out-quart);
-}
-.inv-deck-cover:hover {
-  background: color-mix(in srgb, var(--surface-card) 70%, var(--interactive-default) 14%);
-  transform: translateY(-1px);
-}
-.inv-cover-icon { font-size: 20px; line-height: 1; flex: 0 0 auto; }
-.inv-cover-meta {
-  display: flex; flex-direction: column; gap: 4px;
-  flex: 1 1 auto; min-width: 0;
-}
-.inv-cover-name { font-weight: var(--fw-semibold); color: var(--text-primary); }
-.inv-cover-row {
-  display: flex; align-items: center; gap: var(--space-3);
-  flex-wrap: wrap;
-}
+/* 牌堆封面：作为牌堆第一张（.inv-stack-card:first-child）参与堆叠，外观交给 .goal-card */
+/* 旧 .inv-deck-cover 横条样式已废弃（封面现已并入叠牌序列），此处不再保留 */
 .inv-cover-count {
-  font-size: 12px; color: var(--text-tertiary); white-space: nowrap;
-  background: var(--surface-hover); padding: 2px 9px; border-radius: var(--radius-full);
+  font-size: 11px; font-weight: var(--fw-semibold);
+  color: var(--interactive-default);
+  background: color-mix(in srgb, var(--interactive-default) 12%, transparent);
+  padding: 2px 9px; border-radius: var(--radius-full);
+  white-space: nowrap;
 }
-.inv-cover-total { font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; }
+.inv-cover-foot {
+  display: flex; align-items: center; justify-content: flex-end;
+  margin-top: var(--space-3);
+}
 .inv-cover-viewall { font-size: 12px; font-weight: var(--fw-medium); color: var(--interactive-default); white-space: nowrap; }
 
 .inv-stack-cards {
@@ -622,6 +603,7 @@
 .inv-stack-card {
   position: absolute;
   top: 0; left: 0; right: 0;
+  min-height: 220px;
   transform-origin: top center;
   transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 9px)));
   z-index: calc(var(--n, 1) - var(--i, 0));
@@ -637,6 +619,32 @@
   position: relative;
   transform: none;
   z-index: var(--n, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.inv-cover-meta { margin-top: var(--space-2); color: var(--text-secondary) !important; }
+.inv-cover-meta strong { color: var(--text-primary); }
+.inv-cover-mid { margin: auto 0; text-align: center; }
+.inv-cover-profit-label { font-size: var(--text-caption); color: var(--text-secondary); margin-bottom: var(--space-1); }
+.inv-cover-profit-amount { font-size: 26px; font-weight: var(--fw-bold); line-height: 1.1; }
+.inv-cover-profit-rate { font-size: var(--text-body); font-weight: var(--fw-semibold); margin-top: var(--space-1); }
+.inv-cover-bottom { margin-top: auto; }
+.inv-cover-stats { display: flex; justify-content: space-between; font-size: var(--text-caption); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.inv-stack-card:first-child .inv-cover-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.inv-stack-card:first-child .inv-cover-viewall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--interactive-default) 10%, transparent);
+  font-size: var(--text-caption);
+  font-weight: var(--fw-medium);
 }
 /* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
 .inv-stack-card:hover {

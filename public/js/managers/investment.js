@@ -490,21 +490,39 @@ const InvestmentManager = {
         container.innerHTML = groupList.map(([typeName, items]) => {
             const icon = items[0].type_icon || '📈';
             const total = items.reduce((s, i) => s + (Number(i.current_value) || 0), 0);
-            const cards = items.map((i, idx) => buildCard(i, idx, items.length)).join('');
+            const cost = items.reduce((s, i) => s + (Number(i.total_cost) || 0), 0);
+            const profit = total - cost;
+            const profitRate = cost > 0 ? (profit / cost) * 100 : 0;
+            const profitCls = profit >= 0 ? 'profit-positive' : 'profit-negative';
+            const profitCount = items.filter(i => (Number(i.profit) || 0) >= 0).length;
+            const lossCount = items.length - profitCount;
+            // 封面卡也作为牌堆第一张（--i:0，:first-child 在文档流内撑高度），与产品卡一起堆叠偏移
+            const coverCard = `
+                <div class="goal-card inv-stack-card inv-deck-card" data-type="${escapeHtml(typeName)}" style="--i:0; --n:${items.length + 1}">
+                    <div class="inv-cover-top">
+                        <div class="goal-head">
+                            <div class="goal-icon">${escapeHtml(icon)}</div>
+                            <div class="goal-title">${escapeHtml(typeName)}</div>
+                            <span class="inv-cover-count">${items.length} 个产品</span>
+                        </div>
+                        <div class="goal-amounts inv-cover-meta"><span>投入 ${fmt(cost)}</span><span>市值 ${fmt(total)}</span></div>
+                    </div>
+                    <div class="inv-cover-mid">
+                        <div class="inv-cover-profit">
+                            <div class="inv-cover-profit-label">浮动盈亏</div>
+                            <div class="inv-cover-profit-amount ${profitCls}">${fmt(profit)}</div>
+                            <div class="inv-cover-profit-rate ${profitCls}">${fmtPct(profitRate)}</div>
+                        </div>
+                    </div>
+                    <div class="inv-cover-bottom">
+                        <div class="inv-cover-stats"><span>盈利 <strong class="goal-pct profit-positive">${profitCount}</strong> 个</span><span>亏损 <strong class="goal-pct profit-negative">${lossCount}</strong> 个</span></div>
+                        <div class="inv-cover-foot"><span class="inv-cover-viewall">查看全部 →</span></div>
+                    </div>
+                </div>`;
+            const cards = items.map((i, idx) => buildCard(i, idx + 1, items.length + 1)).join('');
             return `
             <div class="inv-stack">
-                <button class="inv-deck-cover" type="button" data-action="view-all" data-type="${escapeHtml(typeName)}" title="查看全部持仓">
-                    <span class="inv-cover-icon">${escapeHtml(icon)}</span>
-                    <span class="inv-cover-meta">
-                        <span class="inv-cover-name">${escapeHtml(typeName)}</span>
-                        <span class="inv-cover-row">
-                            <span class="inv-cover-count">${items.length} 个产品</span>
-                            <span class="inv-cover-total">${fmt(total)}</span>
-                            <span class="inv-cover-viewall">查看全部 →</span>
-                        </span>
-                    </span>
-                </button>
-                <div class="inv-stack-cards" style="--n:${items.length}">${cards}</div>
+                <div class="inv-stack-cards" style="--n:${items.length + 1}">${coverCard}${cards}</div>
             </div>`;
         }).join('');
 
@@ -518,8 +536,13 @@ const InvestmentManager = {
             btn.addEventListener('click', () => this.openInvDetail(parseInt(btn.dataset.id)));
         });
 
-        // 事件委托：点击单张牌 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
-        container.querySelectorAll('.inv-stack-card').forEach(card => {
+        // 封面卡（牌堆第一张）：点击打开该分类全屏网格，不参与产品卡的弹出逻辑
+        container.querySelectorAll('.inv-deck-card').forEach(card => {
+            card.addEventListener('click', () => this.openInvGrid(card.dataset.type));
+        });
+
+        // 事件委托：点击产品牌 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
+        container.querySelectorAll('.inv-stack-card:not(.inv-deck-card)').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-action]')) return;
                 const wasPopped = card.classList.contains('popped');
