@@ -520,4 +520,4 @@ async function initDatabase() {
   }
 }
 
-module.exports = { pool, query, queryOne, transaction, initDatabase, convertPlaceholders };
+module.exports = { pool, query, queryOne, transaction, initDatabase };

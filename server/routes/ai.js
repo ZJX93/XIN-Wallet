@@ -12,6 +12,19 @@ const { syncCreditCardDebt } = require('./utils');
 const { toAmount, toNumber } = require('../validate');
 const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
 const OcrClient = tencentOcr.v20181119.Client;
+const multer = require('multer');
+
+// 仅 OCR 路由需要图片上传：memoryStorage 不落盘、5MB 上限、仅接受图片类型。
+// 在此局部定义并仅挂到 /ocr 路由（见下方 router.post('/ocr', ...)），不再于全局
+// /api 上套用上传中间件，缩小「任意 /api 端点被 multipart 大 body 试探」的 DoS / 内存放大面。
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) return cb(new Error('仅支持图片格式'), false);
+        cb(null, true);
+    }
+});
 
 // 校验服务商输入
 function validateProvider(body) {
@@ -707,7 +720,7 @@ function fallbackExtractItems(ocrText, defaultDate) {
 }
 
 // OCR 识别
-router.post('/ocr', async (req, res) => {
+router.post('/ocr', upload.single('image'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json(fail('请上传图片'));
         const imageBase64 = req.file.buffer.toString('base64');

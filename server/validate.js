@@ -174,6 +174,5 @@ module.exports = {
     parseCsvLine,
     TRANSACTION_TYPES,
     validate,
-    validateValue,
     rules,
 };

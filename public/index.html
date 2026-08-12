@@ -13,9 +13,8 @@
     <link rel="stylesheet" href="css/auth.css">
     <!-- 全局配置（API 基址推导 + 登录检查） -->
     <script src="js/config.js"></script>
-    <!-- Chart.js 同步加载（Dashboard / 报表 / 理财 / 储蓄 等页面首屏用到图表） -->
-    <script src="js/vendor/chart.umd.min.js"></script>
-    <!-- xlsx (CSV/账单导入) 移到主入口之后，按需动态加载；不在 <head> 阻塞首屏 -->
+    <!-- Chart.js（Dashboard / 报表 / 理财 / 储蓄 等页面用到图表）：已从 <head> 移至 body 末尾
+         app 脚本之前，避免 205KB 同步脚本阻塞首屏解析；加载顺序仍在 app.js 之前，不影响图表初始化 -->
     <link rel="preload" href="js/vendor/xlsx.full.min.js" as="script">
 </head>
 <body>
@@ -734,6 +733,9 @@
 
     <div class="toast-container" id="toastContainer" role="region" aria-live="polite" aria-atomic="true"></div>
 
+    <!-- Chart.js vendor（~205KB）：置于 body 末尾、app 脚本之前，消除首屏渲染阻塞；
+         仍保证在 app.js / managers 之前加载，图表初始化不受影响 -->
+    <script src="js/vendor/chart.umd.min.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/page-loader.js"></script>
     <script type="module" src="js/auth.js"></script>

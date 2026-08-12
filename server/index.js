@@ -11,7 +11,6 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
-const multer = require('multer');
 
 const db = require('./db');
 const routes = require('./routes');
@@ -21,16 +20,6 @@ const { ensureUserSeed } = require('./seed-data');
 
 const app = express();
 const PORT = process.env.PORT || 18888;
-
-// Multer：图片上传（内存存储，不落盘）
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter: (req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) return cb(new Error('仅支持图片格式'), false);
-        cb(null, true);
-    }
-});
 
 // ==========================================
 // 安全配置
@@ -102,8 +91,9 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // API 路由（含公开 /auth 与受保护业务路由）
-// OCR 上传路由需在 body parser 之后、API 路由之前，使用 multer 局部中间件
-app.use('/api', upload.single('image'), routes);
+// 注：图片上传（multer）已收敛到 /api/ai/ocr 路由局部（见 server/routes/ai.js），
+// 不再对所有 /api 请求套用内存上传中间件，缩小 DoS / 内存放大面。
+app.use('/api', routes);
 
 // 已认证 API 的用户级限流（在 auth 中间件之后生效，由 routes.js 内逐路由挂载）
 // 见 server/rate-limit-user.js
@@ -140,9 +130,14 @@ app.use(express.static(PUBLIC_DIR, {
         if (filePath.includes('vendor')) {
             // 第三方库：长期缓存（先于 .js 匹配）
             res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
-        } else if (/\.(html|css|js)$/.test(filePath)) {
-            // 应用代码：no-store 强制每次重新下载（开发/演示环境避免浏览器缓存旧代码）
+        } else if (/\.html$/.test(filePath)) {
+            // 入口 HTML：不缓存，保证部署后始终拉取最新入口（由它再引用当前 css/js）
             res.setHeader('Cache-Control', 'no-store');
+        } else if (/\.(css|js)$/.test(filePath)) {
+            // 应用代码：无内容哈希指纹，采用较短 max-age + 必须重校验，
+            // 兼顾「减少重复下载」与「部署后不至长期陈旧」。彻底的 immutable 长缓存
+            // 需配合构建期的文件名哈希（属前端重模块化工作，见 review-report.md）。
+            res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
         } else if (/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/.test(filePath)) {
             // 静态资源：短期缓存
             res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -250,7 +245,13 @@ app.get('/health/deep', async (req, res) => {
 // 以支持 /transactions 这类干净路由（History API）。需放在静态文件之后。
 app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    // 仅对 HTML 导航请求返回 SPA 入口；其余（如 JSON/XHR 探测）返回 404，
+    // 避免「任何未知路径一律 200」被当作探测靶。
+    if (req.accepts('html')) {
+        res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    } else {
+        res.status(404).json({ success: false, message: 'Not Found' });
+    }
 });
 
 // 等待数据库就绪并初始化（容器/NAS 环境下 PostgreSQL 可能尚未接受连接，避免启动竞态）
