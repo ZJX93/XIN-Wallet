@@ -393,7 +393,4 @@ async function start() {
     });
 }
 
-// insertDemoData 已迁移至 server/seed-data.js
-// 通过 ensureUserSeed(userId) 函数统一为新用户/演示用户注入全量种子数据
-
 start();

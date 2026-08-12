@@ -99,7 +99,6 @@ xin-wallet/
 │   ├── services/           # 可复用业务服务层
 │   │   ├── market-data.js  # 行情数据（东方财富基金 / 腾讯证券 / 币安）
 │   │   ├── portfolio.js    # 理财计算（年化 / 集中度 / 盈亏）
-│   │   ├── query-builder.js# 轻量 SQL 查询构建器（?→$N 自动转换）
 │   │   ├── quote-cache.js  # 行情 LRU 缓存
 │   │   ├── debt-summary.js # 债务汇总纯逻辑
 │   │   ├── money.js        # 整数分金额运算内核（toCents/fromCents/sumAmounts）
@@ -1201,7 +1200,7 @@ npm test
 
 - **数据库**：采用 PostgreSQL（支持递归 CTE / 窗口函数 / generate_series），为分类汇总、投资回报分析等场景提供支撑。
 - **启动引导**：`server/index.js` 在启动时幂等执行 `server/schema.sql` 建库建表（已存在则跳过），并注入种子分类与演示数据。
-- **服务分层**：行情数据（`services/market-data.js`）、理财计算（`services/portfolio.js`）、查询构建器（`services/query-builder.js`）、金额运算（`services/money.js`）、SSRF 防护（`services/url-guard.js`）从路由中独立为可复用服务层。
+- **服务分层**：行情数据（`services/market-data.js`）、理财计算（`services/portfolio.js`）、金额运算（`services/money.js`）、SSRF 防护（`services/url-guard.js`）从路由中独立为可复用服务层。
 - **整数分金额内核**：`services/money.js` 统一以「整数分」做金额运算，根除浮点精度误差（`toCents`/`fromCents`/`sumAmounts` 等）。
 - **兼容层**：`db.js` 内置 `?→$N` 占位符自动转换 + `INSERT RETURNING id` + SQL 双引号→单引号转换。
 

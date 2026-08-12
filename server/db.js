@@ -38,10 +38,6 @@ function convertPlaceholders(sql) {
 }
 
 /**
- * 检测是否为 INSERT 语句且未包含 RETURNING，自动补全 RETURNING id。
- * 返回的 rows 数组上挂载 insertId 属性（兼容 MariaDB 风格代码）。
- */
-/**
  * 按分号分割 SQL 脚本，但跳过 $$ ... $$ 美元引号块内的分号。
  * 用于执行含 PL/pgSQL 函数的 schema.sql。
  */
@@ -70,6 +66,10 @@ function splitSqlStatements(sql) {
   return statements;
 }
 
+/**
+ * 检测是否为 INSERT 语句且未包含 RETURNING，自动补全 RETURNING id。
+ * 返回的 rows 数组上挂载 insertId 属性（兼容 MariaDB 风格代码）。
+ */
 function autoReturning(sql) {
   const trimmed = sql.trim();
   if (!/^INSERT\s/i.test(trimmed)) return sql;
