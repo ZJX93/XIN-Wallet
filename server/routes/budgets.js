@@ -111,7 +111,7 @@ router.put('/:id', async (req, res) => {
         const baseDate = base_date || new Date().toISOString().split('T')[0];
         const range = calcPeriodRange(pType, baseDate);
         await db.query(
-            'UPDATE budgets SET name = ?, period_type = ?, start_date = ?, end_date = ?, amount = ? WHERE id = ? AND user_id = ?',
+            'UPDATE budgets SET name = $1, period_type = $2, start_date = $3, end_date = $4, amount = $5 WHERE id = $6 AND user_id = $7',
             [name.trim(), pType, range.start, range.end, amountNum, req.params.id, req.userId]
         );
         res.json(success(null, '预算已更新'));
@@ -123,7 +123,7 @@ router.put('/:id', async (req, res) => {
 // DELETE /:id → 删除预算
 router.delete('/:id', async (req, res) => {
     try {
-        await db.query('DELETE FROM budgets WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        await db.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
         res.json(success(null, '预算已删除'));
     } catch (err) {
         handleServerError(res, err);

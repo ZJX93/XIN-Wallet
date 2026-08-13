@@ -311,7 +311,7 @@ async function start() {
             const demoPw = process.env.DEMO_PASSWORD || 'demo123456';
             const demoHash = await hashPassword(demoPw);
             await db.query(
-                'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
+                'INSERT INTO users (username, password_hash, nickname) VALUES ($1, $2, $3)',
                 ['demo', demoHash, '演示用户']
             );
             console.log(`🔑 演示账号已创建  用户名: demo  密码: ******（已在 .env 中配置 DEMO_PASSWORD）`);

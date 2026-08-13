@@ -24,7 +24,7 @@ async function sumLedgerEffects(conn, userId, accountId) {
 }
 
 async function computeAccountBalance(conn, userId, accountId) {
-    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
+    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = $1 AND user_id = $2', [accountId, userId]);
     const opening = acc[0] ? parseFloat(acc[0].opening_balance || 0) : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
     return opening + effects;
@@ -51,7 +51,7 @@ async function seedUserData(userId, conn) {
     // 1. 账户（6个，覆盖各种类型）
     // ===========================================
     const existingAccounts = await conn.query(
-        'SELECT id, name FROM accounts WHERE user_id = ? ORDER BY id', [userId]
+        'SELECT id, name FROM accounts WHERE user_id = $1 ORDER BY id', [userId]
     );
 
     const accountData = [
@@ -69,10 +69,10 @@ async function seedUserData(userId, conn) {
             accountIds[accountData[i].name] = existingAccounts[i].id;
         }
         for (const a of accountData) {
-            const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ?', [accountIds[a.name]]);
+            const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = $1', [accountIds[a.name]]);
             if (acc[0] && parseFloat(acc[0].opening_balance || 0) === 0) {
                 await conn.query(
-                    'UPDATE accounts SET balance = ?, opening_balance = ?, credit_limit = ?, type = ?, icon = ? WHERE id = ?',
+                    'UPDATE accounts SET balance = $1, opening_balance = $2, credit_limit = $3, type = $4, icon = $5 WHERE id = $6',
                     [a.balance, a.balance, a.credit_limit, a.type, a.icon, accountIds[a.name]]
                 );
             }
@@ -371,7 +371,7 @@ async function seedUserData(userId, conn) {
         { name: '家庭支出',  color: '#ec4899', icon: '👨‍👩‍👧' },
         { name: '可报销',    color: '#06b6d4', icon: '🧾' },
     ];
-    const existingTags = await conn.query('SELECT COUNT(*) AS cnt FROM tags WHERE user_id = ?', [userId]);
+    const existingTags = await conn.query('SELECT COUNT(*) AS cnt FROM tags WHERE user_id = $1', [userId]);
     if (parseInt(existingTags[0].cnt) === 0) {
         for (const t of tags) {
             await conn.query(
@@ -384,7 +384,7 @@ async function seedUserData(userId, conn) {
     // ===========================================
     // 9. 投资净值快照（8周历史，用于趋势图）
     // ===========================================
-    const invList = await conn.query('SELECT id, total_cost, current_value FROM investments WHERE user_id = ?', [userId]);
+    const invList = await conn.query('SELECT id, total_cost, current_value FROM investments WHERE user_id = $1', [userId]);
     const today = new Date();
     for (let w = 8; w >= 0; w--) {
         const d = new Date(today);
@@ -410,7 +410,7 @@ async function seedUserData(userId, conn) {
     // ===========================================
     for (const aid of Object.values(accountIds)) {
         const bal = await computeAccountBalance(conn, userId, aid);
-        await conn.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ?', [bal, aid, userId]);
+        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2 AND user_id = $3', [bal, aid, userId]);
     }
 }
 

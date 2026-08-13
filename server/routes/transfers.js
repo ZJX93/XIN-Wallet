@@ -37,7 +37,7 @@ router.get('/', async (req, res) => {
         const params = [req.userId];
 
         if (month) {
-            sql += ' AND t.date::text LIKE ?';
+            sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
         }
 
@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
         // 使用事务确保一致性
         const result = await db.transaction(async (conn) => {
             // 检查转出账户
-            const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [from_account_id, req.userId]);
+            const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = $1 AND user_id = $2', [from_account_id, req.userId]);
             if (!fromAcc[0]) throw new Error('转出账户不存在');
 
             // 创建转账记录
@@ -85,7 +85,7 @@ router.post('/', async (req, res) => {
                 [req.userId, from_account_id, amountNum, `转账至${fromAcc[0].name}`, transferDate, insertResult.insertId, from_account_id]
             );
 
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = ?', [to_account_id]);
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
@@ -96,8 +96,8 @@ router.post('/', async (req, res) => {
             const toBal = await computeAccountBalance(conn, req.userId, to_account_id);
             await enforceBalanceLimit(conn, req.userId, from_account_id, fromBal);
             await enforceBalanceLimit(conn, req.userId, to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, from_account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, to_account_id]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, from_account_id]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, to_account_id]);
 
             return insertResult.insertId;
         });
@@ -133,16 +133,16 @@ router.put('/:id', async (req, res) => {
                 [from_account_id, to_account_id, amountNum, note || '', transferDate, id]
             );
 
-            await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ?', [id, req.userId]);
+            await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [id, req.userId]);
 
-            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = ?', [from_account_id]);
+            const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [from_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, 22, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
                 [req.userId, from_account_id, amountNum, `转账至${fromAcc[0]?.name || '对方'}`, transferDate, id, from_account_id]
             );
 
-            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = ?', [to_account_id]);
+            const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
          VALUES (?, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
@@ -157,7 +157,7 @@ router.put('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
             }
         });
 
@@ -176,14 +176,14 @@ router.delete('/:id', async (req, res) => {
         if (!transfer) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('转账记录不存在'));
 
         await db.transaction(async (conn) => {
-            await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ?', [id, req.userId]);
-            await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ?', [id, req.userId]);
+            await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [id, req.userId]);
+            await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2', [id, req.userId]);
             const fromBal = await computeAccountBalance(conn, req.userId, transfer.from_account_id);
             const toBal = await computeAccountBalance(conn, req.userId, transfer.to_account_id);
             await enforceBalanceLimit(conn, req.userId, transfer.from_account_id, fromBal);
             await enforceBalanceLimit(conn, req.userId, transfer.to_account_id, toBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, transfer.from_account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, transfer.to_account_id]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, transfer.from_account_id]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, transfer.to_account_id]);
         });
 
         res.json(success(null, '转账已删除'));

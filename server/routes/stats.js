@@ -64,7 +64,7 @@ router.get('/dashboard', async (req, res) => {
                 `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date::text LIKE ?`,
+       FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
                 [req.userId, currentMonth + '%']
             ),
             // 本年收支
@@ -72,7 +72,7 @@ router.get('/dashboard', async (req, res) => {
                 `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date::text LIKE ?`,
+       FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
                 [req.userId, currentYear + '%']
             ),
             // 最近6月趋势
@@ -86,7 +86,7 @@ router.get('/dashboard', async (req, res) => {
             ),
             // 账户总览
             db.query(
-                'SELECT * FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY sort_order',
+                'SELECT * FROM accounts WHERE user_id = $1 AND status = \'active\' ORDER BY sort_order',
                 [req.userId]
             ),
             // 理财总资产
@@ -152,12 +152,12 @@ router.get('/dashboard', async (req, res) => {
             ),
             // 活跃债务
             db.query(
-                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = ? AND status = \'active\'',
+                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = $1 AND status = \'active\'',
                 [req.userId]
             ),
             // 全部还款记录
             db.query(
-                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = ?',
+                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1',
                 [req.userId]
             ),
             // 债务计数
@@ -168,7 +168,7 @@ router.get('/dashboard', async (req, res) => {
             // 本月储蓄净额（savings_transactions 表可能还未创建，单独兜底不拖垮整批）
             db.queryOne(
                 `SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) as net_savings
-                 FROM savings_transactions WHERE user_id = ? AND date::text LIKE ?`,
+                 FROM savings_transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
                 [req.userId, currentMonth + '%']
             ).catch(err => {
                 console.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
@@ -354,11 +354,11 @@ router.get('/dashboard/detail', async (req, res) => {
                 dateParams = [weekStart, today];
                 break;
             case 'month':
-                dateCondition = 't.date::text LIKE ?';
+                dateCondition = 'CAST(t.date AS CHAR(10)) LIKE ?';
                 dateParams = [currentMonth + '%'];
                 break;
             case 'year':
-                dateCondition = 't.date::text LIKE ?';
+                dateCondition = 'CAST(t.date AS CHAR(10)) LIKE ?';
                 dateParams = [currentYear + '%'];
                 break;
             case 'assets':

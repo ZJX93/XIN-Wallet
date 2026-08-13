@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.app.AppOpsManager
 import android.content.pm.PackageManager
+import com.xinwallet.app.data.repository.ApkVerifier
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -161,6 +162,12 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
     /** 一键升级：已下载则直接安装；Android 8+ 若未开启「未知来源」权限，直接深链到设置页并提示 */
     fun startInstall() {
         val path = updateState.localApkPath ?: return
+        // 安装前校验：证书固定 + 拒绝降级，防止安装被篡改/降级的包
+        val result = ApkVerifier.verifyApk(context, File(path))
+        if (!result.ok) {
+            scope.launch { snackbar.showSnackbar(result.reason ?: "安装包校验失败") }
+            return
+        }
         if (canInstallPackages(context)) {
             installApk(context, path)
         } else {

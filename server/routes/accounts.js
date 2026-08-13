@@ -11,7 +11,7 @@ const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalanc
 router.get('/', async (req, res) => {
     try {
         const accounts = await db.query(
-            'SELECT * FROM accounts WHERE user_id = ? AND status = \'active\' ORDER BY sort_order',
+            'SELECT * FROM accounts WHERE user_id = $1 AND status = \'active\' ORDER BY sort_order',
             [req.userId]
         );
         // 金额精度（M3）：整数分累加，避免多账户浮点求和产生分位漂移
@@ -118,7 +118,7 @@ router.get('/:id/usage', async (req, res) => {
 router.post('/:id/close', async (req, res) => {
     try {
         await db.query(
-            'UPDATE accounts SET status = \'closed\' WHERE id = ? AND user_id = ?',
+            'UPDATE accounts SET status = \'closed\' WHERE id = $1 AND user_id = $2',
             [req.params.id, req.userId]
         );
         res.json(success(null, '账户已关闭'));
@@ -158,7 +158,7 @@ router.delete('/:id', async (req, res) => {
             return res.status(409).json(fail(`该账户存在关联数据（${detail}），无法彻底删除。请先清理相关记录，或使用「关闭账户」保留历史。`));
         }
 
-        await db.query('DELETE FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
+        await db.query('DELETE FROM accounts WHERE id = $1 AND user_id = $2', [accId, req.userId]);
         res.json(success(null, '账户已彻底删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -169,7 +169,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/reconcile', async (req, res) => {
     try {
         const accounts = await db.query(
-            "SELECT id, name, balance FROM accounts WHERE user_id = ? AND status = 'active'",
+            "SELECT id, name, balance FROM accounts WHERE user_id = $1 AND status = 'active'",
             [req.userId]
         );
         let fixed = 0;
@@ -178,7 +178,7 @@ router.post('/reconcile', async (req, res) => {
             const computed = await computeAccountBalance(db, req.userId, acc.id);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
-                await db.query('UPDATE accounts SET balance = ? WHERE id = ? AND user_id = ?', [computed, acc.id, req.userId]);
+                await db.query('UPDATE accounts SET balance = $1 WHERE id = $2 AND user_id = $3', [computed, acc.id, req.userId]);
                 fixed++;
                 // 金额精度（M3）：差额先收集，最后整数分求和，避免逐次浮点累加
                 diffs.push(subtractAmounts(computed, stored));

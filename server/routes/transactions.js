@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
         const params = [req.userId];
 
         if (month && month !== 'all') {
-            sql += ' AND t.date::text LIKE ?';
+            sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
         }
         if (type && type !== 'all') {
@@ -176,7 +176,7 @@ router.get('/ledger', async (req, res) => {
             WHERE t.user_id = ?`;
         const params = [req.userId];
         if (month && month !== 'all') {
-            sql += ' AND t.date::text LIKE ?';
+            sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
         }
         sql += ' ORDER BY t.date DESC, t.id DESC';
@@ -225,7 +225,7 @@ router.post('/', async (req, res) => {
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
             const newBalance = await computeAccountBalance(conn, req.userId, parseInt(account_id));
             await enforceBalanceLimit(conn, req.userId, parseInt(account_id), newBalance);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalance, parseInt(account_id)]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, parseInt(account_id)]);
 
             // 自动同步信用卡债务
             await syncCreditCardDebt(conn, req.userId, parseInt(account_id));
@@ -233,7 +233,7 @@ router.post('/', async (req, res) => {
             // 写入交易标签
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [insertResult.insertId, tid]);
+                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [insertResult.insertId, tid]);
             }
 
             return insertResult.insertId;
@@ -271,10 +271,10 @@ router.put('/:id', async (req, res) => {
             );
 
             // 重置交易标签
-            await conn.query('DELETE FROM transaction_tags WHERE transaction_id = ?', [id]);
+            await conn.query('DELETE FROM transaction_tags WHERE transaction_id = $1', [id]);
             const tags = Array.isArray(req.body.tags) ? req.body.tags.map(t => parseInt(t)).filter(Boolean) : [];
             for (const tid of tags) {
-                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [id, tid]);
+                await conn.query('INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2) ON CONFLICT (transaction_id, tag_id) DO NOTHING', [id, tid]);
             }
 
             // 余额由账本重算（旧账户 + 新账户，账户变更时两者都修正），彻底杜绝漂移
@@ -287,7 +287,7 @@ router.put('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affected) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
                 // 自动同步信用卡债务
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -312,15 +312,15 @@ router.delete('/:id', async (req, res) => {
             if (old.transfer_id) {
                 // 删除同一 transfer_id 的所有关联交易
                 const paired = await conn.query(
-                    'SELECT id, account_id FROM transactions WHERE transfer_id = ? AND id != ? AND user_id = ?',
+                    'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3',
                     [old.transfer_id, id, req.userId]
                 );
                 paired.forEach(p => affectedAccounts.add(parseInt(p.account_id)));
-                await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ?', [old.transfer_id, req.userId]);
+                await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
                 // 同时删除 transfers 表记录
-                await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ?', [old.transfer_id, req.userId]);
+                await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
             } else {
-                await conn.query('DELETE FROM transactions WHERE id = ?', [id]);
+                await conn.query('DELETE FROM transactions WHERE id = $1', [id]);
             }
             // 余额由账本重算，避免增量回滚的漂移
             const newBalances = {};
@@ -331,7 +331,7 @@ router.delete('/:id', async (req, res) => {
                 await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
             }
             for (const aid of affectedAccounts) {
-                await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
                 // 自动同步信用卡债务（删除交易后余额变化）
                 await syncCreditCardDebt(conn, req.userId, aid);
             }
@@ -365,12 +365,12 @@ router.get('/summary', async (req, res) => {
 
         const incomeRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'income' AND date::text LIKE ?`,
+       WHERE user_id = ? AND type = 'income' AND CAST(date AS CHAR(10)) LIKE ?`,
             [req.userId, month + '%']
         );
         const expenseRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'expense' AND date::text LIKE ?`,
+       WHERE user_id = ? AND type = 'expense' AND CAST(date AS CHAR(10)) LIKE ?`,
             [req.userId, month + '%']
         );
 
@@ -388,7 +388,7 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'expense' AND t.date::text LIKE ?
+                AND t.user_id = ? AND t.type = 'expense' AND CAST(t.date AS CHAR(10)) LIKE ?
                GROUP BY a.ancestor_id
              )
              SELECT c.id, c.name, c.icon, c.parent_id, agg.total
@@ -409,7 +409,7 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'income' AND t.date::text LIKE ?
+                AND t.user_id = ? AND t.type = 'income' AND CAST(t.date AS CHAR(10)) LIKE ?
                GROUP BY a.ancestor_id
              )
              SELECT c.id, c.name, c.icon, c.parent_id, agg.total

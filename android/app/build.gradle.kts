@@ -18,8 +18,11 @@ android {
         versionName = (project.findProperty("appVersionName") as? String) ?: "0.1.0"
     }
 
-    // 固定 debug 签名密钥：仓库内提交一把共享 keystore，CI 与本地统一用同一把密钥，
-    // 保证每次构建的 APK 签名一致，应用内「覆盖安装」升级才不会因签名不同而失败。
+    // 发布签名：优先读取 CI/本地注入的环境变量（KEYSTORE_PATH / KEY_ALIAS /
+    // KEYSTORE_PASSWORD / KEY_PASSWORD）。未配置时回退到仓库内 debug.keystore，
+    // 仅用于本地调试——切勿用这把公开密钥（密码 android）发布正式版。
+    // 正式发布请改用一把私有发布密钥（见 android/generate_release_key.sh），
+    // 并把其证书指纹填入 ApkVerifier.EXPECTED_CERT_SHA256，同时将此密钥移出仓库、由 CI Secrets 注入。
     signingConfigs {
         create("fixedDebug") {
             storeFile = file("debug.keystore")
@@ -27,6 +30,24 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
             storeType = "PKCS12"
+        }
+        create("releaseSign") {
+            val ksPath = System.getenv("KEYSTORE_PATH")
+            if (ksPath != null && ksPath.isNotBlank()) {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    ?: error("已设置 KEYSTORE_PATH，但缺少 KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                    ?: error("已设置 KEYSTORE_PATH，但缺少 KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                    ?: error("已设置 KEYSTORE_PATH，但缺少 KEY_PASSWORD")
+            } else {
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+                storeType = "PKCS12"
+            }
         }
     }
 
@@ -36,6 +57,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("releaseSign")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

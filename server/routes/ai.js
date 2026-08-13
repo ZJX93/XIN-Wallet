@@ -39,7 +39,7 @@ function validateProvider(body) {
 // 获取服务商列表
 router.get('/providers', async (req, res) => {
     try {
-        const rows = await db.query('SELECT id, user_id, name, api_type, base_url, api_key, model, is_active, sort_order, created_at FROM ai_providers WHERE user_id = ? ORDER BY sort_order, id', [req.userId]);
+        const rows = await db.query('SELECT id, user_id, name, api_type, base_url, api_key, model, is_active, sort_order, created_at FROM ai_providers WHERE user_id = $1 ORDER BY sort_order, id', [req.userId]);
         res.json(success({
             providers: rows.map(r => ({
                 id: r.id, name: r.name, api_type: r.api_type, base_url: r.base_url,
@@ -58,11 +58,11 @@ router.post('/providers', async (req, res) => {
         const { name, api_type, base_url, api_key, model, is_active, sort_order } = req.body;
         const encryptedKey = api_key ? encrypt(api_key.trim()) : null;
         const result = await db.query(
-            'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO ai_providers (user_id, name, api_type, base_url, api_key, model, is_active, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
             [req.userId, name.trim(), api_type, base_url.trim(), encryptedKey, model.trim(), is_active ? 1 : 0, sort_order || 0]
         );
         if (is_active) {
-            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ? AND id != ?', [req.userId, result.insertId]);
+            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1 AND id != $2', [req.userId, result.insertId]);
         }
         res.json(success({ id: result.insertId }, '服务商已创建'));
     } catch (err) { handleServerError(res, err); }
@@ -90,7 +90,7 @@ router.put('/providers/:id', async (req, res) => {
         await db.query(`UPDATE ai_providers SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ? AND user_id = ?`, values);
 
         if (is_active) {
-            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ? AND id != ?', [req.userId, req.params.id]);
+            await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1 AND id != $2', [req.userId, req.params.id]);
         }
         res.json(success({ updated: true }, '服务商已更新'));
     } catch (err) { handleServerError(res, err); }
@@ -101,7 +101,7 @@ router.delete('/providers/:id', async (req, res) => {
     try {
         const existing = await db.queryOne('SELECT id FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!existing) return res.status(404).json(fail('服务商不存在'));
-        await db.query('DELETE FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        await db.query('DELETE FROM ai_providers WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
         res.json(success({ deleted: true }, '服务商已删除'));
     } catch (err) { handleServerError(res, err); }
 });
@@ -111,8 +111,8 @@ router.post('/providers/:id/activate', async (req, res) => {
     try {
         const existing = await db.queryOne('SELECT id FROM ai_providers WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
         if (!existing) return res.status(404).json(fail('服务商不存在'));
-        await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = ?', [req.userId]);
-        await db.query('UPDATE ai_providers SET is_active = TRUE WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        await db.query('UPDATE ai_providers SET is_active = FALSE WHERE user_id = $1', [req.userId]);
+        await db.query('UPDATE ai_providers SET is_active = TRUE WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
         res.json(success({ activated: true }, '已启用该服务商'));
     } catch (err) { handleServerError(res, err); }
 });
@@ -155,15 +155,15 @@ router.post('/advice', async (req, res) => {
                 [req.userId, currentMonth]
             ),
             db.query(
-                'SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
+                'SELECT name, amount FROM budgets WHERE user_id = $1 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
                 [req.userId]
             ),
             db.query(
-                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = ? AND status = 'active'",
+                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = $1 AND status = 'active'",
                 [req.userId]
             ),
             db.query(
-                "SELECT name, balance, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY balance DESC",
+                "SELECT name, balance, type FROM accounts WHERE user_id = $1 AND status = 'active' ORDER BY balance DESC",
                 [req.userId]
             ),
             db.query(
@@ -257,10 +257,10 @@ router.post('/insight', async (req, res) => {
         const [summary, prevSummary, budgets, goals, accounts, debts] = await Promise.all([
             db.query(`SELECT c.name, SUM(t.amount) as total, COUNT(*) as cnt FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = ? GROUP BY c.name ORDER BY total DESC`, [req.userId, month]),
             db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = TO_CHAR(CAST(? AS DATE) - INTERVAL '1 month', 'YYYY-MM')`, [req.userId, month + '-01']),
-            db.query('SELECT name, amount FROM budgets WHERE user_id = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId]),
-            db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = ? AND status = 'active'", [req.userId]),
-            db.query("SELECT name, balance, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY balance DESC", [req.userId]),
-            db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = ? AND status != 'paid_off'", [req.userId])
+            db.query('SELECT name, amount FROM budgets WHERE user_id = $1 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId]),
+            db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = $1 AND status = 'active'", [req.userId]),
+            db.query("SELECT name, balance, type FROM accounts WHERE user_id = $1 AND status = 'active' ORDER BY balance DESC", [req.userId]),
+            db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = $1 AND status != 'paid_off'", [req.userId])
         ]);
 
         const curTotal = summary.reduce((s, r) => s + parseFloat(r.total), 0);
@@ -976,7 +976,7 @@ ${accRef}`;
                     );
                     const newBal = await computeAccountBalance(conn, req.userId, accountId);
                     await enforceBalanceLimit(conn, req.userId, accountId, newBal);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBal, accountId]);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBal, accountId]);
                     await syncCreditCardDebt(conn, req.userId, accountId);
                     return ins.insertId;
                 });
@@ -1011,8 +1011,8 @@ ${accRef}`;
                     const toBal = await computeAccountBalance(conn, req.userId, toId);
                     await enforceBalanceLimit(conn, req.userId, fromId, fromBal);
                     await enforceBalanceLimit(conn, req.userId, toId, toBal);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [fromBal, fromId]);
-                    await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [toBal, toId]);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [fromBal, fromId]);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [toBal, toId]);
                     return ins.insertId;
                 });
                 return { ok: true, transaction_id: txId, type: 'transfer', amount, from_account_id: fromId, to_account_id: toId };
@@ -1021,14 +1021,14 @@ ${accRef}`;
                 const metric = args.metric;
                 const month = args.month || new Date().toISOString().slice(0, 7);
                 if (metric === 'total_balance') {
-                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = ? AND status='active'", [req.userId]);
+                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = $1 AND status='active'", [req.userId]);
                     return { ok: true, metric, value: parseFloat(rows[0].b) };
                 }
                 if (metric === 'month_income' || metric === 'month_expense' || metric === 'month_balance') {
                     const rows = await db.query(
                         `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as inc,
                                 COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as exp
-                         FROM transactions WHERE user_id = ? AND date::text LIKE ? AND type IN ('income','expense')`,
+                         FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ? AND type IN ('income','expense')`,
                         [req.userId, month + '%']
                     );
                     const inc = parseFloat(rows[0].inc), exp = parseFloat(rows[0].exp);
@@ -1039,7 +1039,7 @@ ${accRef}`;
                     const rows = await db.query(
                         `SELECT c.name, COALESCE(SUM(t.amount),0) as amt FROM transactions t
                          LEFT JOIN categories c ON t.category_id = c.id
-                         WHERE t.user_id = ? AND t.date::text LIKE ? AND t.type='expense'
+                         WHERE t.user_id = ? AND CAST(t.date AS CHAR(10)) LIKE ? AND t.type='expense'
                          GROUP BY c.name ORDER BY amt DESC LIMIT 8`,
                         [req.userId, month + '%']
                     );
@@ -1069,8 +1069,8 @@ ${accRef}`;
                 const params = [req.userId];
                 if (keyword) { sql += ' AND (t.note LIKE ? OR c.name LIKE ? OR a.name LIKE ?)'; params.push(keyword, keyword, keyword); }
                 if (amount !== null && amount > 0) { sql += ' AND t.amount = ?'; params.push(amount); }
-                if (dateFrom) { sql += ' AND t.date::date >= ?'; params.push(dateFrom); }
-                if (dateTo) { sql += ' AND t.date::date <= ?'; params.push(dateTo); }
+                if (dateFrom) { sql += ' AND t.date >= ?'; params.push(dateFrom); }
+                if (dateTo) { sql += ' AND t.date <= ?'; params.push(dateTo); }
                 sql += ' ORDER BY t.date DESC, t.id DESC LIMIT ?';
                 params.push(limit);
                 const rows = await db.query(sql, params);
@@ -1111,7 +1111,7 @@ ${accRef}`;
                     for (const aid of affected) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affected) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
                     for (const aid of affected) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });
@@ -1127,20 +1127,20 @@ ${accRef}`;
                     const affectedAccounts = new Set([parseInt(old.account_id)]);
                     if (old.transfer_id) {
                         const paired = await conn.query(
-                            'SELECT id, account_id FROM transactions WHERE transfer_id = ? AND id != ? AND user_id = ?',
+                            'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3',
                             [old.transfer_id, txId, req.userId]
                         );
                         paired.forEach(p => { affectedAccounts.add(parseInt(p.account_id)); });
-                        await conn.query('DELETE FROM transactions WHERE transfer_id = ? AND user_id = ?', [old.transfer_id, req.userId]);
-                        await conn.query('DELETE FROM transfers WHERE id = ? AND user_id = ?', [old.transfer_id, req.userId]);
+                        await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
+                        await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
                     } else {
-                        await conn.query('DELETE FROM transactions WHERE id = ?', [txId]);
+                        await conn.query('DELETE FROM transactions WHERE id = $1', [txId]);
                     }
                     const newBalances = {};
                     for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
                     for (const aid of affectedAccounts) await enforceBalanceLimit(conn, req.userId, aid, newBalances[aid]);
                     for (const aid of affectedAccounts) {
-                        await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [newBalances[aid], aid]);
+                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalances[aid], aid]);
                         await syncCreditCardDebt(conn, req.userId, aid);
                     }
                 });

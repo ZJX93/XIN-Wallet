@@ -94,26 +94,26 @@ router.post('/:id/allocate', async (req, res) => {
             const catId = await ensureCategory(conn, req.userId, '储蓄存入', 'expense', '🏦');
             // 转账记录（来源 -> 储蓄账户）
             const tr = await conn.query(
-                'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, CURRENT_DATE, \'completed\')',
+                'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, \'completed\')',
                 [req.userId, srcId, goal.account_id, amount, `存入「${goal.name}」`]
             );
             const tid = tr.insertId;
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, 'transfer_out', ?, ?, CURRENT_DATE, ?, ?, NULL)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES ($1, $2, $3, 'transfer_out', $4, $5, CURRENT_DATE, $6, $7, NULL)",
                 [req.userId, srcId, catId, amount, `存入「${goal.name}」`, tid, srcId]
             );
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, 'transfer_in', ?, ?, CURRENT_DATE, ?, NULL, ?)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES ($1, $2, $3, 'transfer_in', $4, $5, CURRENT_DATE, $6, NULL, $7)",
                 [req.userId, goal.account_id, catId, amount, `存入「${goal.name}」`, tid, goal.account_id]
             );
             const srcBal = await computeAccountBalance(conn, req.userId, srcId);
             const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
             await enforceBalanceLimit(conn, req.userId, srcId, srcBal);
             await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [srcBal, srcId]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
-            await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
-            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'deposit\', ?, CURRENT_DATE, ?)',
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [srcBal, srcId]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [savBal, goal.account_id]);
+            await conn.query('UPDATE savings_goals SET current_amount = $1 WHERE id = $2', [savBal, id]);
+            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES ($1, $2, $3, \'deposit\', $4, CURRENT_DATE, $5)',
                 [req.userId, id, srcId, amount, `存入「${goal.name}」`]);
         });
         res.json(success(null, '已存入目标'));
@@ -138,26 +138,26 @@ router.post('/:id/withdraw', async (req, res) => {
             const catId = await ensureCategory(conn, req.userId, '储蓄取出', 'income', '🏦');
             // 转账记录（储蓄账户 -> 目标账户）
             const tr = await conn.query(
-                'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, CURRENT_DATE, \'completed\')',
+                'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES ($1, $2, $3, $4, $5, CURRENT_DATE, \'completed\')',
                 [req.userId, goal.account_id, destId, amount, `取回「${goal.name}」`]
             );
             const tid = tr.insertId;
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, 'transfer_out', ?, ?, CURRENT_DATE, ?, ?, NULL)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES ($1, $2, $3, 'transfer_out', $4, $5, CURRENT_DATE, $6, $7, NULL)",
                 [req.userId, goal.account_id, catId, amount, `取回「${goal.name}」`, tid, goal.account_id]
             );
             await conn.query(
-                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES (?, ?, ?, 'transfer_in', ?, ?, CURRENT_DATE, ?, NULL, ?)",
+                "INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id) VALUES ($1, $2, $3, 'transfer_in', $4, $5, CURRENT_DATE, $6, NULL, $7)",
                 [req.userId, destId, catId, amount, `取回「${goal.name}」`, tid, destId]
             );
             const savBal = await computeAccountBalance(conn, req.userId, goal.account_id);
             const destBal = await computeAccountBalance(conn, req.userId, destId);
             await enforceBalanceLimit(conn, req.userId, goal.account_id, savBal);
             await enforceBalanceLimit(conn, req.userId, destId, destBal);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [savBal, goal.account_id]);
-            await conn.query('UPDATE accounts SET balance = ? WHERE id = ?', [destBal, destId]);
-            await conn.query('UPDATE savings_goals SET current_amount = ? WHERE id = ?', [savBal, id]);
-            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES (?, ?, ?, \'withdraw\', ?, CURRENT_DATE, ?)',
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [savBal, goal.account_id]);
+            await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [destBal, destId]);
+            await conn.query('UPDATE savings_goals SET current_amount = $1 WHERE id = $2', [savBal, id]);
+            await conn.query('INSERT INTO savings_transactions (user_id, goal_id, account_id, type, amount, date, note) VALUES ($1, $2, $3, \'withdraw\', $4, CURRENT_DATE, $5)',
                 [req.userId, id, destId, amount, `取出「${goal.name}」`]);
         });
         res.json(success(null, '已取回'));
@@ -167,7 +167,7 @@ router.post('/:id/withdraw', async (req, res) => {
 // 删除储蓄目标
 router.delete('/:id', async (req, res) => {
     try {
-        await db.query('DELETE FROM savings_goals WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        await db.query('DELETE FROM savings_goals WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
         res.json(success(null, '目标已删除'));
     } catch (err) { handleServerError(res, err); }
 });

@@ -10,12 +10,12 @@
 // ==========================================
 async function ensureCategory(conn, userId, name, type, icon) {
     let cat = await conn.query(
-        "SELECT id FROM categories WHERE name = ? AND type = ? AND (user_id IS NULL OR user_id = ?) LIMIT 1",
+        "SELECT id FROM categories WHERE name = $1 AND type = $2 AND (user_id IS NULL OR user_id = $3) LIMIT 1",
         [name, type, userId]
     );
     if (cat.length === 0) {
         const result = await conn.query(
-            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, '#6366f1', TRUE)",
+            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES ($1, $2, $3, $4, '#6366f1', TRUE)",
             [userId, name, type, icon]
         );
         return result.insertId;
@@ -28,7 +28,7 @@ async function ensureCategory(conn, userId, name, type, icon) {
 // ==========================================
 async function syncCreditCardDebt(conn, userId, accountId) {
     const acctRows = await conn.query(
-        'SELECT name, type, balance, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
+        'SELECT name, type, balance, credit_limit FROM accounts WHERE id = $1 AND user_id = $2',
         [accountId, userId]
     );
     const account = acctRows[0];
@@ -43,20 +43,20 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 
     // 查找已关联的债务（按名称匹配）
     const debtRows = await conn.query(
-        "SELECT id FROM debts WHERE user_id = ? AND type = 'credit_card' AND name = ?",
+        "SELECT id FROM debts WHERE user_id = $1 AND type = 'credit_card' AND name = $2",
         [userId, account.name]
     );
     const debt = debtRows[0];
 
     if (owes <= 0) {
         if (debt) {
-            await conn.query("UPDATE debts SET remaining = 0, monthly_payment = 0, min_payment = 0, status = 'paid_off' WHERE id = ?", [debt.id]);
+            await conn.query("UPDATE debts SET remaining = 0, monthly_payment = 0, min_payment = 0, status = 'paid_off' WHERE id = $1", [debt.id]);
         }
     } else {
         const minPmt = Math.max(Math.round(owes * 0.1), 500);
         if (debt) {
             await conn.query(
-                'UPDATE debts SET remaining = ?, monthly_payment = 0, min_payment = ?, interest_rate = 18.25, method = \'minimum\', status = \'active\' WHERE id = ?',
+                'UPDATE debts SET remaining = $1, monthly_payment = 0, min_payment = $2, interest_rate = 18.25, method = \'minimum\', status = \'active\' WHERE id = $3',
                 [owes, minPmt, debt.id]
             );
         } else {

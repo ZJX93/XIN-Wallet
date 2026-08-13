@@ -145,7 +145,7 @@ async function sumLedgerEffects(conn, userId, accountId) {
 // 是"计算 → 落库 → 再读出参与下一轮计算"的闭环起点，也是浮点误差被放大
 // 并永久固化的关键链路。此处改用整数分精确加法，杜绝分位漂移。
 async function computeAccountBalance(conn, userId, accountId) {
-    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = ? AND user_id = ?', [accountId, userId]);
+    const acc = await conn.query('SELECT opening_balance FROM accounts WHERE id = $1 AND user_id = $2', [accountId, userId]);
     const opening = acc[0] ? acc[0].opening_balance : 0;
     const effects = await sumLedgerEffects(conn, userId, accountId);
     // 储蓄目标现已镜像关联账户的余额（current_amount = 账户余额），
@@ -157,7 +157,7 @@ async function computeAccountBalance(conn, userId, accountId) {
 // 用于交易/转账/还款/储蓄等可能改变余额的操作
 async function enforceBalanceLimit(conn, userId, accountId, balance) {
     const rows = await conn.query(
-        'SELECT name, type, credit_limit FROM accounts WHERE id = ? AND user_id = ?',
+        'SELECT name, type, credit_limit FROM accounts WHERE id = $1 AND user_id = $2',
         [accountId, userId]
     );
     const acc = rows[0];

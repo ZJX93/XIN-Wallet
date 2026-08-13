@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 默认禁止一切明文 HTTP；仅本机调试接口（localhost / 127.0.0.1）允许明文，便于连接本地后端。
+     外部下载 / 接口（GitHub、NAS）均走 HTTPS，不在此放行。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
