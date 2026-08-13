@@ -44,7 +44,7 @@ import com.xinwallet.app.ui.components.LinearProgress
 import com.xinwallet.app.ui.components.LoadingBox
 import com.xinwallet.app.ui.components.PullRefreshBox
 import com.xinwallet.app.ui.components.SectionTitle
-import com.xinwallet.app.ui.components.TopBar
+import com.xinwallet.app.ui.components.BookHeader
 import com.xinwallet.app.ui.components.TrendLineChart
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.IncomeColor
@@ -63,7 +63,7 @@ fun HomeScreen(navController: NavHostController) {
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
 
     Scaffold(
-        topBar = { TopBar("鑫钱包") },
+        topBar = { BookHeader() },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         when {

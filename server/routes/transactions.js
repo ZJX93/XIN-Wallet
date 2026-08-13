@@ -431,4 +431,45 @@ router.get('/summary', async (req, res) => {
     }
 });
 
+// 获取单条交易（按 id 精确获取，供编辑态使用，避免前端拉取全量列表）
+router.get('/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (!Number.isInteger(id)) return res.status(ErrorCodes.BAD_REQUEST).json(failBadRequest('无效的交易 ID'));
+        const rows = await db.query(
+            `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
+                a.name as acc_name, a.icon as acc_icon, b.name as budget_name
+             FROM transactions t
+             LEFT JOIN categories c ON t.category_id = c.id
+             LEFT JOIN accounts a ON t.account_id = a.id
+             LEFT JOIN budgets b ON t.budget_id = b.id
+             WHERE t.id = ? AND t.user_id = ?`,
+            [id, req.userId]
+        );
+        if (!rows[0]) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
+        const t = rows[0];
+        const tagRows = await db.query(
+            `SELECT tg.id, tg.name, tg.color, tg.icon
+             FROM transaction_tags tt JOIN tags tg ON tt.tag_id = tg.id
+             WHERE tt.transaction_id = ?`,
+            [id]
+        );
+        const formatted = {
+            id: t.id,
+            type: t.type,
+            amount: parseFloat(t.amount),
+            date: fmtDateTime(t.date),
+            note: t.note || '',
+            category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
+            account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon },
+            budget_id: t.budget_id,
+            budget_name: t.budget_name,
+            tags: tagRows.map(r => ({ id: r.id, name: r.name, color: r.color, icon: r.icon }))
+        };
+        res.json(success(formatted));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
 module.exports = router;

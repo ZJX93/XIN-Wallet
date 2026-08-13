@@ -4,6 +4,7 @@
    ============================================ */
 
 const db = require('../db');
+const logger = require('./logger');
 const { calcDebtDueSummary } = require('../services/debt-summary');
 // 金额精度工具（修复审核报告 M3：浮点累加分位漂移）
 const { sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf } = require('../services/money');
@@ -72,7 +73,7 @@ function fmtDateTime(v) {
 }
 
 function handleServerError(res, err, label = '操作') {
-    console.error(`[ERROR] ${label}:`, err && err.stack ? err.stack : err);
+    logger.error(`[ERROR] ${label}: ${err && err.stack ? err.stack : err}`);
     return res.status(500).json(fail('服务器内部错误，请稍后重试', 500));
 }
 

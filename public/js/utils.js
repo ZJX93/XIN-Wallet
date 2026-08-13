@@ -33,7 +33,7 @@ function csvCell(v) {
 async function api(path, method = 'GET', body = null, opts = {}) {
     const { silent = false } = opts;
     const headers = { 'Content-Type': 'application/json' };
-    const token = (typeof localStorage !== 'undefined') ? localStorage.getItem('zhicai_token') : null;
+    const token = (typeof localStorage !== 'undefined') ? localStorage.getItem('xin_token') : null;
     if (token) headers['Authorization'] = 'Bearer ' + token;
 
     const reqOpts = { method, headers };

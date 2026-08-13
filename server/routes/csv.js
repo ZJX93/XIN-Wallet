@@ -3,7 +3,7 @@ const router = express.Router();
 
 const db = require('../db');
 const { parseCsvLine, toAmount } = require('../validate');
-const { success, fail, handleServerError } = require('./_helpers');
+const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
 const { encrypt, decrypt } = require('../crypto');
 
 // ==========================================
@@ -89,8 +89,9 @@ router.post('/import/csv', async (req, res) => {
                         'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES ($1, $2, $3, $4, $5, $6, $7)',
                         [req.userId, acc.id, categoryId, typeVal, amount, row['note'] || '', date]
                     );
-                    if (typeVal === 'income') await conn.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [amount, acc.id]);
-                    else await conn.query('UPDATE accounts SET balance = balance - $1 WHERE id = $2', [amount, acc.id]);
+                    // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
+                    const newBalance = await computeAccountBalance(conn, req.userId, acc.id);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, acc.id]);
                     return r.insertId;
                 });
                 imported++;

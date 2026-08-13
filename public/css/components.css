@@ -578,7 +578,7 @@
 
 /* ============ 理财持仓：按类型真实叠牌 ============ */
 /* 最多露出 3 张叠牌，错距收窄，避免 14+ 产品时封面比单卡高出太多 */
-.inv-stack { margin-bottom: var(--space-4); --inv-stack-shift: 11px; padding: 0 var(--space-2); }
+.inv-stack { margin-bottom: var(--space-4); --stack-shift: 11px; padding: 0 var(--space-2); }
 
 /* 牌堆封面：作为牌堆第一张（.inv-stack-card:first-child）参与堆叠，外观交给 .goal-card */
 /* 旧 .inv-deck-cover 横条样式已废弃（封面现已并入叠牌序列），此处不再保留 */
@@ -597,19 +597,19 @@
 .inv-stack-cards {
   position: relative;
   /* 底部预留空间按 min(产品数, 3) 张计算，防止封面整体过高 */
-  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--inv-stack-shift, 11px));
+  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--stack-shift, 11px));
 }
 
 /* 超过 3 张产品牌时隐藏后面的，只保留封面 + 前 3 张作为视觉叠层 */
 .inv-stack-card:nth-child(n+5) { display: none; }
 
-/* 持仓卡片：收起态真实叠牌（绝对定位下移叠加，顶卡在流内撑高度） */
-.inv-stack-card {
+/* 牌堆卡片通用叠牌布局（理财/账户共用，统一 --stack-shift 变量，值仍为 11px） */
+.inv-stack-card,
+.acc-stack-card {
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 240px;
   transform-origin: top center;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 11px)));
+  transform: translateY(calc(var(--i, 0) * var(--stack-shift, 11px)));
   z-index: calc(var(--n, 1) - var(--i, 0));
   cursor: pointer;
   pointer-events: auto;
@@ -618,11 +618,18 @@
               box-shadow .3s var(--ease-out-quart),
               border-color .3s var(--ease-out-quart);
 }
+.inv-stack-card { height: 240px; }
+.acc-stack-card { height: 180px; }
+
 /* 顶卡落在文档流里，撑开容器高度并作牌堆封面 */
-.inv-stack-card:first-child {
+.inv-stack-card:first-child,
+.acc-stack-card:first-child {
   position: relative;
   transform: none;
   z-index: var(--n, 1);
+}
+/* 理财封面首张额外三段布局（账户封面由 .goal-card 基类提供 flex） */
+.inv-stack-card:first-child {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -651,16 +658,18 @@
   font-weight: var(--fw-medium);
 }
 /* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
-.inv-stack-card:hover {
+.inv-stack-card:hover,
+.acc-stack-card:hover {
   z-index: 900;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 11px) - 10px)) scale(1.015);
+  transform: translateY(calc(var(--i, 0) * var(--stack-shift, 11px) - 10px)) scale(1.015);
   box-shadow: var(--shadow-lg);
   border-color: var(--accent-500);
 }
 /* 点击：弹出一点（置顶 + 上浮 + 微旋转 + 放大），露出操作按钮 */
-.inv-stack-card.popped {
+.inv-stack-card.popped,
+.acc-stack-card.popped {
   z-index: 1000;
-  transform: translateY(calc(var(--i, 0) * var(--inv-stack-shift, 11px) - 18px)) scale(1.04) rotate(-1.5deg);
+  transform: translateY(calc(var(--i, 0) * var(--stack-shift, 11px) - 18px)) scale(1.04) rotate(-1.5deg);
   box-shadow: var(--shadow-xl);
   border-color: var(--accent-500);
 }
@@ -757,7 +766,7 @@
 }
 
 /* ============ 账户：按类型真实叠牌（牌堆跟随账户网格列宽，不横跨整行） ============ */
-.acc-stack { margin-bottom: var(--space-4); --acc-stack-shift: 11px; padding: 0 var(--space-2); }
+.acc-stack { margin-bottom: var(--space-4); --stack-shift: 11px; padding: 0 var(--space-2); }
 
 /* 账户牌堆封面：与理财封面同构（竖版三段，作为牌堆首张压在产品卡上） */
 .acc-deck-card {
@@ -769,44 +778,10 @@
 .acc-stack-cards {
   position: relative;
   /* 底部预留空间按 min(产品数, 3) 张计算，最多露出 3 张叠层 */
-  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--acc-stack-shift, 11px));
+  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--stack-shift, 11px));
 }
 
-/* 账户卡片：收起态真实叠牌（绝对定位下移叠加，顶卡在流内撑高度） */
-.acc-stack-card {
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 180px;
-  transform-origin: top center;
-  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 11px)));
-  z-index: calc(var(--n, 1) - var(--i, 0));
-  cursor: pointer;
-  pointer-events: auto;
-  box-shadow: var(--shadow-md);
-  transition: transform .45s var(--ease-out-quart),
-              box-shadow .3s var(--ease-out-quart),
-              border-color .3s var(--ease-out-quart);
-}
-/* 顶卡落在文档流里，撑开容器高度并作牌堆封面 */
-.acc-stack-card:first-child {
-  position: relative;
-  transform: none;
-  z-index: var(--n, 1);
-}
-/* hover：抬起并置顶（修复「光标点到没变化」），被遮住的卡片也能露出来点 */
-.acc-stack-card:hover {
-  z-index: 900;
-  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 11px) - 10px)) scale(1.015);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--accent-500);
-}
-/* 点击：弹出一点（置顶 + 上浮 + 微旋转 + 放大），露出操作按钮 */
-.acc-stack-card.popped {
-  z-index: 1000;
-  transform: translateY(calc(var(--i, 0) * var(--acc-stack-shift, 11px) - 18px)) scale(1.04) rotate(-1.5deg);
-  box-shadow: var(--shadow-xl);
-  border-color: var(--accent-500);
-}
+/* 账户卡片高度差异与操作区（其余叠牌布局见上方共享 .inv-stack-card/.acc-stack-card） */
 .acc-stack-card .account-actions {
   pointer-events: auto;
 }

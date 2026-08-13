@@ -17,6 +17,7 @@ data class ProfileUiState(
     val themeMode: String = "system",
     val baseUrl: String = "",
     val username: String = "",
+    val memberDays: Int = 0,
     val message: String? = null
 )
 
@@ -53,7 +54,8 @@ class ProfileViewModel(
             _state.value = ProfileUiState(
                 themeMode = session.themeMode(),
                 baseUrl = session.baseUrl().takeUnless(::isPlaceholderUrl) ?: "",
-                username = session.username()
+                username = session.username(),
+                memberDays = session.memberDays()
             )
         }
     }

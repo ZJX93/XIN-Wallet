@@ -38,6 +38,10 @@ import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
 import com.xinwallet.app.ui.theme.LocalIsDark
+import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown300
+import com.xinwallet.app.ui.theme.Brown500
+import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.util.formatMoney
 
 /** 近 N 月收支趋势折线图（Canvas 自绘，零依赖） */
@@ -79,6 +83,49 @@ fun TrendLineChart(
 
         drawSeries(expenses, expenseColor)
         drawSeries(incomes, incomeColor)
+    }
+}
+
+/**
+ * 单条趋势折线图（统计页按维度切换：支出线 / 收入线 / 结余累计线）。
+ * 自动标出峰值点（series 中最大值）并高亮，其余与 [TrendLineChart] 视觉一致。
+ *
+ * @param values 单系列数值（按日顺序）。
+ * @param color  线条颜色（支出=绿、收入=红、结余=品牌棕）。
+ * @param peakIndex 需要高亮的点下标（如峰值日）；为 null 时不额外高亮。
+ */
+@Composable
+fun TrendLineChartSingle(
+    values: List<Double>,
+    color: Color,
+    modifier: Modifier = Modifier,
+    peakIndex: Int? = null
+) {
+    val maxV = (values.maxOrNull() ?: 1.0).let { if (it <= 0) 1.0 else it }
+    Canvas(modifier.fillMaxWidth().height(170.dp)) {
+        val w = size.width
+        val h = size.height
+        val n = maxOf(values.size, 1)
+        val pad = 18.dp.toPx()
+        val usableH = h - pad * 2
+        val xAt: (Int) -> Float = { i -> if (n == 1) w / 2f else (i.toFloat() / (n - 1)) * w }
+        val yAt: (Double) -> Float = { v -> h - pad - (v / maxV).toFloat() * usableH }
+
+        val line = Path().apply {
+            values.forEachIndexed { i, v -> if (i == 0) moveTo(xAt(i), yAt(v)) else lineTo(xAt(i), yAt(v)) }
+        }
+        val fill = Path().apply {
+            moveTo(xAt(0), h - pad)
+            values.forEachIndexed { i, v -> lineTo(xAt(i), yAt(v)) }
+            lineTo(xAt(values.lastIndex), h - pad)
+            close()
+        }
+        drawPath(fill, color.copy(alpha = 0.12f))
+        drawPath(line, color, style = Stroke(width = 3.dp.toPx()))
+        values.forEachIndexed { i, v ->
+            val isPeak = i == peakIndex
+            drawCircle(color, if (isPeak) 6.dp.toPx() else 4.dp.toPx(), Offset(xAt(i), yAt(v)))
+        }
     }
 }
 
@@ -240,12 +287,83 @@ fun CategoryBars(items: List<ReportCategorySlice>, modifier: Modifier = Modifier
     }
 }
 
-/** 分类占比配色（暖色系，契合 App 主题） */
+/** 分类占比配色（暖棕品牌族，与 Web tokens 一致；红=收入、绿=支出、琥珀=告警、蓝=信息） */
 private val SLICE_PALETTE = listOf(
-    Color(0xFFC0794E), Color(0xFF7FA37F), Color(0xFF6B8CAE), Color(0xFFB08968),
-    Color(0xFF9C7BA6), Color(0xFFC9A14A), Color(0xFF5FA08A), Color(0xFFBE7B7B),
-    Color(0xFF7E8BB0), Color(0xFFA8A15C)
+    Color(0xFF995F2C),  // accent-500 主品牌（暖棕）
+    Color(0xFFD39562),  // accent-300
+    Color(0xFFB58300),  // warning-500 琥珀
+    Color(0xFFC11435),  // error-500 红（收入语义）
+    Color(0xFF009558),  // success-500 绿（支出语义）
+    Color(0xFF61370D),  // accent-700 深棕
+    Color(0xFF6A9BC7),  // info-500 蓝（来自 Web chart.js）
+    Color(0xFF8C6A4A),  // 中性棕
+    Color(0xFFED324B),  // error-400 亮红
+    Color(0xFF00B870)   // success-400 亮绿
 )
+
+/**
+ * 环形图（中央可叠加文本），用于"分类排行"卡片中的占比可视化。
+ * 单系列数据，按数值从大到小上色：主色始终给最大项，其余用调色板降序分配。
+ *
+ * @param data (标签, 数值) 列表，data 为空时不绘制并返回 EmptyState。
+ * @param centerTitle 中心第一行文本（如"工资"）。
+ * @param centerAmount 中心第二行金额（如"¥ 50.00"），为空则不显示金额行。
+ */
+@Composable
+fun DonutChart(
+    data: List<Pair<String, Double>>,
+    modifier: Modifier = Modifier,
+    centerTitle: String? = null,
+    centerAmount: String? = null
+) {
+    val positive = data.filter { it.second > 0 }.sortedByDescending { it.second }
+    if (positive.isEmpty()) {
+        EmptyState("该周期暂无数据")
+        return
+    }
+    val total = positive.sumOf { it.second }.coerceAtLeast(0.0001)
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val ring = Brown500
+
+    Column(
+        modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
+            Canvas(Modifier.size(160.dp)) {
+                val stroke = 18.dp.toPx()
+                val r = (size.minDimension - stroke) / 2f
+                val c = Offset(size.width / 2, size.height / 2)
+                drawCircle(track, style = Stroke(stroke), radius = r, center = c)
+                var start = -90f
+                positive.forEachIndexed { idx, (_, v) ->
+                    val sweep = (v / total * 360.0).toFloat()
+                    val color = when (idx) {
+                        0 -> ring
+                        else -> SLICE_PALETTE[idx % SLICE_PALETTE.size]
+                    }
+                    drawArc(
+                        color = color,
+                        startAngle = start, sweepAngle = sweep, useCenter = false,
+                        style = Stroke(stroke),
+                        topLeft = Offset(c.x - r, c.y - r),
+                        size = Size(r * 2, r * 2)
+                    )
+                    start += sweep
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                centerTitle?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                }
+                centerAmount?.let {
+                    Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
 
 /** 环形进度（预算/储蓄目标用） */
 @Composable

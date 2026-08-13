@@ -650,6 +650,35 @@ async function buildCashFlow(userId, start, end, income, expense, debtRepayment)
 // 路由
 // ==========================================
 
+// ==========================================
+// Top5 交易排行（按 支出/收入 分别取）
+// 综合 /reports 的 topExpenses 只返回支出 Top5，收入页需要独立的 Top5。
+// 参数：period=YYYY-MM（锁月），type=expense|income
+// ==========================================
+router.get('/top-transactions', async (req, res) => {
+    try {
+        const { period, type = 'expense' } = req.query;
+        if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+            return res.status(400).json(fail('请指定月份（YYYY-MM）'));
+        }
+        const y = parseInt(period.slice(0, 4), 10);
+        const m = parseInt(period.slice(5, 7), 10);
+        const start = `${period}-01`;
+        const end = `${period}-${lastDayOfMonth(y, m)}`;
+        const tType = type === 'income' ? 'income' : 'expense';
+        const rows = await db.query(
+            `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
+             FROM transactions t JOIN categories c ON t.category_id = c.id
+             WHERE t.user_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
+             ORDER BY t.amount DESC LIMIT 5`,
+            [req.userId, tType, start, end]
+        );
+        res.json(success({ items: rows.map(r => ({ ...r, amount: parseFloat(r.amount) })) }));
+    } catch (err) {
+        handleServerError(res, err, '查询 Top 交易');
+    }
+});
+
 router.get('/', async (req, res) => {
     try {
         const { type = 'monthly', period } = req.query;

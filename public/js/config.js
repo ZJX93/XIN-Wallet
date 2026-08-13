@@ -4,6 +4,6 @@
 window.XIN_API_BASE = (new URL('.', location.href).pathname.replace(/\/+$/, '')) + '/api';
 
 // 登录检查：未登录则跳转登录页（同步执行，避免页面闪动）
-if (!localStorage.getItem('zhicai_token') && location.pathname.indexOf('/login') === -1) {
+if (!localStorage.getItem('xin_token') && location.pathname.indexOf('/login') === -1) {
     location.href = '/login';
 }

@@ -38,7 +38,7 @@ const writeLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: userKeyGenerator,
-    method: 'POST',
+    method: ['POST', 'PUT', 'DELETE'],
     message: { success: false, message: '写操作频率过高，请稍后再试' },
 });
 

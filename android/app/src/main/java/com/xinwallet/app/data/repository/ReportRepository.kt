@@ -7,4 +7,7 @@ import com.xinwallet.app.data.remote.safeApiCall
 class ReportRepository(private val apiProvider: () -> ApiService) {
     suspend fun getReport(type: String, period: String) =
         safeApiCall { apiProvider().getReport(type, period) }
+
+    suspend fun getTopTransactions(type: String, period: String) =
+        safeApiCall { apiProvider().getTopTransactions(type, period) }
 }

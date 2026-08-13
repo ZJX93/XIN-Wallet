@@ -417,14 +417,13 @@ router.post('/investments/:id/transactions', async (req, res) => {
                 await db.transaction(async (conn) => {
                     const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
+                            `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
              VALUES (?, ?, ?, 'income', ?, ?, ?)`,
-                        [req.userId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date]
-                    );
-                    await conn.query(
-                        'UPDATE accounts SET balance = balance + $1 WHERE id = $2',
-                        [parseFloat(amount), investment.account_id]
-                    );
+                            [req.userId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date]
+                        );
+                        // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
+                        const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                        await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
                 });
             }
             msg = type === 'dividend' ? '分红已记录' : '利息已记录';
@@ -481,7 +480,9 @@ router.put('/investments/:id/sell', async (req, res) => {
            VALUES (?, ?, ?, 'income', ?, ?, ?)`,
                     [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
                 );
-                await conn.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [sellAmount, investment.account_id]);
+                // 以账本为准重算账户余额
+                const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
             }
         });
 
@@ -535,7 +536,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
                          VALUES (?, ?, ?, 'expense', ?, ?, ?)`,
                         [req.userId, investment.account_id, buyCatId, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0]]
                     );
-                    await conn.query('UPDATE accounts SET balance = balance - $1 WHERE id = $2', [buyAmount, investment.account_id]);
+                    // 以账本为准重算账户余额
+                    const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
                 }
                 res.json(success(null, '已加仓'));
             } else {
@@ -564,7 +567,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
            VALUES (?, ?, ?, 'income', ?, ?, ?)`,
                         [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
                     );
-                    await conn.query('UPDATE accounts SET balance = balance + $1 WHERE id = $2', [sellAmount, investment.account_id]);
+                    // 以账本为准重算账户余额
+                    const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                    await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
                 }
                 res.json(success(null, remainingQty > 0 ? '已减仓' : '已清仓'));
             }

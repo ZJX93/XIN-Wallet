@@ -84,7 +84,12 @@ app.use(compression({
 
 // 中间件
 // 修复（P1/P2）：生产环境使用 combined 日志格式（无色彩，含完整 URL 与响应时间，更适合采集）
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// 请求日志接入结构化 logger（替代默认 morgan 控制台输出，统一日志出口）
+app.use(morgan((tokens, req, res) => {
+    const duration = parseFloat(tokens['response-time'](req, res)) || 0;
+    logger.http(req, res, duration);
+    return undefined; // 交由 logger 统一输出，morgan 不再直接写控制台
+}, { skip: (req) => req.path === '/healthz' || req.path === '/readyz' }));
 // 修复（P1）：显式 body limit，防止 DoS。Express 4.x 默认 100kb 对 /import/full 等导入接口可能不足，
 // 但过大会放大单请求攻击面；选 1mb 与 csv 单笔最大 5mb 之间留出余量，超出请客户端分批。
 app.use(express.json({ limit: '1mb' }));
@@ -164,6 +169,9 @@ const swaggerAssetPath = swaggerUiDist.getAbsoluteFSPath();
 app.use('/swagger-static', express.static(swaggerAssetPath, {
     setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=86400'), // 1 天
 }));
+
+// 暴露 OpenAPI 规范（Swagger UI 通过 /openapi.json 拉取）
+app.get('/openapi.json', (req, res) => res.json(openapiSpec));
 
 // Swagger UI 页面（自定义 HTML，引用 /swagger-static 下的本地资源）
 // 安全加固：生产环境关闭未鉴权的 API 文档，避免对内暴露完整接口清单。

@@ -632,7 +632,18 @@ data class FinanceReport(
     @SerializedName("expenseByCategory") val expenseByCategory: List<ReportCategorySlice> = emptyList(),
     @SerializedName("incomeByCategory") val incomeByCategory: List<ReportCategorySlice> = emptyList(),
     @SerializedName("topExpenses") val topExpenses: List<TopExpense> = emptyList(),
+    @SerializedName("budgetExecution") val budgetExecution: List<ReportBudgetExec> = emptyList(),
     val compare: ReportCompare? = null
+)
+
+/** 月度预算执行（结余 tab 展示） */
+data class ReportBudgetExec(
+    val id: Int = 0,
+    val name: String = "",
+    val icon: String? = "💰",
+    val budget: Double = 0.0,
+    val actual: Double = 0.0,
+    val usage: Double = 0.0
 )
 
 data class ReportSummary(
@@ -677,6 +688,20 @@ data class ReportCompare(
     val balance: Double = 0.0
 )
 
+/** GET /reports/top-transactions 返回：按 type 取 Top5 交易 */
+data class TopTransactionsResponse(
+    val items: List<TopTransaction> = emptyList()
+)
+
+data class TopTransaction(
+    val id: Int = 0,
+    val date: String = "",
+    val amount: Double = 0.0,
+    val note: String? = null,
+    @SerializedName("category_name") val categoryName: String? = null,
+    @SerializedName("category_icon") val categoryIcon: String? = null
+)
+
 /* ----------------------------- 标签 ----------------------------- */
 
 data class Tag(
@@ -688,6 +713,20 @@ data class Tag(
 
 data class CreateTagRequest(val name: String, val color: String, val icon: String)
 data class UpdateTagRequest(val name: String, val color: String, val icon: String)
+
+/* 分类增删改请求体（后端 categories 要求 name + type 必填） */
+data class CreateCategoryRequest(
+    val name: String,
+    val type: String,
+    val icon: String? = null,
+    val color: String? = null
+)
+data class UpdateCategoryRequest(
+    val name: String,
+    val type: String,
+    val icon: String? = null,
+    val color: String? = null
+)
 
 /* ----------------------------- 数据导入导出 ----------------------------- */
 

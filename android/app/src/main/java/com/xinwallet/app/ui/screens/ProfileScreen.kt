@@ -15,8 +15,10 @@ import android.content.ClipboardManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,15 +29,32 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -50,7 +69,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,8 +80,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -75,6 +95,10 @@ import com.xinwallet.app.ui.components.BalanceCard
 import com.xinwallet.app.ui.components.SectionTitle
 import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.navigation.Screen
+import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown300
+import com.xinwallet.app.ui.theme.Brown500
+import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.viewmodel.AccountsViewModel
 import com.xinwallet.app.ui.viewmodel.CsvViewModel
 import com.xinwallet.app.ui.viewmodel.ProfileViewModel
@@ -83,6 +107,13 @@ import com.xinwallet.app.util.todayDate
 import java.io.File
 import kotlinx.coroutines.launch
 
+/**
+ * 「我的」页 — 参考暖棕记账 app 改版
+ * 1) 头像 + 昵称 + 编辑 + 陪伴天数
+ * 2) 12 宫格快捷入口（暖棕淡填充 + 线性图标）
+ * 3) 设置列表（关于我们）
+ * 4) 高级（服务器地址 / 应用更新 / 数据管理 / 外观主题 / 退出登录）
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
@@ -105,10 +136,8 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
     LaunchedEffect(csvState.toast) { csvState.toast?.let { snackbar.showSnackbar(it); csvVm.consumeToast() } }
     LaunchedEffect(csvState.error) { csvState.error?.let { snackbar.showSnackbar(it); csvVm.consumeError() } }
     LaunchedEffect(Unit) { accVm.load() }
-    // 进入「我的」页自动检查一次新版本（ViewModel 内部已防止并发重复检查）
     LaunchedEffect(Unit) { vm.checkUpdate(BuildConfig.VERSION_NAME) }
 
-    /** 调起系统安装器安装本地 APK（通过 FileProvider 暴露，避免 file:// 暴露崩溃） */
     fun installApk(ctx: Context, path: String?) {
         if (path == null) return
         val file = File(path)
@@ -126,7 +155,6 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         }
     }
 
-    /** 跳转系统「未知来源应用」设置页，引导用户手动开启本应用的安装权限 */
     fun openUnknownSourcesSettings(ctx: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
@@ -141,13 +169,10 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         }
     }
 
-    /** 是否允许本应用安装未知来源 APK（跨版本可靠判断：API29+ 用 AppOps，O~P 用权限，<O 恒真） */
     fun canInstallPackages(ctx: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            // OPSTR_REQUEST_INSTALL_PACKAGES 的字面值（API29+ 的 public 常量，
-            // 但部分编译工具链在 compileSdk 下不稳定暴露该常量，故直接写入以保证可编译）
             appOps.unsafeCheckOpNoThrow(
                 "android:request_install_packages",
                 android.os.Process.myUid(),
@@ -159,10 +184,8 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         }
     }
 
-    /** 一键升级：已下载则直接安装；Android 8+ 若未开启「未知来源」权限，直接深链到设置页并提示 */
     fun startInstall() {
         val path = updateState.localApkPath ?: return
-        // 安装前校验：证书固定 + 拒绝降级，防止安装被篡改/降级的包
         val result = ApkVerifier.verifyApk(context, File(path))
         if (!result.ok) {
             scope.launch { snackbar.showSnackbar(result.reason ?: "安装包校验失败") }
@@ -187,7 +210,6 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
         }
     }
 
-    /** 把纯文本写进本机 Download 目录，并通过 FileProvider 调起系统分享/保存 */
     fun shareTextFile(content: String, baseName: String, mime: String, ext: String) {
         try {
             val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -209,51 +231,110 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
 
     val themeOptions = listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
     val busy = csvState.busy
+    val firstChar = state.username.firstOrNull()?.toString()?.uppercase() ?: "U"
+    val memberDays = state.memberDays.coerceAtLeast(0)
 
-    Scaffold(topBar = { TopBar("我的") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
+    Scaffold(
+        topBar = { TopBar("我的") },
+        snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+        ) {
+            Spacer(Modifier.height(8.dp))
+
+            // 1) 头像 + 昵称 + 编辑
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("当前用户", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    Text(state.username.ifBlank { "未登录" }, style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                Box(
+                    Modifier.size(56.dp).clip(CircleShape).background(Brown100),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(firstChar, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Brown500)
                 }
-            }
-
-            Spacer(Modifier.height(20.dp))
-            SectionTitle("资产账户")
-            BalanceCard(
-                title = "总资产",
-                amount = accState.totalAssets,
-                subtitle = "点击查看与管理账户",
-                modifier = Modifier.padding(bottom = 12.dp),
-                onClick = { navController.navigate(Screen.Accounts.route) }
-            )
-
-            Spacer(Modifier.height(20.dp))
-            SectionTitle("报表中心")
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column {
-                    SettingRow(
-                        icon = Icons.Filled.BarChart,
-                        label = "报表中心",
-                        sub = "收支趋势 / 资产负债表",
-                        onClick = { navController.navigate(Screen.Reports.route) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            state.username.ifBlank { "未登录" },
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Filled.Edit, contentDescription = "编辑昵称", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        if (memberDays > 0) "已经记账 $memberDays 天" else "今天开始记录吧",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
             Spacer(Modifier.height(20.dp))
+
+            // 2) 12 宫格快捷入口
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(Modifier.padding(vertical = 12.dp)) {
+                    val items = listOf(
+                        QuickAction("截图记账", Icons.Filled.CameraAlt, QuickActionKind.Nav(Screen.AiScan.route)) { navController.navigate(Screen.AiScan.route) },
+                        QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav(Screen.Categories.route)) { navController.navigate(Screen.Categories.route) },
+                        QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav(Screen.Tags.route)) { navController.navigate(Screen.Tags.route) },
+                        QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav(Screen.Accounts.route)) { navController.navigate(Screen.Accounts.route) },
+                        QuickAction("账单导出", Icons.Filled.Download, QuickActionKind.Action) {
+                            csvVm.exportCsv("transactions") { shareTextFile(it, "xinwallet_transactions", "text/csv", "csv") }
+                        },
+                        QuickAction("密码锁", Icons.Filled.Lock, QuickActionKind.Toast) { scope.launch { snackbar.showSnackbar("密码锁开发中") } },
+                        QuickAction("投资理财", Icons.Filled.ShowChart, QuickActionKind.Nav(Screen.Investments.route)) { navController.navigate(Screen.Investments.route) },
+                        QuickAction("AI 对话", Icons.Filled.Chat, QuickActionKind.Nav(Screen.Chat.route)) { navController.navigate(Screen.Chat.route) },
+                        QuickAction("报表分析", Icons.Filled.PieChart, QuickActionKind.Nav(Screen.Reports.route)) { navController.navigate(Screen.Reports.route) },
+                        QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) },
+                        QuickAction("预算管理", Icons.Filled.Receipt, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) },
+                        QuickAction("借贷", Icons.Filled.SwapHoriz, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) }
+                    )
+                    items.chunked(4).forEach { row ->
+                        Row(Modifier.fillMaxWidth()) {
+                            row.forEach { item ->
+                                QuickGridItem(item, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // 4) 设置列表
+            SectionTitle("设置")
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column {
+                    ListItem(
+                        icon = Icons.Filled.Info,
+                        title = "关于我们",
+                        subtitle = "v${BuildConfig.VERSION_NAME}"
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // 5) 主题切换
             SectionTitle("外观主题")
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 themeOptions.forEachIndexed { index, (value, label) ->
                     SegmentedButton(
                         selected = state.themeMode == value,
@@ -262,7 +343,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         colors = SegmentedButtonDefaults.colors(
                             activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
                             activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            inactiveContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            inactiveContainerColor = MaterialTheme.colorScheme.surface,
                             inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         modifier = Modifier.weight(1f)
@@ -273,11 +354,14 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             }
 
             Spacer(Modifier.height(20.dp))
+
+            // 6) 高级：服务器地址
             SectionTitle("服务器地址")
             Text(
                 "App 直连 NAS 上的 XinWallet 后端，修改后即时生效。",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
@@ -286,23 +370,29 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                 label = { Text("服务器地址") },
                 placeholder = { Text("https://your-nas.com:18888/api") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(8.dp))
-            Button(onClick = { vm.saveServer(server) }, modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { vm.saveServer(server) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            ) {
                 Text("保存服务器地址")
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
+
+            // 7) 高级：应用更新
             SectionTitle("应用更新")
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.SystemUpdate, "升级", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.SystemUpdate, "升级", tint = Brown500)
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text("检查更新", style = MaterialTheme.typography.bodyLarge)
@@ -323,7 +413,6 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         }
                     }
-
                     Spacer(Modifier.height(12.dp))
                     when {
                         updateState.downloading -> {
@@ -363,9 +452,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         OutlinedButton(
                             onClick = { vm.consumeUpdateError(); vm.checkUpdate(BuildConfig.VERSION_NAME) },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("重试")
-                        }
+                        ) { Text("重试") }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = {
@@ -374,48 +461,49 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                                 Toast.makeText(context, "下载链接已复制，可粘贴到手机浏览器打开", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("复制下载链接")
-                        }
+                        ) { Text("复制下载链接") }
                     }
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
+
+            // 8) 高级：数据管理
             SectionTitle("数据管理")
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column {
-                    SettingRow(
+                    ListItem(
                         icon = Icons.Filled.Sell,
-                        label = "标签管理",
-                        sub = "分类与自定义标记",
+                        title = "标签管理",
+                        subtitle = "分类与自定义标记",
                         onClick = { navController.navigate(Screen.Tags.route) }
                     )
-                    HorizontalDivider()
-                    SettingRow(
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ListItem(
                         icon = Icons.Filled.Download,
-                        label = "导出交易 CSV",
-                        sub = "导出为本机 CSV 文件",
+                        title = "导出交易 CSV",
+                        subtitle = "导出为本机 CSV 文件",
                         busy = busy,
                         onClick = { csvVm.exportCsv("transactions") { shareTextFile(it, "xinwallet_transactions", "text/csv", "csv") } }
                     )
-                    HorizontalDivider()
-                    SettingRow(
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ListItem(
                         icon = Icons.Filled.Upload,
-                        label = "导入交易 CSV",
-                        sub = "从本机文件批量导入",
+                        title = "导入交易 CSV",
+                        subtitle = "从本机文件批量导入",
                         busy = busy,
                         onClick = { pickCsv.launch("*/*") }
                     )
-                    HorizontalDivider()
-                    SettingRow(
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ListItem(
                         icon = Icons.Filled.Description,
-                        label = "导出完整账本 JSON",
-                        sub = "含账户 / 交易 / 标签",
+                        title = "导出完整账本 JSON",
+                        subtitle = "含账户 / 交易 / 标签",
                         busy = busy,
                         onClick = { csvVm.exportFull { shareTextFile(it, "xinwallet_full", "application/json", "json") } }
                     )
@@ -423,33 +511,69 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             }
 
             Spacer(Modifier.height(28.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.Center) {
                 OutlinedButton(onClick = { vm.logout(); onLogout() }) {
                     Text("退出登录")
                 }
             }
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
 
+/* ============================================================
+ * 私有 Composable
+ * ============================================================ */
+
+private enum class QuickActionKind { Toast, Nav, Action }
+
+private data class QuickAction(
+    val label: String,
+    val icon: ImageVector,
+    val kind: QuickActionKind,
+    val onClick: () -> Unit
+)
+
 @Composable
-private fun SettingRow(
-    icon: ImageVector,
-    label: String,
-    sub: String,
-    onClick: () -> Unit,
-    busy: Boolean = false
-) {
-    Row(
-        Modifier.fillMaxWidth().clickable(enabled = !busy, onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun QuickGridItem(item: QuickAction, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.clickable { item.onClick() }.padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(icon, label, tint = MaterialTheme.colorScheme.primary)
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(Brown50),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(item.icon, contentDescription = item.label, tint = Brown500, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(item.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun ListItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+    onClick: (() -> Unit)? = null,
+    busy: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    val baseModifier = Modifier
+        .fillMaxWidth()
+        .then(if (onClick != null && !busy) Modifier.clickable { onClick() } else Modifier)
+        .padding(horizontal = 16.dp, vertical = 14.dp)
+    Row(baseModifier, verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, title, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
+        if (trailing != null) trailing()
         if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
     }
 }

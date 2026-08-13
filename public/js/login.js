@@ -2,7 +2,7 @@
    鑫钱包 · 独立登录/注册页逻辑
    ============================================ */
 
-const TOKEN_KEY = 'zhicai_token';
+const TOKEN_KEY = 'xin_token';
 const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
 const USER_KEY = 'zhicai_user';
 

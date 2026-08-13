@@ -18,7 +18,7 @@ const CsvManager = {
     },
     async exportCsv() {
         try {
-            const token = localStorage.getItem('zhicai_token');
+            const token = localStorage.getItem('xin_token');
             const res = await fetch(`${API}/export/csv?type=transactions`, {
                 headers: token ? { Authorization: 'Bearer ' + token } : {}
             });

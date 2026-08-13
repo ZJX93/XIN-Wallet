@@ -473,7 +473,7 @@ const AIRecognition = {
         document.getElementById('ocrRecognizeBtn').disabled = true;
 
         try {
-            const token = localStorage.getItem('zhicai_token');
+            const token = localStorage.getItem('xin_token');
             const res = await fetch(`${API}/ai/ocr`, {
                 method: 'POST',
                 headers: token ? { 'Authorization': 'Bearer ' + token } : {},

@@ -4,7 +4,7 @@
    登录/注册 UI 已迁移到独立 login.html，本模块不再管理弹窗。
    ============================================ */
 
-const TOKEN_KEY = 'zhicai_token';
+const TOKEN_KEY = 'xin_token';
 const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
 const USER_KEY = 'zhicai_user';
 

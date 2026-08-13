@@ -3,29 +3,84 @@ package com.xinwallet.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.model.FinanceReport
+import com.xinwallet.app.data.model.TopTransaction
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.ReportRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
+/**
+ * 统计页状态。
+ * - dataType: 当前查看维度 = expense(支出) / income(收入) / balance(结余)，默认支出。
+ * - period: 锁月，格式 YYYY-MM。
+ * - report: 当月完整报表（由 /reports 获取，切换 dataType 不重拉）。
+ * - topTransactions: 当前 dataType 的 Top5 交易（由 /reports/top-transactions 获取）。
+ */
 data class ReportsUiState(
     val loading: Boolean = false,
     val error: String? = null,
-    /** 当前已加载的报表；切换周期时先保留旧数据避免闪白 */
-    val report: FinanceReport? = null
+    val period: String = currentMonth(),
+    val dataType: String = "expense",
+    val report: FinanceReport? = null,
+    val topTransactions: List<TopTransaction> = emptyList()
 )
+
+fun currentMonth(): String {
+    val c = Calendar.getInstance()
+    return String.format(Locale.CHINA, "%04d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1)
+}
+
+fun shiftMonth(period: String, delta: Int): String {
+    val m = Regex("(\\d{4})-(\\d{2})").find(period)
+    val y = m?.groupValues?.get(1)?.toInt() ?: Calendar.getInstance().get(Calendar.YEAR)
+    val mo = m?.groupValues?.get(2)?.toInt() ?: 1
+    val c = Calendar.getInstance().apply { set(y, mo - 1, 1); add(Calendar.MONTH, delta) }
+    return String.format(Locale.CHINA, "%04d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1)
+}
 
 class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
     private val _state = MutableStateFlow(ReportsUiState(loading = true))
     val state: StateFlow<ReportsUiState> = _state
 
-    fun load(type: String, period: String) {
+    init { loadReport() }
+
+    fun setPeriod(period: String) {
+        if (period == _state.value.period) return
+        _state.value = _state.value.copy(period = period)
+        loadReport()
+    }
+
+    fun setDataType(type: String) {
+        if (type == _state.value.dataType) return
+        _state.value = _state.value.copy(dataType = type)
+        if (type != "balance") loadTopTransactions(type)
+    }
+
+    private fun loadReport() {
+        val period = _state.value.period
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
-            when (val r = repo.getReport(type, period)) {
-                is ApiResult.Success -> _state.value = _state.value.copy(loading = false, report = r.data)
+            when (val r = repo.getReport("monthly", period)) {
+                is ApiResult.Success -> {
+                    _state.value = _state.value.copy(loading = false, report = r.data)
+                    if (_state.value.dataType != "balance") loadTopTransactions(_state.value.dataType)
+                }
                 is ApiResult.Error -> _state.value = _state.value.copy(loading = false, error = r.message)
+            }
+        }
+    }
+
+    /** Top5 交易：仅支出/收入维度需要；余额维度不展示单笔排行 */
+    private fun loadTopTransactions(type: String) {
+        val period = _state.value.period
+        viewModelScope.launch {
+            when (val r = repo.getTopTransactions(type, period)) {
+                is ApiResult.Success -> _state.value = _state.value.copy(topTransactions = r.data.items)
+                is ApiResult.Error -> { /* Top5 为增强信息，失败静默，不影响主报表 */ }
             }
         }
     }

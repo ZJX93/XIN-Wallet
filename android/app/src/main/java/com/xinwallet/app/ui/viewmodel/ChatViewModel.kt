@@ -164,14 +164,19 @@ class ChatViewModel(
     /** 解压 zip（含子目录）到 outDir */
     private fun unzip(zip: File, outDir: File) {
         outDir.mkdirs()
+        val destDir = outDir.canonicalFile
         ZipInputStream(zip.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
-                val file = File(outDir, entry.name)
-                if (entry.isDirectory) file.mkdirs()
+                // Zip Slip 防护：校验解压目标始终落在 outDir 内，拒绝 ../ 或绝对路径逃逸
+                val target = File(outDir, entry.name).canonicalFile
+                if (!target.path.startsWith(destDir.path + File.separator) && target != destDir) {
+                    throw SecurityException("非法的 zip 条目，疑似路径穿越: ${entry.name}")
+                }
+                if (entry.isDirectory) target.mkdirs()
                 else {
-                    file.parentFile?.mkdirs()
-                    file.outputStream().buffered().use { fos -> zis.copyTo(fos) }
+                    target.parentFile?.mkdirs()
+                    target.outputStream().buffered().use { fos -> zis.copyTo(fos) }
                 }
                 zis.closeEntry()
                 entry = zis.nextEntry

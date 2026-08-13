@@ -162,10 +162,36 @@ function translateConflict(sql) {
   return sql;
 }
 
+/**
+ * MySQL 方言的 PostgreSQL 函数翻译（best-effort，未经真实 MySQL 回归，生产前需在 MySQL 环境验证）。
+ *   - TO_CHAR(expr, 'FMT') -> DATE_FORMAT(expr, 'mysqlFmt')（覆盖 YYYY-MM / YYYY-MM-DD 等）
+ *   - expr - INTERVAL 'N unit' -> expr - INTERVAL N UNIT（去引号、单位单数化，MySQL 原生支持）
+ * 仅处理引号外的函数调用；字符串字面量内的同名写法不受影响。
+ */
+function pgFmtToMysql(fmt) {
+  return fmt
+    .replace(/YYYY/gi, '%Y')
+    .replace(/MM/gi, '%m')
+    .replace(/DD/gi, '%d')
+    .replace(/HH24/gi, '%H')
+    .replace(/MI/gi, '%i')
+    .replace(/SS/gi, '%s');
+}
+function translatePgFunctionsToMysql(sql) {
+  let out = sql.replace(/TO_CHAR\(\s*([^,]+?)\s*,\s*'([^']*)'\s*\)/gi,
+    (m, expr, fmt) => `DATE_FORMAT(${expr.trim()}, '${pgFmtToMysql(fmt)}')`);
+  out = out.replace(/INTERVAL\s+'?(\d+)\s*(days|day|months|month|years|year)'?/gi,
+    (m, n, unit) => {
+      const u = { day: 'DAY', days: 'DAY', month: 'MONTH', months: 'MONTH', year: 'YEAR', years: 'YEAR' }[unit.toLowerCase()] || unit.toUpperCase();
+      return `INTERVAL ${n} ${u}`;
+    });
+  return out;
+}
+
 // 归一化 + 方言适配：把业务 SQL 转换为当前数据库可执行的语句。
 function prepare(sql) {
   if (IS_PG) return autoReturning(toPgPlaceholders(sql));
-  return translateConflict(toMysqlPlaceholders(sql));
+  return translateConflict(toMysqlPlaceholders(translatePgFunctionsToMysql(sql)));
 }
 
 function attachInsertId(rows) {
@@ -219,7 +245,7 @@ async function transaction(fn) {
     const conn = await pool.getConnection();
     const origQuery = conn.query.bind(conn);
     conn.query = async (sql, params = []) => {
-      const [rows] = await origQuery(translateConflict(toMysqlPlaceholders(sql)), params);
+      const [rows] = await origQuery(translateConflict(toMysqlPlaceholders(translatePgFunctionsToMysql(sql))), params);
       return rows;
     };
     try {

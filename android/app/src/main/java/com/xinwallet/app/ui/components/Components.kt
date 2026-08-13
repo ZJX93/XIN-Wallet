@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
@@ -64,7 +65,13 @@ import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
 import com.xinwallet.app.ui.theme.LocalIsDark
+import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown300
+import com.xinwallet.app.ui.theme.Brown500
+import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.util.formatMoney
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
 
 @Composable
 fun TopBar(title: String, onBack: (() -> Unit)? = null) {
@@ -104,6 +111,121 @@ fun BalanceCard(title: String, amount: Double, subtitle: String? = null, modifie
                 Spacer(Modifier.height(4.dp))
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
             }
+        }
+    }
+}
+
+/**
+ * Hero 渐变卡：用于首页"本月支出 ¥1.00"类醒目头卡（暖棕渐变 + 大数字）。
+ * 副标题区支持左右两段（本月收入 / 日均支出 等对照指标）。
+ */
+@Composable
+fun HeroGradientCard(
+    amount: Double,
+    topLeft: String,
+    topRight: String? = null,
+    bottomLeft: String? = null,
+    bottomRight: String? = null,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    val gradient = Brush.linearGradient(
+        colors = listOf(Brown500, Brown300)
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth().then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.Transparent
+    ) {
+        Box(
+            Modifier.fillMaxWidth().background(gradient).padding(20.dp)
+        ) {
+            Column {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(topLeft, style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    if (topRight != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.22f)
+                        ) {
+                            Text(
+                                topRight,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "¥ ${formatMoney(amount)}",
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                if (bottomLeft != null || bottomRight != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        bottomLeft?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.92f))
+                        }
+                        bottomRight?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.92f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 2x2 KPI 网格小卡：用于"支出金额/日均支出/本月预算/剩余预算"四联展示。
+ * 每张卡片左侧一个圆形小图标 + 标题，下方大数字。
+ */
+@Composable
+fun StatKpiCard(
+    title: String,
+    amount: Double,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Card(
+        modifier = Modifier.then(modifier).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Brown50,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = null, tint = Brown500, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "¥ ${formatMoney(amount)}",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = Brown500
+            )
         }
     }
 }
@@ -490,6 +612,38 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> U
         if (onRetry != null) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onRetry) { Text("重试") }
+        }
+    }
+}
+
+/**
+ * 顶部账本标题（截图统一样式）：居中"默认账本 ⇄"，右侧搜索图标。
+ * 首页 / 账单 / 统计 三页共用。
+ */
+@Composable
+fun BookHeader(
+    onSwapBook: () -> Unit = {},
+    onSearch: () -> Unit = {}
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Row(
+            Modifier.clickable(onClick = onSwapBook),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("默认账本", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(4.dp))
+            Text("⇄", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onSearch) {
+            Icon(Icons.Filled.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

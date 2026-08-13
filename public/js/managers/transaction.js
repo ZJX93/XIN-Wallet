@@ -248,8 +248,11 @@ const TransactionManager = {
         this.updateBudgetSelect();
         if (editId) {
             document.getElementById('transModalTitle').textContent = '编辑交易';
-            const trans = await api(`/transactions?limit=999`);
-            const t = trans?.find(x => x.id === editId);
+            // 按 id 精确获取单条交易，避免拉取全量列表（性能）
+            let t = null;
+            try {
+                t = await api(`/transactions/${editId}`, 'GET', null, { silent: true });
+            } catch (e) { t = null; }
             if (t) {
                 document.getElementById('transEditId').value = t.id;
                 document.getElementById('transAmount').value = t.amount;

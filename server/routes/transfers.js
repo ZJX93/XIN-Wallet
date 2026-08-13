@@ -6,6 +6,7 @@ const {
     success, handleServerError, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failValidation, failNotFound, failBadRequest, failConflict, fail
 } = require('./_helpers');
+const { ensureCategory } = require('./utils');
 
 // 业务错误 → HTTP code 智能映射（用于 catch 块）
 // 仅白名单的已知业务错误使用 err.message；未识别错误统一返回通用提示，避免泄露数据库堆栈/内部细节
@@ -71,6 +72,9 @@ router.post('/', async (req, res) => {
             const fromAcc = await conn.query('SELECT * FROM accounts WHERE id = $1 AND user_id = $2', [from_account_id, req.userId]);
             if (!fromAcc[0]) throw new Error('转出账户不存在');
 
+            // 转账分类兜底：优先复用种子「一般转账」(id=22, type=transfer)，缺失则自动创建，避免硬编码 category_id
+            const transferCatId = await ensureCategory(conn, req.userId, '一般转账', 'transfer', '🏦');
+
             // 创建转账记录
             const insertResult = await conn.query(
                 `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status)
@@ -81,15 +85,15 @@ router.post('/', async (req, res) => {
             // 余额由账本推导（复式记账 single source of truth）
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (?, ?, 22, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                [req.userId, from_account_id, amountNum, `转账至${fromAcc[0].name}`, transferDate, insertResult.insertId, from_account_id]
+         VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+                [req.userId, from_account_id, transferCatId, amountNum, `转账至${fromAcc[0].name}`, transferDate, insertResult.insertId, from_account_id]
             );
 
             const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (?, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                [req.userId, to_account_id, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, insertResult.insertId, to_account_id]
+         VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+                [req.userId, to_account_id, transferCatId, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, insertResult.insertId, to_account_id]
             );
 
             const fromBal = await computeAccountBalance(conn, req.userId, from_account_id);
@@ -128,6 +132,8 @@ router.put('/:id', async (req, res) => {
         const affectedAccounts = new Set([old.from_account_id, old.to_account_id, from_account_id, to_account_id]);
 
         await db.transaction(async (conn) => {
+            // 转账分类兜底（同 post 路由）
+            const transferCatId = await ensureCategory(conn, req.userId, '一般转账', 'transfer', '🏦');
             await conn.query(
                 `UPDATE transfers SET from_account_id=?, to_account_id=?, amount=?, note=?, date=? WHERE id=?`,
                 [from_account_id, to_account_id, amountNum, note || '', transferDate, id]
@@ -138,15 +144,15 @@ router.put('/:id', async (req, res) => {
             const fromAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [from_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (?, ?, 22, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                [req.userId, from_account_id, amountNum, `转账至${fromAcc[0]?.name || '对方'}`, transferDate, id, from_account_id]
+         VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+                [req.userId, from_account_id, transferCatId, amountNum, `转账至${fromAcc[0]?.name || '对方'}`, transferDate, id, from_account_id]
             );
 
             const toAcc = await conn.query('SELECT name FROM accounts WHERE id = $1', [to_account_id]);
             await conn.query(
                 `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-         VALUES (?, ?, 22, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                [req.userId, to_account_id, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, id, to_account_id]
+         VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+                [req.userId, to_account_id, transferCatId, amountNum, `来自${toAcc[0]?.name || '转账'}`, transferDate, id, to_account_id]
             );
 
             const newBalances = {};

@@ -1,5 +1,8 @@
 package com.xinwallet.app.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,19 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -44,66 +43,46 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.xinwallet.app.data.model.ReportCategorySlice
+import com.xinwallet.app.data.model.TopTransaction
 import com.xinwallet.app.di.AppContainer
-import com.xinwallet.app.ui.components.CategoryPie
+import com.xinwallet.app.ui.components.BookHeader
+import com.xinwallet.app.ui.components.CategoryBars
+import com.xinwallet.app.ui.components.DonutChart
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
+import com.xinwallet.app.ui.components.LinearProgress
 import com.xinwallet.app.ui.components.LoadingBox
-import com.xinwallet.app.ui.components.SectionTitle
-import com.xinwallet.app.ui.components.TopBar
-import com.xinwallet.app.ui.components.TrendLineChart
-import com.xinwallet.app.ui.theme.IncomeColor
-import com.xinwallet.app.ui.theme.IncomeColorDark
-import com.xinwallet.app.ui.theme.ExpenseColor
-import com.xinwallet.app.ui.theme.ExpenseColorDark
-import com.xinwallet.app.ui.theme.LocalIsDark
 import com.xinwallet.app.ui.viewmodel.ReportsViewModel
+import com.xinwallet.app.ui.viewmodel.shiftMonth
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
+import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.util.formatMoney
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import java.text.DecimalFormat
-import java.util.Calendar
-import java.util.Locale
-import kotlin.math.abs
+import java.util.regex.Pattern
 
-private val TYPE_OPTIONS = listOf("monthly" to "月", "quarterly" to "季", "annual" to "年")
+private val DATA_TYPE_OPTIONS = listOf("expense" to "支出", "income" to "收入", "balance" to "结余")
+private val GRAN_OPTIONS = listOf("minor" to "小类", "major" to "大类") // 截图：默认"小类"激活
 
-private fun defaultPeriod(type: String): String {
-    val c = Calendar.getInstance()
-    return when (type) {
-        "quarterly" -> { val q = c.get(Calendar.MONTH) / 3 + 1; "${c.get(Calendar.YEAR)}-Q$q" }
-        "annual" -> "${c.get(Calendar.YEAR)}"
-        else -> String.format(Locale.CHINA, "%04d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1)
-    }
+/** "2026-08" → "2026年8月" */
+private fun monthLabel(period: String): String {
+    val m = Pattern.compile("(\\d{4})-(\\d{2})").matcher(period)
+    if (!m.find()) return period
+    return "${m.group(1)}年${m.group(2)?.toIntOrNull() ?: 0}月"
 }
 
-private fun shiftPeriod(type: String, period: String, delta: Int): String {
-    return when (type) {
-        "annual" -> {
-            val y = period.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
-            "${y + delta}"
-        }
-        "quarterly" -> {
-            val m = Regex("(\\d{4})-Q(\\d)").find(period)
-            var y = m?.groupValues?.get(1)?.toInt() ?: Calendar.getInstance().get(Calendar.YEAR)
-            var q = m?.groupValues?.get(2)?.toInt() ?: 1
-            q += delta
-            while (q < 1) { q += 4; y -= 1 }
-            while (q > 4) { q -= 4; y += 1 }
-            "$y-Q$q"
-        }
-        else -> {
-            val m = Regex("(\\d{4})-(\\d{2})").find(period)
-            val y = m?.groupValues?.get(1)?.toInt() ?: Calendar.getInstance().get(Calendar.YEAR)
-            val mo = m?.groupValues?.get(2)?.toInt() ?: 1
-            val c = Calendar.getInstance().apply { set(y, mo - 1, 1); add(Calendar.MONTH, delta) }
-            String.format(Locale.CHINA, "%04d-%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1)
-        }
-    }
-}
+/** "2026-08-12" → "2026-08-12"（趋势头部用 ISO 日期，跟截图一致） */
+private fun isoDay(iso: String): String = iso.take(10)
 
+/**
+ * 统计页（截图版布局）：
+ * 顶部：[支出/收入/结余 tab]               [‹ 2026年08月 ›]
+ *   ─ 支出: 4KPI(2x2) → 支出趋势 → 分类排行 → 明细排行
+ *   ─ 收入: 2KPI → 收入趋势 → 分类排行 → 明细排行
+ *   ─ 结余: 2KPI → 结余趋势 → 每日概况（绿色表头大表格）
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen() {
@@ -111,25 +90,21 @@ fun ReportsScreen() {
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
-    var type by remember { mutableStateOf("monthly") }
-    var period by remember { mutableStateOf(defaultPeriod("monthly")) }
-
-    LaunchedEffect(type, period) { vm.load(type, period) }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
 
     Scaffold(
-        topBar = { TopBar(state.report?.label ?: "报表分析") },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         when {
             state.loading && state.report == null -> LoadingBox()
-            state.error != null && state.report == null -> ErrorState(state.error!!, onRetry = { vm.load(type, period) })
-            state.report != null -> ReportContent(state.report!!, type, period,
-                onTypeChange = {
-                    type = it
-                    period = defaultPeriod(it)
-                },
-                onShift = { period = shiftPeriod(type, period, it) },
+            state.error != null && state.report == null -> ErrorState(state.error!!, onRetry = { vm.setPeriod(state.period) })
+            state.report != null -> ReportContent(
+                report = state.report!!,
+                dataType = state.dataType,
+                period = state.period,
+                topTransactions = state.topTransactions,
+                onDataTypeChange = vm::setDataType,
+                onShiftMonth = { vm.setPeriod(shiftMonth(state.period, it)) },
                 modifier = Modifier.fillMaxSize().padding(padding)
             )
             else -> EmptyState("暂无报表数据")
@@ -141,124 +116,280 @@ fun ReportsScreen() {
 @Composable
 private fun ReportContent(
     report: com.xinwallet.app.data.model.FinanceReport,
-    type: String,
+    dataType: String,
     period: String,
-    onTypeChange: (String) -> Unit,
-    onShift: (Int) -> Unit,
+    topTransactions: List<TopTransaction>,
+    onDataTypeChange: (String) -> Unit,
+    onShiftMonth: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expenseParent by remember { mutableStateOf<Int?>(null) }
-    var incomeParent by remember { mutableStateOf<Int?>(null) }
+    var granularity by remember { mutableStateOf("minor") } // 截图：默认"小类"激活
 
-    val topExpenseItems = remember(report.expenseByCategory, expenseParent) {
-        if (expenseParent == null) report.expenseByCategory.filter { it.parentId == null }
-        else report.expenseByCategory.filter { it.parentId == expenseParent }
+    // KPI 计算
+    val kpis = remember(report, dataType) { buildKpis(dataType, report) }
+
+    // 趋势序列 + 峰值日
+    val series = remember(report, dataType) {
+        when (dataType) {
+            "income" -> report.dailyTrend.map { it.income }
+            "balance" -> {
+                val out = mutableListOf<Double>()
+                var acc = 0.0
+                report.dailyTrend.forEach { p -> acc += (p.income - p.expense); out.add(acc) }
+                out
+            }
+            else -> report.dailyTrend.map { it.expense }
+        }
     }
-    val topIncomeItems = remember(report.incomeByCategory, incomeParent) {
-        if (incomeParent == null) report.incomeByCategory.filter { it.parentId == null }
-        else report.incomeByCategory.filter { it.parentId == incomeParent }
+    val peakIndex = remember(series) {
+        if (series.isEmpty()) null else run {
+            var idx = 0
+            for (i in series.indices) if (series[i] > series[idx]) idx = i
+            idx
+        }
     }
 
-    fun hasChildren(parentId: Int, items: List<com.xinwallet.app.data.model.ReportCategorySlice>) =
-        items.any { it.parentId == parentId }
+    // 分类排行数据（仅 支出/收入 维度）
+    val rawCats = remember(report, dataType) {
+        if (dataType == "income") report.incomeByCategory else report.expenseByCategory
+    }
+    val cats = remember(rawCats, granularity) {
+        if (granularity == "major") rawCats.filter { it.parentId == null } else rawCats
+    }
 
-    LazyColumn(modifier.padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+    LazyColumn(modifier, contentPadding = PaddingValues(bottom = 24.dp)) {
+
+        // 顶部：账本标题
+        item { BookHeader() }
+
+        // 类型 tab + 月份选择器（同一行；与下方 KPI 两列网格对齐：
+        // 左列=段选择器(宽度=支出金额卡)，右列=月份选择器(右对齐，右边缘=日均支出卡)，中间间隙=卡片间隙）
         item {
-            // 周期类型切换 + 上/下周期
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = { onShift(-1) }) { Icon(Icons.Filled.ChevronLeft, "上一周期") }
-                SingleChoiceSegmentedButtonRow {
-                    TYPE_OPTIONS.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(selected = type == value, onClick = { onTypeChange(value) }, shape = SegmentedButtonDefaults.itemShape(index, TYPE_OPTIONS.size)) {
-                            Text(label)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // 左列：类型 tab（填充整列，宽度对齐"支出金额"卡；3 段均分列宽）
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFE7EDEE))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    DATA_TYPE_OPTIONS.forEach { (value, label) ->
+                        val on = dataType == value
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(if (on) Brown500 else Color.Transparent)
+                                .clickable { onDataTypeChange(value) }
+                                .padding(vertical = 3.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                softWrap = false
+                            )
                         }
                     }
                 }
-                IconButton(onClick = { onShift(1) }) { Icon(Icons.Filled.ChevronRight, "下一周期") }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        item { SummaryCards(report) }
-        item { Spacer(Modifier.height(8.dp)) }
-
-        if (report.compare != null) {
-            item { CompareRow(report) }
-            item { Spacer(Modifier.height(8.dp)) }
-        }
-
-        item { CategorySectionTitle(
-            title = if (expenseParent == null) "支出分类占比" else "支出 · ${report.expenseByCategory.find { it.id == expenseParent }?.name ?: ""}",
-            showBack = expenseParent != null,
-            onBack = { expenseParent = null }
-        ) }
-        item {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(12.dp)) {
-                    CategoryPie(
-                        items = topExpenseItems,
-                        onSliceClick = { slice ->
-                            if (expenseParent == null && hasChildren(slice.id, report.expenseByCategory)) {
-                                expenseParent = slice.id
-                            }
-                        }
+                // 右列：月份选择器（右对齐，右边缘对齐"日均支出"卡）
+                Row(
+                    Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
+                        Modifier.size(32.dp).clickable { onShiftMonth(-1) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.ChevronLeft, "上个月",
+                            modifier = Modifier.size(20.dp),
+                            tint = Brown500
+                        )
+                    }
+                    Text(
+                        monthLabel(period),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
                     )
-                }
-            }
-        }
-        item { Spacer(Modifier.height(8.dp)) }
-
-        item { CategorySectionTitle(
-            title = if (incomeParent == null) "收入分类占比" else "收入 · ${report.incomeByCategory.find { it.id == incomeParent }?.name ?: ""}",
-            showBack = incomeParent != null,
-            onBack = { incomeParent = null }
-        ) }
-        item {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(12.dp)) {
-                    CategoryPie(
-                        items = topIncomeItems,
-                        onSliceClick = { slice ->
-                            if (incomeParent == null && hasChildren(slice.id, report.incomeByCategory)) {
-                                incomeParent = slice.id
-                            }
-                        }
-                    )
-                }
-            }
-        }
-        item { Spacer(Modifier.height(8.dp)) }
-
-        item { SectionTitle("趋势（收入/支出）") }
-        item {
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(12.dp)) {
-                    TrendLineChart(report.dailyTrend.map { it.income }, report.dailyTrend.map { it.expense })
-                    Spacer(Modifier.height(6.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        LegendDot(IncomeColor, "收入")
-                        Spacer(Modifier.width(16.dp))
-                        LegendDot(ExpenseColor, "支出")
+                    Box(
+                        Modifier.size(32.dp).clickable { onShiftMonth(1) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.ChevronRight, "下个月",
+                            modifier = Modifier.size(20.dp),
+                            tint = Brown500
+                        )
                     }
                 }
             }
         }
-        item { Spacer(Modifier.height(8.dp)) }
 
-        if (report.topExpenses.isNotEmpty()) {
-            item { SectionTitle("大额支出 Top5") }
+        // KPI 卡片（按维度不同）
+        item { KpiGrid(kpis) }
+        item { Spacer(Modifier.height(12.dp)) }
+
+        // 趋势
+        item { TrendCard(dataType, report, series, peakIndex) }
+        item { Spacer(Modifier.height(12.dp)) }
+
+        // 支出 / 收入：分类排行 + 明细排行
+        if (dataType != "balance") {
             item {
-                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(8.dp)) {
-                        report.topExpenses.forEach {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(it.categoryIcon ?: "📌", fontSize = 18.sp, modifier = Modifier.width(28.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(it.categoryName ?: "支出", style = MaterialTheme.typography.bodyMedium)
-                                    Text(it.date.take(10) + (it.note?.takeIf { n -> n.isNotBlank() }?.let { n -> " · $n" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text(formatMoney(it.amount), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            }
+                CategoryRankingCard(
+                    categories = cats,
+                    granularity = granularity,
+                    onGranularityChange = { granularity = it }
+                )
+            }
+            item { Spacer(Modifier.height(12.dp)) }
+            if (topTransactions.isNotEmpty()) {
+                item { DetailRankingCard(topTransactions, isIncome = dataType == "income") }
+            }
+        } else {
+            // 结余：每日概况大表格
+            item { DailyOverviewTable(report) }
+        }
+    }
+}
+
+/**
+ * 顶部账本标题：复用共享 BookHeader（默认账本 + 切换 / 搜索图标）。
+ */
+
+/* ────────── KPI 网格 ────────── */
+
+private data class KpiSpec(val title: String, val value: String, val accent: Color, val icon: String)
+
+private fun buildKpis(dataType: String, report: com.xinwallet.app.data.model.FinanceReport): List<KpiSpec> {
+    val s = report.summary
+    val dark = false // ReportsScreen 通过 LocalIsDark 读取时再分辨颜色
+    val main = Color(0xFF995F2C) // 暖棕主色，跟暖棕品牌一致
+    return when (dataType) {
+        "income" -> listOf(
+            KpiSpec("收入金额", "¥ ${formatMoney(s.income)}", Color(0xFFC11435), "💵"),
+            KpiSpec("日均收入", "¥ ${formatMoney(s.income / 30.coerceAtLeast(1))}", Color(0xFFC11435), "📅")
+        )
+        "balance" -> listOf(
+            KpiSpec("结余金额", "¥ ${formatMoney(s.balance)}", main, "🎯"),
+            KpiSpec("日均结余", "¥ ${formatMoney(s.balance / 30.coerceAtLeast(1))}", main, "📅")
+        )
+        else -> {
+            // 支出：4 张 = 支出金额 / 日均支出 / 本月预算 / 剩余预算
+            val totalBudget = report.budgetExecution.sumOf { it.budget }
+            val totalActual = report.budgetExecution.sumOf { it.actual }
+            val remaining = totalBudget - totalActual
+            val green = Color(0xFF009558)
+            listOf(
+                KpiSpec("支出金额", "¥ ${formatMoney(s.expense)}", green, "💸"),
+                KpiSpec("日均支出", "¥ ${formatMoney(s.avgDailyExpense)}", green, "📅"),
+                KpiSpec("本月预算", "¥ ${formatMoney(totalBudget)}", main, "💰"),
+                KpiSpec("剩余预算", "¥ ${formatMoney(remaining)}", main, "⏳")
+            )
+        }
+    }
+}
+
+@Composable
+private fun KpiGrid(specs: List<KpiSpec>) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        specs.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { sp -> KpiCard(sp, Modifier.weight(1f)) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun KpiCard(s: KpiSpec, modifier: Modifier = Modifier) {
+    Card(
+        modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.size(26.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Text(s.icon, fontSize = 14.sp) }
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(s.title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(s.value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = s.accent)
+        }
+    }
+}
+
+/* ────────── 趋势卡片 ────────── */
+
+@Composable
+private fun TrendCard(
+    dataType: String,
+    report: com.xinwallet.app.data.model.FinanceReport,
+    series: List<Double>,
+    peakIndex: Int?
+) {
+    val (title, color, peakLabel, cumLabel) = when (dataType) {
+        "income" -> Quadruple(
+            "收入趋势",
+            Color(0xFFC11435),
+            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    结余: ¥ ${formatMoney(series[it])}" }
+                ?: "本月暂无收入",
+            "累计收入: ¥ ${formatMoney(series.sum())}"
+        )
+        "balance" -> Quadruple(
+            "结余趋势",
+            Color(0xFF995F2C),
+            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    结余: ¥ ${formatMoney(series[it])}" }
+                ?: "本月暂无结余",
+            "期末结余: ¥ ${formatMoney(series.lastOrNull() ?: 0.0)}"
+        )
+        else -> Quadruple(
+            "支出趋势",
+            Color(0xFF009558),
+            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    支出: ¥ ${formatMoney(series[it])}" }
+                ?: "本月暂无支出",
+            "累计支出: ¥ ${formatMoney(series.sum())}"
+        )
+    }
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(peakLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(cumLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = color)
+                }
+                Spacer(Modifier.height(8.dp))
+                if (series.isEmpty() || (series.maxOrNull() ?: 0.0) <= 0) {
+                    EmptyState("该周期暂无数据")
+                } else {
+                    com.xinwallet.app.ui.components.TrendLineChartSingle(series, color, peakIndex = peakIndex)
+                    Spacer(Modifier.height(2.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        listOf("01", "05", "10", "15", "20", "25", "30").forEach {
+                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -267,88 +398,236 @@ private fun ReportContent(
     }
 }
 
-@Composable
-private fun SummaryCards(report: com.xinwallet.app.data.model.FinanceReport) {
-    val s = report.summary
-    Column(Modifier.fillMaxWidth()) {
-        // 第一行：收入 / 支出
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryCard("收入", formatMoney(s.income), true, Modifier.weight(1f))
-            SummaryCard("支出", formatMoney(s.expense), false, Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(10.dp))
-        // 第二行：结余 / 储蓄率
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SummaryCard("结余", formatMoney(s.balance), s.balance >= 0, Modifier.weight(1f))
-            SummaryCard("储蓄率", "${DecimalFormat("0.0").format(s.savingsRate)}%", s.savingsRate >= 0, Modifier.weight(1f))
-        }
-    }
-}
+/* ────────── 分类排行（截图大环形+引导线+列表项） ────────── */
 
 @Composable
-private fun SummaryCard(title: String, value: String, good: Boolean, modifier: Modifier = Modifier) {
-    val dark = LocalIsDark.current
-    val color = if (good) (if (dark) IncomeColorDark else IncomeColor) else (if (dark) ExpenseColorDark else ExpenseColor)
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.padding(14.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(4.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = color)
+private fun CategoryRankingCard(
+    categories: List<ReportCategorySlice>,
+    granularity: String,
+    onGranularityChange: (String) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("分类排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Row {
+                GRAN_OPTIONS.forEach { (value, label) ->
+                    val selected = granularity == value
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (selected) Color(0xFF1F1F1F) else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        Text(
+                            label,
+                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .noRippleClickable { onGranularityChange(value) }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun CompareRow(report: com.xinwallet.app.data.model.FinanceReport) {
-    val c = report.compare ?: return
-    val df = DecimalFormat("0.0")
-    fun pct(cur: Double, prev: Double): String {
-        if (prev == 0.0) return "—"
-        val v = (cur - prev) / abs(prev) * 100
-        return (if (v >= 0) "+" else "") + df.format(v) + "%"
-    }
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Text("环比 ${c.label}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                CompareItem("收入", pct(c.income, report.summary.income))
-                CompareItem("支出", pct(c.expense, report.summary.expense))
-                CompareItem("结余", pct(c.balance, report.summary.balance))
+        Spacer(Modifier.height(8.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                if (categories.isEmpty()) {
+                    EmptyState("该周期暂无分类数据")
+                } else {
+                    val top = categories.maxByOrNull { it.total }
+                    // 顶部 label: "餐饮 100%" + 引导线
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${top?.name ?: ""} 100%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Box(Modifier.height(1.dp).width(36.dp).background(MaterialTheme.colorScheme.outlineVariant))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    DonutChart(
+                        data = categories.map { it.name to it.total },
+                        centerTitle = top?.name,
+                        centerAmount = top?.let { "¥ ${formatMoney(it.total)}" }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    CategoryBars(categories)
+                }
             }
         }
     }
 }
 
-@Composable
-private fun CompareItem(label: String, pctText: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(pctText, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-    }
-}
+/* ────────── 明细排行 ────────── */
 
 @Composable
-private fun LegendDot(color: Color, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
-        Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun CategorySectionTitle(title: String, showBack: Boolean, onBack: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (showBack) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.ChevronLeft, contentDescription = "返回")
+private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("明细排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(Modifier.padding(vertical = 4.dp)) {
+                items.forEach { tx ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) { Text(tx.categoryIcon ?: "📌") }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            tx.categoryName ?: "交易",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                (if (isIncome) "¥ " else "-¥ ") + formatMoney(tx.amount),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isIncome) Color(0xFFC11435) else Color(0xFF009558)
+                            )
+                            Text(
+                                tx.date.take(10).replace("-", "."),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.width(4.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }
+
+/* ────────── 结余：每日概况大表格 ────────── */
+
+@Composable
+private fun DailyOverviewTable(report: com.xinwallet.app.data.model.FinanceReport) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("每日概况", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column {
+                // 表头（暖棕品牌色，截图是薄荷绿——这里保留暖棕保持一致）
+                Row(
+                    Modifier.fillMaxWidth().background(Color(0xFF995F2C)),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("日期", "支出", "收入", "结余").forEach {
+                        Text(
+                            it,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(vertical = 12.dp).weight(1f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                report.dailyTrend.forEach { p ->
+                    val balance = p.income - p.expense
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(
+                            p.date.takeLast(5).replace("-", "."),
+                            if (p.expense > 0) "-${formatMoney(p.expense)}" else "—",
+                            if (p.income > 0) "+${formatMoney(p.income)}" else "—",
+                            if (balance != 0.0) formatMoney(balance) else "—"
+                        ).forEachIndexed { idx, text ->
+                            val color = when (idx) {
+                                1 -> Color(0xFFC11435) // 支出按收入红 +符号位
+                                2 -> Color(0xFF009558) // 收入按支出绿
+                                3 -> if (balance < 0) Color(0xFFC11435) else Color(0xFF009558)
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                            Text(
+                                text,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = color,
+                                modifier = Modifier.padding(vertical = 10.dp).weight(1f),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                // 汇总行
+                val totalExpense = report.summary.expense
+                val totalIncome = report.summary.income
+                val totalBalance = totalIncome - totalExpense
+                Row(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf(
+                        "汇总",
+                        if (totalExpense > 0) "-${formatMoney(totalExpense)}" else "—",
+                        if (totalIncome > 0) "+${formatMoney(totalIncome)}" else "—",
+                        formatMoney(totalBalance)
+                    ).forEachIndexed { idx, text ->
+                        Text(
+                            text,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when (idx) {
+                                3 -> if (totalBalance < 0) Color(0xFFC11435) else Color(0xFF009558)
+                                1 -> Color(0xFFC11435)
+                                2 -> Color(0xFF009558)
+                                else -> MaterialTheme.colorScheme.onSurface
+                            },
+                            modifier = Modifier.padding(vertical = 12.dp).weight(1f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* ────────── 工具 ────────── */
+
+private data class Quadruple<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+@Composable
+private fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier =
+    this.then(
+        Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick
+        )
+    )

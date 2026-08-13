@@ -79,6 +79,15 @@ interface ApiService {
     @GET("categories?flat=1")
     suspend fun getCategories(): Response<ApiResponse<List<Category>>>
 
+    @POST("categories")
+    suspend fun createCategory(@Body req: CreateCategoryRequest): Response<ApiResponse<IdResponse>>
+
+    @PUT("categories/{id}")
+    suspend fun updateCategory(@Path("id") id: Int, @Body req: UpdateCategoryRequest): Response<ApiResponse<Unit>>
+
+    @DELETE("categories/{id}")
+    suspend fun deleteCategory(@Path("id") id: Int): Response<ApiResponse<Unit>>
+
     /* 理财 */
     @GET("investment-types")
     suspend fun getInvestmentTypes(): Response<ApiResponse<List<InvestmentType>>>
@@ -183,6 +192,12 @@ interface ApiService {
         @Query("type") type: String,
         @Query("period") period: String
     ): Response<ApiResponse<FinanceReport>>
+
+    @GET("reports/top-transactions")
+    suspend fun getTopTransactions(
+        @Query("type") type: String,
+        @Query("period") period: String
+    ): Response<ApiResponse<TopTransactionsResponse>>
 
     /* 标签 */
     @GET("tags")

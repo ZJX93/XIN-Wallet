@@ -765,7 +765,7 @@ const ReportManager = {
         showToast('正在导出完整账本...', 'info');
         try {
             const res = await fetch(`${API}/export/full`, {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('zhicai_token') }
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('xin_token') }
             });
             if (!res.ok) throw new Error('导出失败');
             const blob = await res.blob();
@@ -789,7 +789,7 @@ const ReportManager = {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            const token = localStorage.getItem('zhicai_token');
+            const token = localStorage.getItem('xin_token');
             const res = await fetch(`${API}/import/full`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },

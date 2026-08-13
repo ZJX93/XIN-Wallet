@@ -31,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -64,13 +68,17 @@ import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.ErrorState
 import com.xinwallet.app.ui.components.LoadingBox
 import com.xinwallet.app.ui.components.PullRefreshBox
-import com.xinwallet.app.ui.components.TopBar
+import com.xinwallet.app.ui.components.BookHeader
 import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
 import com.xinwallet.app.ui.theme.LocalIsDark
+import com.xinwallet.app.ui.theme.Brown100
+import com.xinwallet.app.ui.theme.Brown300
+import com.xinwallet.app.ui.theme.Brown500
+import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.viewmodel.TransactionsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
@@ -130,6 +138,10 @@ fun TransactionsScreen(navController: NavHostController) {
     // 月份选择器 & 账户选择器弹窗状态
     var showMonthPicker by remember { mutableStateOf(false) }
     var showAccountPicker by remember { mutableStateOf(false) }
+    // 视图模式：流水（list）/ 日历（calendar）
+    var viewMode by remember { mutableStateOf("list") }
+    // 日历模式下选中的日期
+    var calendarSelectedDay by remember { mutableStateOf<String?>(null) }
 
     acting?.let { item ->
         AlertDialog(
@@ -218,7 +230,7 @@ fun TransactionsScreen(navController: NavHostController) {
         )
     }
 
-    Scaffold(topBar = { TopBar("账单") }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    Scaffold(topBar = { BookHeader() }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             // 搜索框：备注 / 分类名关键字，300ms 防抖后拉取
             SearchBarField(
@@ -226,6 +238,7 @@ fun TransactionsScreen(navController: NavHostController) {
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
+            ViewModeToggle(viewMode) { viewMode = it; if (it == "calendar") calendarSelectedDay = null }
             MonthFilterRow(state.months, state.month, { vm.selectMonth(it) }) { showMonthPicker = true }
             TypeFilterRow(state.typeFilter) { vm.selectType(it) }
             AccountFilterRow(state.accounts, state.accountFilter, { vm.selectAccount(it) }) { showAccountPicker = true }
@@ -240,31 +253,40 @@ fun TransactionsScreen(navController: NavHostController) {
                         onRefresh = { vm.refresh() },
                         modifier = Modifier.fillMaxSize()
                     ) {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        item {
-                            Spacer(Modifier.height(8.dp))
-                            SummaryCard(
-                                income = state.summary?.income ?: 0.0,
-                                expense = state.summary?.expense ?: 0.0,
-                                balance = state.summary?.balance ?: 0.0
+                        if (viewMode == "calendar") {
+                            CalendarView(
+                                month = state.month,
+                                items = state.items,
+                                selectedDay = calendarSelectedDay,
+                                onSelectDay = { calendarSelectedDay = it }
                             )
-                            Spacer(Modifier.height(8.dp))
-                        }
-                        if (grouped.isEmpty()) {
-                            val emptyMsg = if (state.search.isNotBlank() || state.accountFilter != null || state.typeFilter != null)
-                                "未找到匹配的交易" else "${state.month} 暂无流水记录"
-                            item { EmptyState(emptyMsg) }
-                        }
-                        grouped.forEach { (day, list) ->
-                            item(key = "h-$day") { DayHeader(day, list) }
-                            items(list, key = { "t-${it.id}" }) { item ->
-                                TransactionRowClickable(item) { acting = item }
+                        } else {
+                            LazyColumn(Modifier.fillMaxSize()) {
+                                item {
+                                    Spacer(Modifier.height(8.dp))
+                                    SummaryCard(
+                                        income = state.summary?.income ?: 0.0,
+                                        expense = state.summary?.expense ?: 0.0,
+                                        balance = state.summary?.balance ?: 0.0
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                                if (grouped.isEmpty()) {
+                                    val emptyMsg = if (state.search.isNotBlank() || state.accountFilter != null || state.typeFilter != null)
+                                        "未找到匹配的交易" else "${state.month} 暂无流水记录"
+                                    item { EmptyState(emptyMsg) }
+                                }
+                                grouped.forEach { (day, list) ->
+                                    item(key = "h-$day") { DayHeader(day, list) }
+                                    items(list, key = { "t-${it.id}" }) { item ->
+                                        TransactionRowClickable(item) { acting = item }
+                                    }
+                                }
+                                item { Spacer(Modifier.height(80.dp)) }
                             }
                         }
-                        item { Spacer(Modifier.height(80.dp)) }
                     }
                 }
-            }
             }
         }
     }
@@ -586,4 +608,233 @@ private fun AccountPickerDialog(
 private fun prettyMonth(m: String): String {
     val parts = m.split("-")
     return if (parts.size == 2) "${parts[0]}年${parts[1].trimStart('0')}月" else m
+}
+
+/* ============================================================
+ * 视图模式切换 + 日历视图（参考暖棕记账 app 改版）
+ * ============================================================ */
+
+@Composable
+private fun ViewModeToggle(current: String, onChange: (String) -> Unit) {
+    val options = listOf("list" to "流水", "calendar" to "日历")
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { (key, label) ->
+            val selected = current == key
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clickable { onChange(key) },
+                shape = RoundedCornerShape(50),
+                color = if (selected) Brown500 else MaterialTheme.colorScheme.surface,
+                border = if (!selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalendarView(
+    month: String,
+    items: List<com.xinwallet.app.data.model.TransactionItem>,
+    selectedDay: String?,
+    onSelectDay: (String) -> Unit
+) {
+    val byDate = remember(items) {
+        items.groupBy { it.date.take(10) }.mapValues { (_, list) ->
+            val income = list.filter { it.type == "income" }.sumOf { it.amount }
+            val expense = list.filter { it.type == "expense" }.sumOf { it.amount }
+            income to expense
+        }
+    }
+    val monthYm = remember(month) { parseMonth(month) }
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        item {
+            Spacer(Modifier.height(8.dp))
+            MonthCalendarGrid(
+                year = monthYm.first,
+                month = monthYm.second,
+                totalsByDate = byDate,
+                selectedDay = selectedDay,
+                onSelectDay = onSelectDay
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (selectedDay != null) {
+            val dayItems = items.filter { it.date.take(10) == selectedDay }.sortedByDescending { it.date }
+            if (dayItems.isEmpty()) {
+                item { Text("${selectedDay} 暂无记录", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+            } else {
+                val income = dayItems.filter { it.type == "income" }.sumOf { it.amount }
+                val expense = dayItems.filter { it.type == "expense" }.sumOf { it.amount }
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(selectedDay, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("收 ${formatMoney(income)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text("支 ${formatMoney(expense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                items(dayItems, key = { "cal-${it.id}" }) { tx ->
+                    TransactionRowClickable(tx) { /* 由父级 acting 状态处理（这里只展示） */ }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(80.dp)) }
+    }
+}
+
+/** 6×7 月历格子：含上下月残日（淡化）、当日高亮、当日金额提示 */
+@Composable
+private fun MonthCalendarGrid(
+    year: Int,
+    month: Int,
+    totalsByDate: Map<String, Pair<Double, Double>>,
+    selectedDay: String?,
+    onSelectDay: (String) -> Unit
+) {
+    val cal = java.util.Calendar.getInstance().apply { clear(); set(year, month - 1, 1) }
+    val firstWeekday = cal.get(java.util.Calendar.DAY_OF_WEEK) // 1=Sun..7=Sat
+    val daysInMonth = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+    val prevMonthDays = firstWeekday - 1
+    // 固定 6 行（最多 42 格），便于布局稳定
+    val totalCells = 42
+    val cells = (0 until totalCells).map { idx ->
+        val dayNum = idx - prevMonthDays + 1
+        when {
+            dayNum < 1 -> {
+                val pm = java.util.Calendar.getInstance().apply { clear(); set(year, month - 1, 1); add(java.util.Calendar.MONTH, -1) }
+                val pmDays = pm.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                CellInfo(day = pmDays + dayNum, inMonth = false, date = "")
+            }
+            dayNum > daysInMonth -> {
+                CellInfo(day = dayNum - daysInMonth, inMonth = false, date = "")
+            }
+            else -> {
+                val date = String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", year, month, dayNum)
+                CellInfo(day = dayNum, inMonth = true, date = date)
+            }
+        }
+    }
+    val weeks = cells.chunked(7)
+    val today = remember {
+        val t = java.util.Calendar.getInstance()
+        String.format(java.util.Locale.CHINA, "%04d-%02d-%02d", t.get(java.util.Calendar.YEAR), t.get(java.util.Calendar.MONTH) + 1, t.get(java.util.Calendar.DAY_OF_MONTH))
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.padding(vertical = 12.dp, horizontal = 8.dp)) {
+            // 星期表头
+            Row(Modifier.fillMaxWidth()) {
+                listOf("日", "一", "二", "三", "四", "五", "六").forEach { w ->
+                    Text(
+                        w,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            weeks.forEach { row ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    row.forEach { cell ->
+                        val totals = if (cell.date.isNotEmpty()) totalsByDate[cell.date] else null
+                        val isSelected = cell.inMonth && cell.date == selectedDay
+                        val isToday = cell.inMonth && cell.date == today
+                        CalendarCell(
+                            day = cell.day,
+                            inMonth = cell.inMonth,
+                            isSelected = isSelected,
+                            isToday = isToday,
+                            income = totals?.first ?: 0.0,
+                            expense = totals?.second ?: 0.0,
+                            onClick = { if (cell.inMonth) onSelectDay(cell.date) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class CellInfo(val day: Int, val inMonth: Boolean, val date: String)
+
+@Composable
+private fun CalendarCell(
+    day: Int,
+    inMonth: Boolean,
+    isSelected: Boolean,
+    isToday: Boolean,
+    income: Double,
+    expense: Double,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bg = when {
+        isSelected -> Brown500
+        isToday -> Brown100
+        else -> androidx.compose.ui.graphics.Color.Transparent
+    }
+    val textColor = when {
+        isSelected -> androidx.compose.ui.graphics.Color.White
+        !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    Box(
+        modifier = modifier
+            .height(54.dp)
+            .padding(2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            .clickable(enabled = inMonth, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                day.toString(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                fontWeight = if (isSelected || isToday) FontWeight.SemiBold else FontWeight.Normal
+            )
+            if (inMonth && (income > 0 || expense > 0)) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (income > 0 && expense > 0) "-${formatMoney(expense)}\n+${formatMoney(income)}"
+                    else if (income > 0) "+${formatMoney(income)}"
+                    else "-${formatMoney(expense)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isSelected) androidx.compose.ui.graphics.Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+private fun parseMonth(m: String): Pair<Int, Int> {
+    val parts = m.split("-")
+    return if (parts.size == 2) parts[0].toInt() to parts[1].toInt() else 2026 to 1
 }
