@@ -166,7 +166,11 @@ app.use('/swagger-static', express.static(swaggerAssetPath, {
 }));
 
 // Swagger UI 页面（自定义 HTML，引用 /swagger-static 下的本地资源）
+// 安全加固：生产环境关闭未鉴权的 API 文档，避免对内暴露完整接口清单。
 app.get('/docs', (req, res) => {
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ success: false, message: 'Not Found' });
+    }
     res.set('Content-Type', 'text/html; charset=utf-8');
     res.send(`<!DOCTYPE html>
 <html lang="zh-CN">

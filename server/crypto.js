@@ -119,9 +119,10 @@ function decrypt(ciphertext) {
     if (!ciphertext) return null;
     const buf = Buffer.from(ciphertext, 'hex');
     if (buf.length < IV_LENGTH + TAG_LENGTH) {
-        // 长度不足：疑似旧版明文（非密文格式）。过渡期保留回退以避免历史数据失效。
-        console.warn(`[crypto] 疑似明文数据（旧字段或手填值），建议在「AI/OCR 配置」页重新保存以迁移为加密格式：prefix=${ciphertext.slice(0, 6)}...`);
-        return ciphertext;
+        // 安全加固：长度不足既非合法密文，也严禁当作明文原样返回（避免明文密钥/凭证泄露）。
+        // 严格返回 null，由调用方按解密失败处理（需用户在「AI/OCR 配置」页重新保存凭证）。
+        console.warn(`[crypto] 数据长度异常（非合法密文），拒绝回退为明文：prefix=${ciphertext.slice(0, 6)}...`);
+        return null;
     }
     try {
         const iv = buf.subarray(0, IV_LENGTH);

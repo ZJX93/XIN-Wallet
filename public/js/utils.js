@@ -20,7 +20,10 @@ function fmt(n) {
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号
 function csvCell(v) {
     const s = String(v == null ? '' : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    // CSV 公式注入防护：以 = + - @ Tab CR 开头时前缀单引号，避免被表格软件当作公式执行。
+    const dangerous = /^[=+\-@\t\r]/;
+    const safe = dangerous.test(s) ? "'" + s : s;
+    return /[",\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
 }
 
 // ==========================================

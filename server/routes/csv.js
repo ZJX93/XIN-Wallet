@@ -11,7 +11,11 @@ const { encrypt, decrypt } = require('../crypto');
 // ==========================================
 function toCsvCell(v) {
     const s = String(v == null ? '' : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    // CSV 公式注入防护（Formula / CSV Injection）：
+    // 若单元格以 = + - @ Tab CR 开头，前缀单引号，避免被 Excel/WPS 当作公式执行。
+    const dangerous = /^[=+\-@\t\r]/;
+    const safe = dangerous.test(s) ? "'" + s : s;
+    return /[",\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
 }
 
 router.get('/export/csv', async (req, res) => {

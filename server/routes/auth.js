@@ -85,8 +85,8 @@ router.post('/login', validate({
                 'UPDATE users SET fail_count = ?, locked_until = ?, last_fail_at = NOW() WHERE username = ?',
                 [failCount, lockedUntil, username]
             );
-            const delay = Math.min(Math.pow(2, failCount) * 100, 3000);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            // 安全加固：移除登录失败的人为 sleep —— 该延迟可被滥用为连接占用型 DoS，
+            // 真正的暴力破解防护已由 IP 级限流 + 账号锁定（fail_count/locked_until）承担。
             const msg = shouldLock
                 ? `登录失败次数过多，账号已锁定 ${LOCK_MINUTES} 分钟`
                 : '用户名或密码错误';
