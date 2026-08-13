@@ -95,32 +95,41 @@ const AccountManager = {
         container.innerHTML = groupList.map(([type, accounts]) => {
             const label = typeLabels[type] || type;
             const total = accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0);
-            const cards = accounts.map((a, idx) => buildCard(a, idx, accounts.length)).join('');
             const icon = accounts[0].icon || '🏦';
+            // 封面卡作为牌堆第一张（--i:0，:first-child 在文档流内撑高度），与产品卡一起堆叠偏移，形态同理财封面
+            const coverCard = `
+                <div class="goal-card acc-stack-card acc-deck-card" data-type="${escapeHtml(type)}" style="--i:0; --n:${accounts.length + 1}">
+                    <div class="inv-cover-top">
+                        <div class="goal-head">
+                            <div class="goal-icon">${escapeHtml(icon)}</div>
+                            <div class="goal-title">${escapeHtml(label)}</div>
+                            <span class="inv-cover-count">${accounts.length} 个账户</span>
+                        </div>
+                    </div>
+                    <div class="inv-cover-mid">
+                        <div class="inv-cover-profit">
+                            <div class="inv-cover-profit-label">账户总资产</div>
+                            <div class="inv-cover-profit-amount">${fmt(total)}</div>
+                        </div>
+                    </div>
+                    <div class="inv-cover-bottom">
+                        <div class="inv-cover-foot"><span class="inv-cover-viewall">查看全部 →</span></div>
+                    </div>
+                </div>`;
+            const cards = accounts.map((a, idx) => buildCard(a, idx + 1, accounts.length + 1)).join('');
             return `
             <div class="acc-stack">
-                <button class="acc-deck-cover" type="button" data-action="view-all" data-type="${escapeHtml(type)}" title="查看全部账户">
-                    <span class="acc-cover-icon">${escapeHtml(icon)}</span>
-                    <span class="acc-cover-meta">
-                        <span class="acc-cover-name">${escapeHtml(label)}</span>
-                        <span class="acc-cover-row">
-                            <span class="acc-cover-count">${accounts.length} 个账户</span>
-                            <span class="acc-cover-total">${fmt(total)}</span>
-                            <span class="acc-cover-viewall">查看全部 →</span>
-                        </span>
-                    </span>
-                </button>
-                <div class="acc-stack-cards" style="--n:${accounts.length}">${cards}</div>
+                <div class="acc-stack-cards" style="--n:${accounts.length + 1}">${coverCard}${cards}</div>
             </div>`;
         }).join('');
 
-        // 事件委托：封面「查看全部」→ 全屏网格铺开（仅当前类别）
-        container.querySelectorAll('[data-action="view-all"]').forEach(btn => {
-            btn.addEventListener('click', () => this.openAccGrid(btn.dataset.type));
+        // 事件委托：封面卡（牌堆第一张）→ 全屏网格铺开（仅当前类别）
+        container.querySelectorAll('.acc-deck-card').forEach(card => {
+            card.addEventListener('click', () => this.openAccGrid(card.dataset.type));
         });
 
         // 事件委托：点击单张账户卡 → 弹出（置顶+上浮，露出操作按钮）；再点收起。点在操作按钮上交给按钮处理
-        container.querySelectorAll('.acc-stack-card').forEach(card => {
+        container.querySelectorAll('.acc-stack-card:not(.acc-deck-card)').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (e.target.closest('[data-action]')) return;
                 const wasPopped = card.classList.contains('popped');

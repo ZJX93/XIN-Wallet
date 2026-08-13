@@ -4,7 +4,6 @@ import android.app.Application
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.content.res.AssetManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import org.vosk.Model
@@ -20,6 +19,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipInputStream
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -29,7 +33,10 @@ data class ChatUiState(
     val recording: Boolean = false,
     val recordingStart: Long? = null, // 录音起始时间戳（毫秒），用于显示时长
     val error: String? = null,
-    val toast: String? = null
+    val toast: String? = null,
+    val voiceModelDownloading: Boolean = false, // 首次使用语音时正在下载离线模型
+    val voiceModelProgress: Int = 0,            // 下载进度 0-100
+    val voiceModelError: String? = null         // 模型下载/加载失败信息
 )
 
 class ChatViewModel(
@@ -90,42 +97,84 @@ class ChatViewModel(
     private var recognizer: Recognizer? = null
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
-    private val modelAssetPath = "models/vosk-model-small-cn-0.22" // assets 内相对路径
-    private val modelDirName = "vosk-model-small-cn-0.22"         // 拷贝到 files 后的目录名
+    private val modelZipUrl = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip" // 离线模型托管地址；可替换为自有 CDN / 对象存储
+    private val modelDirName = "vosk-model-small-cn-0.22" // 解压 / 加载到 files 后的目录名
 
-    /** 确保 Vosk 模型就绪：首次运行把 assets 内的模型目录拷贝到 files 并加载 Model（须 IO 线程调用） */
-    private fun ensureModelLoaded(): Boolean {
+    /**
+     * 确保 Vosk 模型就绪（运行时下载，不打包进 APK）：
+     * 1) 已解压过则直接加载；2) 否则从 modelZipUrl 下载 zip 并解压到 files，再加载 Model。
+     * 须在 IO 调度下挂起调用。
+     */
+    private suspend fun ensureModelLoaded(): Boolean {
         if (voskModel != null) return true
+        val dest = File(app.filesDir, modelDirName)
+        if (File(dest, "am/final.mdl").exists()) return tryLoadModel(dest)
         return try {
-            val dest = File(app.filesDir, modelDirName)
-            if (!dest.exists()) copyAssetDir(app.assets, modelAssetPath, dest)
-            voskModel = Model(dest.absolutePath)
-            true
+            _state.value = _state.value.copy(voiceModelDownloading = true, voiceModelProgress = 0, voiceModelError = null)
+            downloadModelZip(modelZipUrl, dest)
+            tryLoadModel(dest)
         } catch (e: Exception) {
-            _state.value = _state.value.copy(error = "语音模型加载失败：${e.message}")
+            _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelError = "语音模型下载失败：${e.message}")
             false
         }
     }
 
-    /** 递归把 assets 子目录拷贝到目标 File 目录 */
-    private fun copyAssetDir(am: AssetManager, assetPath: String, dest: File) {
-        dest.mkdirs()
-        val entries = am.list(assetPath) ?: return
-        if (entries.isEmpty()) {
-            am.open(assetPath).use { input ->
-                File(dest, assetPath.substringAfterLast('/')).outputStream().use { out -> input.copyTo(out) }
+    private fun tryLoadModel(dest: File): Boolean = try {
+        voskModel = Model(dest.absolutePath)
+        _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelProgress = 100)
+        true
+    } catch (e: Exception) {
+        _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelError = "语音模型加载失败：${e.message}")
+        false
+    }
+
+    /** 下载 zip 到 cache，解压到 filesDir（zip 顶层含 modelDirName/，正好落到 files/modelDirName） */
+    private suspend fun downloadModelZip(url: String, dest: File) = withContext(Dispatchers.IO) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+        val resp = client.newCall(Request.Builder().url(url).build()).execute()
+        if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+        val tmp = File(app.cacheDir, "$modelDirName.zip")
+        val total = resp.body?.contentLength() ?: -1L
+        var downloaded = 0L
+        var lastPct = 0
+        resp.body?.byteStream()?.use { input ->
+            tmp.outputStream().buffered().use { out ->
+                val buf = ByteArray(8192)
+                var r: Int
+                while (input.read(buf).also { r = it } != -1) {
+                    out.write(buf, 0, r)
+                    downloaded += r
+                    if (total > 0) {
+                        val pct = (downloaded * 100 / total).toInt()
+                        if (pct - lastPct >= 2) {
+                            lastPct = pct
+                            _state.value = _state.value.copy(voiceModelProgress = pct)
+                        }
+                    }
+                }
             }
-            return
-        }
-        for (name in entries) {
-            val childAsset = if (assetPath.isEmpty()) name else "$assetPath/$name"
-            val childFile = File(dest, name)
-            val childList = am.list(childAsset)
-            if (childList == null || childList.isEmpty()) {
-                // list 返回 null 表示该路径是文件（Android 的 AssetManager.list 对文件返回 null）
-                am.open(childAsset).use { input -> childFile.outputStream().use { out -> input.copyTo(out) } }
-            } else {
-                copyAssetDir(am, childAsset, childFile)
+        } ?: throw IOException("空响应体")
+        unzip(tmp, dest.parentFile ?: app.filesDir)
+        tmp.delete()
+    }
+
+    /** 解压 zip（含子目录）到 outDir */
+    private fun unzip(zip: File, outDir: File) {
+        outDir.mkdirs()
+        ZipInputStream(zip.inputStream().buffered()).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val file = File(outDir, entry.name)
+                if (entry.isDirectory) file.mkdirs()
+                else {
+                    file.parentFile?.mkdirs()
+                    file.outputStream().buffered().use { fos -> zis.copyTo(fos) }
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
         }
     }

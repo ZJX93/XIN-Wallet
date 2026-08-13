@@ -155,6 +155,9 @@ fun ChatScreen(navController: NavHostController) {
                 onInput = { vm.onInputChange(it) },
                 recording = state.recording,
                 elapsedMs = elapsed.toLong(),
+                voiceDownloading = state.voiceModelDownloading,
+                voiceProgress = state.voiceModelProgress,
+                voiceError = state.voiceModelError,
                 onVoice = {
                     if (state.recording) {
                         vm.stopVoice()
@@ -360,6 +363,9 @@ private fun ChatInputBar(
     onInput: (String) -> Unit,
     recording: Boolean,
     elapsedMs: Long = 0,
+    voiceDownloading: Boolean = false,
+    voiceProgress: Int = 0,
+    voiceError: String? = null,
     onVoice: () -> Unit,
     onImage: () -> Unit,
     onSend: () -> Unit,
@@ -388,6 +394,31 @@ private fun ChatInputBar(
                 Text("正在聆听…说完点麦克风停止", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.weight(1f))
                 Text(time, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+            }
+        }
+        if (voiceDownloading) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "首次使用语音，正在下载模型 $voiceProgress%…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        } else if (voiceError != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    voiceError,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
         Row(
@@ -443,8 +474,12 @@ private fun ChatInputBar(
                     }
                 }
             )
-            IconButton(onClick = onVoice, enabled = !sending) {
-                Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "停止" else "语音")
+            IconButton(onClick = onVoice, enabled = !sending && !voiceDownloading) {
+                if (voiceDownloading) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(if (recording) Icons.Filled.Stop else Icons.Filled.Mic, if (recording) "停止" else "语音")
+                }
             }
             IconButton(onClick = onSend, enabled = input.isNotBlank() && !sending) {
                 Icon(Icons.Filled.Send, "发送")

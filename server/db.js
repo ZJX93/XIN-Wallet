@@ -7,9 +7,10 @@
 const DB_DIALECT = (process.env.DB_DIALECT || 'postgres').toLowerCase();
 const IS_PG = DB_DIALECT === 'postgres' || DB_DIALECT === 'pg' || DB_DIALECT === 'postgresql';
 
+// 提升到模块作用域，供 initDatabase() 中建库用的 adminPool 复用（避免块级作用域导致 Pool is not defined）
+const { Pool } = require('pg');
 let pool;
 if (IS_PG) {
-  const { Pool } = require('pg');
   pool = new Pool({
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '5432'),
