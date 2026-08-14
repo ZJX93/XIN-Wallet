@@ -2,6 +2,7 @@ package com.xinwallet.app.ui.screens
 
 import java.util.Calendar
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

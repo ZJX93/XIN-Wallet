@@ -123,7 +123,7 @@ private fun CategoryRow(cat: Category, onEdit: () -> Unit, onDelete: () -> Unit)
             .getOrDefault(MaterialTheme.colorScheme.primary)
         Surface(shape = CircleShape, color = c, modifier = Modifier.size(36.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                Text(cat.icon.ifBlank { "📌" }, color = Color.White, fontSize = 18.sp)
+                Text(cat.icon?.ifBlank { "📌" } ?: "📌", color = Color.White, fontSize = 18.sp)
             }
         }
         Spacer(Modifier.width(12.dp))
