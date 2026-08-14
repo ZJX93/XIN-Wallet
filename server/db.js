@@ -274,6 +274,58 @@ function warnUnlessAlreadyExists(label, err) {
   console.warn(`⚠️ ${label}`, err.message);
 }
 
+/**
+ * 分类种子自愈（数据迁移）：修复旧版初始化（投资理财分类未显式指定 id）造成的
+ * 种子 id 抢占——投资分类(投资理财/投资买入/理财保险)占用 id 1/2/3，
+ * 导致系统分类 餐饮/交通/购物(id 1/2/3) 被 ON CONFLICT DO NOTHING 静默跳过而缺失。
+ *
+ * 完全幂等：在已健康（全新）库上执行均为 no-op；在损坏库上自动纠正。
+ * 每次启动由 initDatabase() 调用，无需人工干预。双方言兼容：
+ *   - 占位符统一用 ?（query 会按方言转 $N 或保持 ?）；
+ *   - 幂等写入用 ON CONFLICT (id) DO NOTHING（MySQL 端自动转 INSERT IGNORE）。
+ *   - 仅序列/AUTO_INCREMENT 重置需按方言分支。
+ */
+async function healCategoryData() {
+  // 1) 交易表跟随迁移：把指向错位投资分类的交易改到目标 id（避免悬空 / 误分类）
+  for (const [code, newId] of [['E1100', 901], ['E1101', 902], ['E1102', 903]]) {
+    await query(
+      'UPDATE transactions SET category_id = ? WHERE category_id = (SELECT id FROM categories WHERE code = ?)',
+      [newId, code]
+    );
+  }
+  // 2) 子分类 parent 指向新父 901（按 code 精确定位，不影响用户自建分类）
+  await query(
+    'UPDATE categories SET parent_id = 901 WHERE code IN (?, ?) AND parent_id <> 901',
+    ['E1101', 'E1102']
+  );
+  // 3) 投资分类自身改到 901/902/903，腾出 1/2/3
+  await query("UPDATE categories SET id = 901 WHERE code = 'E1100' AND id <> 901");
+  await query("UPDATE categories SET id = 902 WHERE code = 'E1101' AND id <> 902");
+  await query("UPDATE categories SET id = 903 WHERE code = 'E1102' AND id <> 903");
+  // 4) 补回缺失的系统分类（已存在则跳过）
+  const systemCats = [
+    [1, 'E0100', '餐饮',     'expense', '🍜', '#22c55e', 1],
+    [2, 'E0200', '交通出行', 'expense', '🚗', '#22c55e', 2],
+    [3, 'E0300', '购物消费', 'expense', '🛒', '#22c55e', 3],
+  ];
+  for (const [id, code, name, type, icon, color, sort] of systemCats) {
+    await query(
+      'INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, TRUE) ON CONFLICT (id) DO NOTHING',
+      [id, code, name, type, icon, color, sort]
+    );
+  }
+  // 5) 重置自增序列：schema.sql 末尾的 setval 早于本函数执行，
+  //    本函数改动分类 id 后 MAX(id) 变化，必须在此重新校正，
+  //    否则新分类可能撞到被腾出前的低位 id 之外的空隙。
+  if (IS_PG) {
+    await query("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories), 1), true)");
+  } else {
+    const maxRow = await query('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM categories');
+    const next = maxRow[0] && maxRow[0].next != null ? maxRow[0].next : 1;
+    await query('ALTER TABLE categories AUTO_INCREMENT = ?', [next]);
+  }
+}
+
 async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
@@ -344,6 +396,15 @@ async function initDatabase() {
       } catch (err) {
         warnUnlessAlreadyExists('Schema 执行警告:', err);
       }
+    }
+
+    // 3) 分类种子自愈：修复旧版（投资分类未显式指定 id）初始化造成的种子 id 抢占。
+    //    幂等、双方言兼容；在健康库上为 no-op，在损坏库上自动纠正。
+    try {
+      await healCategoryData();
+      console.log('✅ 分类种子自愈完成（无需修复时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ 分类种子自愈警告（不影响启动，下次启动会重试）:', err.message);
     }
 
     // 注：本项目视为全新项目，schema 文件已包含完整表结构、列、索引、约束与种子数据，
