@@ -68,6 +68,17 @@ jobs:
       - name: 确保 gradlew 可执行
         run: chmod +x gradlew
 
+      # build.gradle.kts 的 fixedDebug 签名配置需要 android/app/debug.keystore，
+      # 该文件被 .gitignore 排除、不会随仓库下发，故在 CI 用 JDK 自带 keytool 生成。
+      # 每次构建用确定性凭据（alias=androiddebugkey / 密码 android），确保 Gradle 可加载。
+      - name: 生成 debug 签名 keystore
+        run: |
+          keytool -genkeypair -v -storeType PKCS12 \
+            -keystore app/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: 计算安卓版本号
         id: android_version
         run: |

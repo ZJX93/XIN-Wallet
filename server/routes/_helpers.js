@@ -4,7 +4,7 @@
    ============================================ */
 
 const db = require('../db');
-const logger = require('./logger');
+const logger = require('../logger');
 const { calcDebtDueSummary } = require('../services/debt-summary');
 // 金额精度工具（修复审核报告 M3：浮点累加分位漂移）
 const { sumAmounts, addAmounts, subtractAmounts, roundAmount, percentOf } = require('../services/money');
