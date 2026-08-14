@@ -1,32 +1,15 @@
 package com.xinwallet.app.ui.navigation
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material3.FabPosition
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -35,14 +18,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -68,7 +45,6 @@ import com.xinwallet.app.ui.screens.ProfileScreen
 import com.xinwallet.app.ui.screens.ReportsScreen
 import com.xinwallet.app.ui.screens.TagsScreen
 import com.xinwallet.app.ui.screens.TransactionsScreen
-import com.xinwallet.app.ui.theme.FabBackground
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
@@ -96,12 +72,13 @@ sealed class Screen(val route: String) {
 }
 
 /**
- * 底部 4 tab：首页 / 账单 / 统计 / 我的
- * 「规划」与「对话」已下沉到「我的」12 宫格快捷入口。
+ * 底部 5 tab：首页 / 账单 / 记账(+) / 统计 / 我的
+ * 「规划」与「对话」已下沉到「我的」12 宫格快捷入口；记账用第 3 个 tab（Add 图标）承载。
  */
 private val bottomItems = listOf(
     Screen.Home to ("首页" to Icons.Filled.Home),
     Screen.Transactions to ("账单" to Icons.Filled.ReceiptLong),
+    Screen.AddTransaction to ("记账" to Icons.Filled.Add),
     Screen.Reports to ("统计" to Icons.Filled.PieChart),
     Screen.Profile to ("我的" to Icons.Filled.Person)
 )
@@ -113,6 +90,7 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("reports") -> Screen.Reports.route
     route.startsWith("edit") -> Screen.Transactions.route
     route.startsWith("ai") -> Screen.Transactions.route
+    route.startsWith("add") -> Screen.AddTransaction.route  // 记账独立 tab
     route.startsWith("chat") -> Screen.Profile.route       // 对话下沉到「我的」
     route.startsWith("transactions") -> Screen.Transactions.route
     route.startsWith("investment") -> Screen.Reports.route  // 理财明细归到「统计」
@@ -140,7 +118,6 @@ fun MainScaffold(onLogout: () -> Unit) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val current = routeKey(navBackStackEntry?.destination?.route)
-    var showAddSheet by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
@@ -165,133 +142,11 @@ fun MainScaffold(onLogout: () -> Unit) {
                         )
                     }
                 }
-            },
-            floatingActionButton = {
-                // 居中黑色大圆 FAB：4 tab 中间始终可见，点击弹出「记一笔 / AI 对话记账」合并菜单
-                Box(
-                    modifier = Modifier
-                        .size(60.dp)
-                        .clip(CircleShape)
-                        .background(FabBackground),
-                    contentAlignment = Alignment.Center
-                ) {
-                    FloatingActionButton(
-                        onClick = { showAddSheet = true },
-                        containerColor = FabBackground,
-                        contentColor = Color.White,
-                        shape = CircleShape,
-                        elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp),
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, "记账", modifier = Modifier.size(28.dp))
-                    }
-                }
-            },
-            floatingActionButtonPosition = FabPosition.Center
+            }
         ) { padding ->
             AppNavHost(navController, padding, onLogout)
         }
 
-        // 记账方式合并弹层：手动记账 / AI 对话记账
-        if (showAddSheet) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable { showAddSheet = false }
-            ) {
-                Column(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.surface,
-                            RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                        )
-                        .clickable { /* 吸收点击，避免穿透到遮罩 */ }
-                        .padding(20.dp, 18.dp)
-                ) {
-                    Text(
-                        "怎么记这笔账",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(14.dp))
-
-                    // 选项一：手动记账
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .clickable {
-                                showAddSheet = false
-                                navController.navigate(Screen.AddTransaction.route)
-                            }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.Edit, "手动记账",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text("手动记账", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(
-                                "分类 + 金额键盘一笔一笔录入",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // 选项二：AI 对话记账
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .clickable {
-                                showAddSheet = false
-                                navController.navigate(Screen.Chat.route)
-                            }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Filled.Mic, "AI 对话记账",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text("AI 对话记账", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(
-                                "语音 / 文字说出花销，AI 自动识别分类金额",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { showAddSheet = false }
-                            .padding(14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
     }
 }
 

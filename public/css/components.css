@@ -596,12 +596,11 @@
 
 .inv-stack-cards {
   position: relative;
-  /* 底部预留空间按 min(产品数, 3) 张计算，防止封面整体过高 */
-  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--stack-shift, 11px));
+  /* 底部预留空间按全部产品数计算，使所有卡片都能在牌堆中展开 */
+  padding-bottom: calc((var(--n, 1) - 1) * var(--stack-shift, 11px));
 }
 
-/* 超过 3 张产品牌时隐藏后面的，只保留封面 + 前 3 张作为视觉叠层 */
-.inv-stack-card:nth-child(n+5) { display: none; }
+/* 全部卡片参与堆叠，不再隐藏（保留封面 + 后续所有产品牌的视觉叠层） */
 
 /* 牌堆卡片通用叠牌布局（理财/账户共用，统一 --stack-shift 变量，值仍为 11px） */
 .inv-stack-card,
