@@ -147,15 +147,18 @@ CREATE TRIGGER trg_budgets_updated BEFORE UPDATE ON budgets FOR EACH ROW EXECUTE
 
 -- 投资理财分类体系（一级 投资理财 + 二级 投资买入 / 理财保险）
 -- 保险类买入归入理财保险，故 investment_types.category 允许 'insurance'。
-INSERT INTO categories (code, name, type, icon, color, sort_order, is_system) VALUES
-('E1100', '投资理财', 'expense', '💹', '#22c55e', 10, TRUE)
-ON CONFLICT (code) DO NOTHING;
-INSERT INTO categories (code, name, type, icon, color, parent_id, is_system) VALUES
-('E1101', '投资买入', 'expense', '📈', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE)
-ON CONFLICT (code) DO NOTHING;
-INSERT INTO categories (code, name, type, icon, color, parent_id, is_system) VALUES
-('E1102', '理财保险', 'expense', '🛡️', '#22c55e', (SELECT id FROM categories WHERE code = 'E1100'), TRUE)
-ON CONFLICT (code) DO NOTHING;
+-- 注意：此处必须显式指定 id（901/902/903），避开下方系统分类种子使用的 1~99 / 281 段。
+-- 若省略 id，SERIAL 自增会先抢占 id 1/2/3，导致下方显式 id=1「餐饮」等系统分类因主键冲突被
+-- ON CONFLICT (id) DO NOTHING 静默跳过，进而使依赖系统分类的测试/业务因 category_id NOT NULL 而失败。
+INSERT INTO categories (id, code, name, type, icon, color, sort_order, is_system) VALUES
+(901, 'E1100', '投资理财', 'expense', '💹', '#22c55e', 10, TRUE)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO categories (id, code, name, type, icon, color, parent_id, is_system) VALUES
+(902, 'E1101', '投资买入', 'expense', '📈', '#22c55e', 901, TRUE)
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO categories (id, code, name, type, icon, color, parent_id, is_system) VALUES
+(903, 'E1102', '理财保险', 'expense', '🛡️', '#22c55e', 901, TRUE)
+ON CONFLICT (id) DO NOTHING;
 
 -- 理财产品类型表（全局共享，无 user_id）
 -- code: 结构化编码（5位），V=投资 + 2位大类 + 2位序号
