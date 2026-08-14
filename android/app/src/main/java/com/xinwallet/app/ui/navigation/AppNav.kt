@@ -1,9 +1,12 @@
 package com.xinwallet.app.ui.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
@@ -16,6 +19,10 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -128,6 +135,7 @@ fun MainScaffold(onLogout: () -> Unit) {
                 ) {
                     bottomItems.forEach { (screen, pair) ->
                         val (label, icon) = pair
+                        val isCenter = screen == Screen.AddTransaction
                         NavigationBarItem(
                             selected = current == screen.route,
                             onClick = {
@@ -137,7 +145,21 @@ fun MainScaffold(onLogout: () -> Unit) {
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(icon, label) },
+                            icon = {
+                                if (isCenter) {
+                                    // 记账：突出的圆形 tab（仅顶部约 1/6 露出导航栏上沿）
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(y = (-8).dp)
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary),
+                                        contentAlignment = Alignment.Center
+                                    ) { Icon(icon, label, tint = Color.White) }
+                                } else {
+                                    Icon(icon, label)
+                                }
+                            },
                             label = { Text(label) }
                         )
                     }
