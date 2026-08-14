@@ -48,8 +48,8 @@ jobs:
 
           if [ -z "$LATEST_TAG" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "new_tag=v0.0.0" >> $GITHUB_OUTPUT
-            echo "No existing tags, starting at v0.0.0"
+            echo "new_tag=v0.0.1" >> $GITHUB_OUTPUT
+            echo "No existing tags, starting at v0.0.1"
             exit 0
           fi
 

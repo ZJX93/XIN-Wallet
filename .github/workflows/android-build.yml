@@ -98,8 +98,10 @@ jobs:
           MAJOR=$(echo "$VER" | cut -d. -f1)
           MINOR=$(echo "$VER" | cut -d. -f2)
           PATCH=$(echo "$VER" | cut -d. -f3)
-          # Android 要求 versionCode 为正整数；原式在 v0.0.0 时算得 0 会导致构建失败，整体 +1 保证 >=1 且单调递增
-          CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH + 1))
+          # Android 要求 versionCode 为正整数；此处使 versionCode 与 versionName 数值对应
+          # （v0.0.1→1, v0.0.5→5, v1.2.3→10203），并对 v0.0.0 兜底为 1，保证 >=1 且单调递增
+          CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          [ "$CODE" -eq 0 ] && CODE=1
           NEW_TAG="v${VER}"
           echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
           echo "new_name=$VER" >> "$GITHUB_OUTPUT"
