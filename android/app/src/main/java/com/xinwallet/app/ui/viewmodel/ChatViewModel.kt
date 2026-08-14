@@ -14,6 +14,7 @@ import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AiRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch

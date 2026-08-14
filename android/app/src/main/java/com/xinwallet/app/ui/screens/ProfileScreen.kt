@@ -286,20 +286,20 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
             ) {
                 Column(Modifier.padding(vertical = 12.dp)) {
                     val items = listOf(
-                        QuickAction("截图记账", Icons.Filled.CameraAlt, QuickActionKind.Nav(Screen.AiScan.route)) { navController.navigate(Screen.AiScan.route) },
-                        QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav(Screen.Categories.route)) { navController.navigate(Screen.Categories.route) },
-                        QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav(Screen.Tags.route)) { navController.navigate(Screen.Tags.route) },
-                        QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav(Screen.Accounts.route)) { navController.navigate(Screen.Accounts.route) },
+                        QuickAction("截图记账", Icons.Filled.CameraAlt, QuickActionKind.Nav) { navController.navigate(Screen.AiScan.route) },
+                        QuickAction("分类管理", Icons.Filled.Sell, QuickActionKind.Nav) { navController.navigate(Screen.Categories.route) },
+                        QuickAction("标签管理", Icons.Filled.LocalOffer, QuickActionKind.Nav) { navController.navigate(Screen.Tags.route) },
+                        QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) },
                         QuickAction("账单导出", Icons.Filled.Download, QuickActionKind.Action) {
                             csvVm.exportCsv("transactions") { shareTextFile(it, "xinwallet_transactions", "text/csv", "csv") }
                         },
                         QuickAction("密码锁", Icons.Filled.Lock, QuickActionKind.Toast) { scope.launch { snackbar.showSnackbar("密码锁开发中") } },
-                        QuickAction("投资理财", Icons.Filled.ShowChart, QuickActionKind.Nav(Screen.Investments.route)) { navController.navigate(Screen.Investments.route) },
-                        QuickAction("AI 对话", Icons.Filled.Chat, QuickActionKind.Nav(Screen.Chat.route)) { navController.navigate(Screen.Chat.route) },
-                        QuickAction("报表分析", Icons.Filled.PieChart, QuickActionKind.Nav(Screen.Reports.route)) { navController.navigate(Screen.Reports.route) },
-                        QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) },
-                        QuickAction("预算管理", Icons.Filled.Receipt, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) },
-                        QuickAction("借贷", Icons.Filled.SwapHoriz, QuickActionKind.Nav(Screen.Planning.route)) { navController.navigate(Screen.Planning.route) }
+                        QuickAction("投资理财", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) },
+                        QuickAction("AI 对话", Icons.Filled.Chat, QuickActionKind.Nav) { navController.navigate(Screen.Chat.route) },
+                        QuickAction("报表分析", Icons.Filled.PieChart, QuickActionKind.Nav) { navController.navigate(Screen.Reports.route) },
+                        QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav) { navController.navigate(Screen.Planning.route) },
+                        QuickAction("预算管理", Icons.Filled.Receipt, QuickActionKind.Nav) { navController.navigate(Screen.Planning.route) },
+                        QuickAction("借贷", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Planning.route) }
                     )
                     items.chunked(4).forEach { row ->
                         Row(Modifier.fillMaxWidth()) {

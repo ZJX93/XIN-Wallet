@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.NavDestination
+import androidx.navigation.NavGraph
 import com.xinwallet.app.ui.screens.AccountDetailScreen
 import com.xinwallet.app.ui.screens.AccountsScreen
 import com.xinwallet.app.ui.screens.AddTransactionScreen
@@ -115,6 +118,21 @@ fun routeKey(route: String?): String? = when {
     route.startsWith("investment") -> Screen.Reports.route  // 理财明细归到「统计」
     route.startsWith("planning") -> Screen.Profile.route    // 规划下沉到「我的」
     else -> route.substringBefore("/")
+}
+
+/**
+ * 定位 NavGraph 的起始目的地（处理嵌套 NavGraph）。
+ * navigation-compose 未提供此扩展，底部导航 popUpTo 时依赖它回到首页。
+ */
+private fun NavGraph.findStartDestination(): NavDestination {
+    var current: NavDestination = this
+    while (current is NavGraph) {
+        val graph = current
+        val next = graph.findNode(graph.startDestinationId)
+        if (next == null) break
+        current = next
+    }
+    return current
 }
 
 @Composable

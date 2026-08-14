@@ -129,30 +129,30 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
         }
     }
 
-    val doSubmit: (Boolean) -> Unit = { keepOpen ->
+    fun doSubmit(keepOpen: Boolean) {
         val amt = amount.toDoubleOrNull() ?: 0.0
-        if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return@doSubmit }
+        if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return }
         when {
             isEdit -> {
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@doSubmit }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@doSubmit }
+                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
+                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
                 vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date)
             }
             type == "transfer" -> {
-                if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return@doSubmit }
-                if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return@doSubmit }
+                if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return }
+                if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return }
                 vm.submitTransfer(fromId!!, toId!!, amt, note, date)
             }
             type == "debt" -> {
                 // 借贷：复用转账端点的方向语义；当前实现暂用支出/收入标记作为兜底
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@doSubmit }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@doSubmit }
+                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
+                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
                 val t = if (debtDirection == 0) "expense" else "income"
                 vm.submitExpense(accountId!!, categoryId!!, amt, note, t, date)
             }
             else -> {
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return@doSubmit }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return@doSubmit }
+                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
+                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
                 vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date)
             }
         }
@@ -642,7 +642,7 @@ private fun KeyCell(
     Box(
         modifier = modifier
             .height(52.dp)
-            .clip(RoundedCornerShape(if (isPrimary) 12.dp else 50))
+            .clip(RoundedCornerShape(if (isPrimary) 12.dp else 50.dp))
             .background(bg)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
