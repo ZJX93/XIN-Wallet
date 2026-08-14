@@ -123,6 +123,9 @@ router.put('/:id', async (req, res) => {
 // DELETE /:id → 删除预算
 router.delete('/:id', async (req, res) => {
     try {
+        // BUG-2 修复：transactions.budget_id 无外键约束，删除预算前需先置空引用，
+        // 否则产生悬空 budget_id（预算列表/统计可能误关联已删除预算）。
+        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = $1 AND user_id = $2', [req.params.id, req.userId]);
         await db.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
         res.json(success(null, '预算已删除'));
     } catch (err) {

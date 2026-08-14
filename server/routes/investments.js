@@ -620,12 +620,45 @@ router.delete('/investments/:id', async (req, res) => {
         await db.transaction(async (conn) => {
             const invRows = await conn.query('SELECT * FROM investments WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
             const inv = invRows[0] || null;
-            // 回滚创建持仓时生成的台账交易（恢复账户余额）
-            if (inv && inv.create_transaction_id) {
-                await rollbackInvestmentCreateTxn(conn, req.userId, inv.create_transaction_id, inv.account_id);
+
+            // 收集需要按账本重算余额的账户（单一真相，避免增量回滚漂移）
+            const affectedAccounts = new Set();
+            if (inv && inv.account_id) affectedAccounts.add(parseInt(inv.account_id));
+
+            // 该持仓的全部理财流水（建仓/加仓/减仓/清仓/分红/利息）
+            const invTxns = await conn.query(
+                'SELECT id FROM investment_transactions WHERE investment_id = $1 AND user_id = $2',
+                [req.params.id, req.userId]
+            );
+
+            // BUG-1 修复：删除由这些理财流水生成的主交易台账。
+            // 建仓/加仓/减仓/清仓/分红/利息每笔都回填了 investment_txn_id 反向指针，
+            // 仅回滚 create_transaction_id 会遗漏其余台账，导致孤儿交易 + 账户余额不回滚。
+            // 建仓那笔台账的 investment_txn_id 即初始买入流水 id，已包含在下述 IN 子句中，一并清理。
+            if (invTxns.length) {
+                const ids = invTxns.map(t => t.id);
+                const placeholders = ids.map(() => '?').join(',');
+                const linked = await conn.query(
+                    `SELECT id, account_id FROM transactions WHERE investment_txn_id IN (${placeholders}) AND user_id = ?`,
+                    [...ids, req.userId]
+                );
+                linked.forEach(t => { if (t.account_id) affectedAccounts.add(parseInt(t.account_id)); });
+                await conn.query(
+                    `DELETE FROM transactions WHERE investment_txn_id IN (${placeholders}) AND user_id = ?`,
+                    [...ids, req.userId]
+                );
             }
+
+            // 删除理财流水与持仓本身
             await conn.query('DELETE FROM investment_transactions WHERE investment_id = $1 AND user_id = $2', [req.params.id, req.userId]);
             await conn.query('DELETE FROM investments WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+
+            // 以账本为准统一重算受影响账户余额
+            for (const aid of affectedAccounts) {
+                if (!aid) continue;
+                const newBalance = await computeAccountBalance(conn, req.userId, aid);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, aid]);
+            }
         });
         res.json(success(null, '持仓已删除'));
     } catch (err) {
