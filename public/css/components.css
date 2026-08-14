@@ -321,6 +321,8 @@
 .account-list {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--space-4);
+  /* 各类型账户卡数量不同，按各自堆叠内容自适应高度，避免被最高那列拉平造成 1 个账户的子框也出现大段空白 */
+  align-items: start;
 }
 
 .account-card {
@@ -776,8 +778,8 @@
 
 .acc-stack-cards {
   position: relative;
-  /* 底部预留空间按 min(产品数, 3) 张计算，最多露出 3 张叠层 */
-  padding-bottom: calc(min(3, var(--n, 1) - 1) * var(--stack-shift, 11px));
+  /* 底部预留空间按全部账户数计算，使所有账户卡都能在牌堆中展开（与 .inv-stack-cards 一致） */
+  padding-bottom: calc((var(--n, 1) - 1) * var(--stack-shift, 11px));
 }
 
 /* 账户卡片高度差异与操作区（其余叠牌布局见上方共享 .inv-stack-card/.acc-stack-card） */
@@ -866,6 +868,8 @@
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-4);
   margin-top: var(--space-2);
+  /* 各理财/债务/储蓄堆叠按各自内容自适应高度，避免被最高那列拉平造成空白 */
+  align-items: start;
 }
 
 .invest-item {
