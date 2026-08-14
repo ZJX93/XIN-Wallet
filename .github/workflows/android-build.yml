@@ -74,6 +74,27 @@ jobs:
       # 因此 CI 直接复用仓库内已提交的 keystore，不再用 keytool 重新生成
       # （重新生成会变更证书指纹，导致打出的 APK 在运行时自校验失败）。
 
+      # 签名指纹钉死：本仓库的 debug.keystore 自提交 0b1cc86 起固定不变，
+      # 所有发布版 APK 均用它签名，用户可跨版本覆盖安装、且 App 内 ApkVerifier 自校验通过。
+      # 若任何人误换/重建 keystore，此处立即失败，避免在不知情下发出
+      # 「与上一版签名不同、已装用户无法升级」的 APK。
+      # 期望值必须与 android/app/.../ApkVerifier.kt 的 EXPECTED_CERT_SHA256 保持一致。
+      - name: 校验签名密钥指纹（钉死）
+        working-directory: android/app
+        run: |
+          EXPECTED="5f717babca23523dd831228aa5f155cf6315bd6f5b5c7c049ec47d9786504f1d"
+          ACTUAL=$(openssl pkcs12 -in debug.keystore -clcerts -nokeys -passin pass:android 2>/dev/null \
+            | openssl x509 -fingerprint -sha256 -noout 2>/dev/null \
+            | sed 's/.*=//; s/://g' | tr 'A-Z' 'a-z' | tr -d ' ')
+          echo "keystore 证书 SHA-256: $ACTUAL"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::签名密钥指纹不匹配预期值！疑似 android/app/debug.keystore 被更换，" \
+                 "会导致已安装用户无法覆盖升级、且 App 内 ApkVerifier 自校验拒绝新包。" \
+                 "请恢复提交 0b1cc86 以来的固定 keystore 后再构建（并保持与 ApkVerifier.EXPECTED_CERT_SHA256 一致）。"
+            exit 1
+          fi
+          echo "✅ 签名密钥指纹校验通过（与 ApkVerifier.EXPECTED_CERT_SHA256 一致）"
+
       - name: 计算安卓版本号
         id: android_version
         run: |

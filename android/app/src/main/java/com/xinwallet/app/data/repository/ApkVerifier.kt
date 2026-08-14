@@ -15,15 +15,20 @@ import java.security.MessageDigest
  *    只有用「同一把私钥」签名的 APK 才能通过；任何被替换 / 中间人篡改的包都伪造不出同证书，会被拒绝。
  * 2. 版本只升不降 —— 拒绝比当前已装版本更低或相等的「降级安装」，规避降级攻击。
  *
- * 注意：EXPECTED_CERT_SHA256 当前等于仓库内 debug.keystore 的证书（与已发布的 v0.0.0 APK 一致），
- * 因此现有安装包可通过校验。这仅「形式正确」——debug 密钥密码公开，任何人可用同一把钥匙签名。
- * ★ 正式发布前必须把下方常量替换为你「私有发布密钥」的 SHA-256（见 android/generate_release_key.sh），
- *   否则证书固定无法真正防伪造。
+ * 注意：EXPECTED_CERT_SHA256 当前等于仓库内固定 debug.keystore 的证书（自提交 0b1cc86 起稳定，
+ * v0.0.1 起重发版及之后所有 CI 构建的 APK 均用同一把钥匙签名，可跨版本覆盖安装）。
+ * 该 keystore 密码公开，仅作「可侧载升级」之证书固定占位——形式正确即可防「中途替换的包」，
+ * 但无法防「持有同一把公开钥匙签的伪造包」。
+ * ★ 正式发布前应换私有发布密钥并同步替换此常量；更换时必须与 android-build.yml
+ *   「签名指纹钉死」校验的期望值保持一致，否则 CI 会拦截构建、且已装用户 App 内升级会被本校验拒绝。
  */
 object ApkVerifier {
-    // 当前为仓库 debug.keystore 证书指纹（hex，无冒号）。发布前务必替换为私有发布密钥指纹！
+    // 当前为仓库内固定 debug.keystore 的证书指纹（hex，无冒号），与 CI 发布的所有版本
+    // （v0.0.1 起重发版及之后）同源。该 keystore 自提交 0b1cc86 起固定不变，CI 默认回退使用
+    // （未配置 KEYSTORE_PATH secret）。若未来更换签名密钥，必须同步更新此常量，否则已装用户
+    // App 内升级时会被本校验拒绝；同时需与 android-build.yml「签名指纹钉死」校验保持一致。
     private const val EXPECTED_CERT_SHA256 =
-        "7bc67f537413cc601e5903d2939704c56536e03a51048cc1777fc414da8949f0"
+        "5f717babca23523dd831228aa5f155cf6315bd6f5b5c7c049ec47d9786504f1d"
 
     data class ApkVerifyResult(val ok: Boolean, val reason: String?)
 
