@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   transfer_id INT DEFAULT NULL,                       -- 关联转账ID
   source_account_id INT DEFAULT NULL,                 -- 复式记账-资金源账户
   destination_account_id INT DEFAULT NULL,            -- 复式记账-资金目标账户
+  investment_txn_id INT DEFAULT NULL,                 -- 关联理财交易记录(investment_transactions.id)
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -105,6 +106,9 @@ CREATE INDEX idx_transactions_budget ON transactions (budget_id);
 CREATE INDEX idx_tx_source ON transactions (source_account_id);
 
 CREATE INDEX idx_tx_dest ON transactions (destination_account_id);
+-- 兼容已部署库：新增列与索引（幂等；MySQL 8.0.29+ 支持 ADD COLUMN IF NOT EXISTS）
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS investment_txn_id INT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_transactions_inv_txn ON transactions (investment_txn_id);
 
 -- 内部转账记录表
 CREATE TABLE IF NOT EXISTS transfers (

@@ -118,15 +118,15 @@ async function getInvestmentSellCategoryId(conn) {
 }
 
 // 创建持仓时：资金从关联账户流出（支出），扣减余额
-async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr, investmentTypeId) {
+async function createInvestmentCreateTxn(conn, userId, accId, cost, name, dateStr, investmentTypeId, investmentTxnId = null) {
     if (!accId || !(cost > 0)) return null;
     const isIns = await isInsuranceType(conn, investmentTypeId);
     const catId = await getOrCreateInvestmentBuyCategory(conn, isIns);
     const txDate = (dateStr || new Date().toISOString().slice(0, 10)) + ' 00:00:00';
     const txResult = await conn.query(
-        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-         VALUES (?, ?, ?, 'expense', ?, ?, ?, ?, NULL)`,
-        [userId, accId, catId, cost, `买入·${name}`, txDate, accId]
+        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id, investment_txn_id)
+         VALUES (?, ?, ?, 'expense', ?, ?, ?, ?, NULL, ?)`,
+        [userId, accId, catId, cost, `买入·${name}`, txDate, accId, investmentTxnId]
     );
     // 以账本为准重算关联账户余额
     const newBalance = await computeAccountBalance(conn, userId, accId);
@@ -284,14 +284,14 @@ router.post('/investments', async (req, res) => {
             const invId = invResult.insertId;
 
             // 记录买入操作
-            await conn.query(
+            const initBuyTxn = await conn.query(
                 `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
                  VALUES (?, ?, 'buy', ?, ?, ?, ?, '初始买入')`,
                 [req.userId, invId, costVal, parseFloat(buy_price) || 0, parseFloat(quantity) || 0, buyDate]
             );
 
-            // 关联账户：买入扣款，保持账本一致
-            const createTxnId = await createInvestmentCreateTxn(conn, req.userId, accId, costVal, name, buyDate, parseInt(investment_type_id));
+            // 关联账户：买入扣款，保持账本一致；并把台账交易关联回理财买入流水(investment_txn_id)
+            const createTxnId = await createInvestmentCreateTxn(conn, req.userId, accId, costVal, name, buyDate, parseInt(investment_type_id), initBuyTxn.insertId);
             if (createTxnId) {
                 await conn.query('UPDATE investments SET create_transaction_id = $1 WHERE id = $2', [createTxnId, invId]);
             }
@@ -396,7 +396,7 @@ router.post('/investments/:id/transactions', async (req, res) => {
         }
 
         let msg = '操作已记录';
-        await db.query(
+        const invTxn = await db.query(
             `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [req.userId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, note || '']
@@ -417,9 +417,9 @@ router.post('/investments/:id/transactions', async (req, res) => {
                 await db.transaction(async (conn) => {
                     const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
-                            `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-             VALUES (?, ?, ?, 'income', ?, ?, ?)`,
-                            [req.userId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date]
+                            `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+             VALUES (?, ?, ?, 'income', ?, ?, ?, ?)`,
+                            [req.userId, investment.account_id, sellCatId, parseFloat(amount), `${type === 'dividend' ? '分红' : '利息'}-${investment.name}`, date, invTxn.insertId]
                         );
                         // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
                         const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
@@ -447,6 +447,41 @@ router.post('/investments/:id/transactions', async (req, res) => {
     }
 });
 
+// 查看某理财持仓的全部交易记录（买入/卖出/分红/利息/红利再投）
+const INV_TXN_TYPE_LABEL = {
+  buy: '买入', sell: '卖出', dividend: '分红', interest: '利息', reinvest: '红利再投'
+};
+router.get('/investments/:id/transactions', async (req, res) => {
+    try {
+        const investmentId = parseInt(req.params.id);
+        if (!Number.isInteger(investmentId)) return res.status(400).json(fail('无效的持仓 ID'));
+
+        // 归属校验：禁止跨用户查看他人持仓流水
+        const owned = await db.queryOne('SELECT id FROM investments WHERE id = ? AND user_id = ?', [investmentId, req.userId]);
+        if (!owned) return res.status(404).json(fail('持仓不存在'));
+
+        const rows = await db.query(
+            `SELECT * FROM investment_transactions
+             WHERE investment_id = ? AND user_id = ?
+             ORDER BY date DESC, id DESC`,
+            [investmentId, req.userId]
+        );
+        const list = rows.map(t => ({
+            id: t.id,
+            type: t.type,
+            type_label: INV_TXN_TYPE_LABEL[t.type] || t.type,
+            amount: parseFloat(t.amount),
+            price: parseFloat(t.price),
+            quantity: parseFloat(t.quantity),
+            date: fmtDateTime(t.date),
+            note: t.note || ''
+        }));
+        res.json(success(list));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
 // 卖出/清仓
 router.put('/investments/:id/sell', async (req, res) => {
     try {
@@ -459,7 +494,7 @@ router.put('/investments/:id/sell', async (req, res) => {
 
         await db.transaction(async (conn) => {
             // 记录卖出
-            await conn.query(
+            const sellTxn = await conn.query(
                 `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
          VALUES (?, ?, 'sell', ?, ?, ?, ?, ?)`,
                 [req.userId, id, sellAmount, parseFloat(sell_price), parseFloat(investment.quantity), date || new Date().toISOString().split('T')[0], note || '清仓卖出']
@@ -476,9 +511,9 @@ router.put('/investments/:id/sell', async (req, res) => {
                 const profit = sellAmount - parseFloat(investment.total_cost);
                 const sellCatId = await getInvestmentSellCategoryId(conn);
                 await conn.query(
-                    `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-           VALUES (?, ?, ?, 'income', ?, ?, ?)`,
-                    [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
+                    `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+           VALUES (?, ?, ?, 'income', ?, ?, ?, ?)`,
+                    [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0], sellTxn.insertId]
                 );
                 // 以账本为准重算账户余额
                 const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
@@ -519,7 +554,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 const avgCost = newQty > 0 ? newTotalCost / newQty : 0;
                 const newCurrentValue = newQty * parseFloat(investment.current_price || p);
 
-                await conn.query(
+                const buyInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
                      VALUES (?, ?, 'buy', ?, ?, ?, ?, ?)`,
                     [req.userId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], note || '加仓']
@@ -532,9 +567,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     const isIns = await isInsuranceType(conn, investment.investment_type_id);
                     const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
                     await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-                         VALUES (?, ?, ?, 'expense', ?, ?, ?)`,
-                        [req.userId, investment.account_id, buyCatId, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0]]
+                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+                         VALUES (?, ?, ?, 'expense', ?, ?, ?, ?)`,
+                        [req.userId, investment.account_id, buyCatId, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0], buyInvTxn.insertId]
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
@@ -550,7 +585,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 const newTotalCost = parseFloat(investment.total_cost) - reducedCost;
                 const newCurrentValue = remainingQty * parseFloat(investment.current_price || p);
 
-                await conn.query(
+                const sellInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, investment_id, type, amount, price, quantity, date, note)
                      VALUES (?, ?, 'sell', ?, ?, ?, ?, ?)`,
                     [req.userId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], note || '部分卖出']
@@ -563,9 +598,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     const profit = sellAmount - reducedCost;
                     const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date)
-           VALUES (?, ?, ?, 'income', ?, ?, ?)`,
-                        [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0]]
+                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, investment_txn_id)
+           VALUES (?, ?, ?, 'income', ?, ?, ?, ?)`,
+                        [req.userId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0], sellInvTxn.insertId]
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);

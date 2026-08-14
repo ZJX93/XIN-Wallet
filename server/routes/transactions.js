@@ -13,6 +13,62 @@ const {
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
 
 // ==========================================
+// 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
+// 需同步删除对应的理财交易记录并按剩余流水重算持仓，避免「余额恢复、持仓不恢复」。
+// ==========================================
+
+// 用剩余理财交易流水重算持仓（数量/成本/市值/状态），作为单一真相。
+// 与「加减仓/清仓」增量更新完全等价，但天然支持删除任意一笔后重算，
+// 含清仓的反向还原（不依赖已丢失的历史持仓快照）。
+async function recomputeInvestmentPosition(conn, investmentId, userId) {
+    const inv = await conn.query('SELECT * FROM investments WHERE id = $1 AND user_id = $2', [investmentId, userId]);
+    const row = inv[0];
+    if (!row) return;
+    const txns = await conn.query(
+        `SELECT * FROM investment_transactions WHERE investment_id = $1 AND user_id = $2 ORDER BY date ASC, id ASC`,
+        [investmentId, userId]
+    );
+    let qty = 0, cost = 0;
+    for (const t of txns) {
+        const q = parseFloat(t.quantity) || 0;
+        const amt = parseFloat(t.amount) || 0;
+        if (t.type === 'buy' || t.type === 'reinvest') {
+            qty += q;
+            cost += amt; // 买入金额(含费)/红利再投金额计入成本基数
+        } else if (t.type === 'sell') {
+            const qtyBefore = qty; // 卖出按当时持仓占比扣减成本基数
+            if (qtyBefore > 0) {
+                const reducedCost = (cost / qtyBefore) * q;
+                cost -= reducedCost;
+            }
+            qty -= q;
+        }
+        // dividend / interest 仅产生现金入账，不影响持仓数量与成本
+    }
+    if (qty < 0) qty = 0;
+    if (cost < 0) cost = 0;
+    const currentPrice = parseFloat(row.current_price) || 0;
+    const currentValue = qty * currentPrice;
+    const buyPrice = qty > 0 ? cost / qty : 0;
+    const status = qty > 0 ? 'holding' : 'sold';
+    await conn.query(
+        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status=$5 WHERE id=$6 AND user_id=$7`,
+        [qty, cost, currentValue, buyPrice, status, investmentId, userId]
+    );
+}
+
+// 删除与台账交易关联的理财交易记录，并重算持仓
+async function reverseLinkedInvestmentTxn(conn, userId, investmentTxnId) {
+    if (!investmentTxnId) return;
+    const invTxn = await conn.query('SELECT * FROM investment_transactions WHERE id = ? AND user_id = ?', [investmentTxnId, userId]);
+    const t = invTxn[0];
+    if (!t) return;
+    const investmentId = t.investment_id;
+    await conn.query('DELETE FROM investment_transactions WHERE id = $1 AND user_id = $2', [investmentTxnId, userId]);
+    await recomputeInvestmentPosition(conn, investmentId, userId);
+}
+
+// ==========================================
 // 交易管理 API
 // ==========================================
 
@@ -322,6 +378,8 @@ router.delete('/:id', async (req, res) => {
             } else {
                 await conn.query('DELETE FROM transactions WHERE id = $1', [id]);
             }
+            // 若该台账交易由理财操作生成，回滚对应持仓（删除理财流水 + 按剩余流水重算）
+            await reverseLinkedInvestmentTxn(conn, req.userId, old.investment_txn_id);
             // 余额由账本重算，避免增量回滚的漂移
             const newBalances = {};
             for (const aid of affectedAccounts) {

@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   transfer_id INT DEFAULT NULL,                       -- 关联转账ID
   source_account_id INT DEFAULT NULL,                 -- 复式记账-资金源账户
   destination_account_id INT DEFAULT NULL,            -- 复式记账-资金目标账户
+  investment_txn_id INT DEFAULT NULL,                  -- 关联理财交易记录(investment_transactions.id)；理财操作(建仓/加减仓/清仓/分红/利息)生成的台账交易据此回滚持仓
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -107,6 +108,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions (type);
 CREATE INDEX IF NOT EXISTS idx_transactions_budget ON transactions (budget_id);
 CREATE INDEX IF NOT EXISTS idx_tx_source ON transactions (source_account_id);
 CREATE INDEX IF NOT EXISTS idx_tx_dest ON transactions (destination_account_id);
+-- 兼容已部署库：新增列与索引（幂等，列已存在则无操作）
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS investment_txn_id INT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_transactions_inv_txn ON transactions (investment_txn_id);
 DROP TRIGGER IF EXISTS trg_transactions_updated ON transactions;
 CREATE TRIGGER trg_transactions_updated BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
