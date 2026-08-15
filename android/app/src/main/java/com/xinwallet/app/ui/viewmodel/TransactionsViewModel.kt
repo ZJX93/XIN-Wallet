@@ -19,7 +19,10 @@ data class TxUiState(
     val items: List<TransactionItem> = emptyList(),
     /** 有交易的月份列表（倒序），为空时回退到当前月 */
     val months: List<String> = emptyList(),
+    /** 当前选中周期：按月模式为 "YYYY-MM"，按年模式为 "YYYY" */
     val month: String = currentMonth(),
+    /** 时间维度："month"（按月查看）或 "year"（按年查看） */
+    val periodMode: String = "month",
     /** null = 全部；expense / income / transfer（transfer 由后端匹配两条腿） */
     val typeFilter: String? = null,
     /** 备注 / 分类名关键字搜索 */
@@ -68,6 +71,22 @@ class TransactionsViewModel(
     fun selectMonth(month: String) {
         if (month == _state.value.month) return
         _state.value = _state.value.copy(month = month)
+        refresh()
+    }
+
+    /** 切换时间维度：按月 / 按年。切换后自动将 month 截取为对应精度并刷新 */
+    fun setPeriodMode(mode: String) {
+        if (mode == _state.value.periodMode) return
+        val s = _state.value
+        val newMonth = when (mode) {
+            "year" -> s.month.take(4)  // "2026-08" → "2026"
+            else -> {
+                // 年→月：补当前月，如 "2026" → "2026-08"
+                val m = s.month
+                if (m.length == 4) "$m-${currentMonth().substring(5)}" else m
+            }
+        }
+        _state.value = s.copy(periodMode = mode, month = newMonth)
         refresh()
     }
 

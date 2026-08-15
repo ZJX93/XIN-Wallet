@@ -9,8 +9,32 @@ const db = require('../db');
 const { decrypt } = require('../crypto');
 const { assertPublicUrl } = require('./url-guard');
 
+// AI 服务商调用错误：携带真实 HTTP 状态码与上游错误信息，便于路由层透传给客户端。
+class AiProviderError extends Error {
+    constructor(statusCode, message) {
+        super(message);
+        this.name = 'AiProviderError';
+        this.isAiProviderError = true;
+        this.statusCode = statusCode;
+    }
+}
+
+// 从服务商的错误响应体中提取可读错误文案（兼容 {error:{message,code}} / {error:"..."} / 纯文本）。
+function describeProviderError(body, statusCode) {
+    let detail = '';
+    if (typeof body === 'string') detail = body;
+    else if (body && body.error) {
+        if (typeof body.error === 'string') detail = body.error;
+        else if (body.error.message) detail = body.error.message + (body.error.code ? ` (${body.error.code})` : '');
+        else detail = JSON.stringify(body.error);
+    } else detail = JSON.stringify(body);
+    detail = String(detail || '未知错误').replace(/\s+/g, ' ').trim().slice(0, 300);
+    return `AI 服务商返回 ${statusCode}：${detail}`;
+}
+
 // HTTP POST JSON 请求（通用）。
 // ⚠️ 调用前必须经 assertPublicUrl() 校验（SSRF 防护）。Node http.request 默认不跟随重定向。
+// 关键修正：非 2xx 视为调用失败，抛 AiProviderError 携带真实错误，避免被当成成功响应解析。
 async function httpsPostJson(url, headers, body) {
     await assertPublicUrl(url);
     return new Promise((resolve, reject) => {
@@ -26,7 +50,12 @@ async function httpsPostJson(url, headers, body) {
         const req = mod.request(opts, (res) => {
             let buf = '';
             res.on('data', c => buf += c);
-            res.on('end', () => { try { resolve(JSON.parse(buf)); } catch { resolve(buf); } });
+            res.on('end', () => {
+                let parsed;
+                try { parsed = JSON.parse(buf); } catch { parsed = buf; }
+                if (res.statusCode >= 200 && res.statusCode < 300) { resolve(parsed); return; }
+                reject(new AiProviderError(res.statusCode, describeProviderError(parsed, res.statusCode)));
+            });
         });
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（60s）')); });
@@ -257,7 +286,12 @@ async function httpsPostRaw(url, headers, bufferBody) {
         const req = mod.request(opts, (res) => {
             let buf = '';
             res.on('data', c => buf += c);
-            res.on('end', () => { try { resolve(JSON.parse(buf)); } catch { resolve(buf); } });
+            res.on('end', () => {
+                let parsed;
+                try { parsed = JSON.parse(buf); } catch { parsed = buf; }
+                if (res.statusCode >= 200 && res.statusCode < 300) { resolve(parsed); return; }
+                reject(new AiProviderError(res.statusCode, describeProviderError(parsed, res.statusCode)));
+            });
         });
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（60s）')); });

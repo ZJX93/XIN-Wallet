@@ -23,7 +23,10 @@ import java.util.Locale
 data class ReportsUiState(
     val loading: Boolean = false,
     val error: String? = null,
+    /** 当前选中周期：按月="YYYY-MM"，按年="YYYY"，自定义="YYYY-MM-DD~YYYY-MM-DD" */
     val period: String = currentMonth(),
+    /** 时间维度："month"(按月) / "year"(按年) / "custom"(自定义) */
+    val periodMode: String = "month",
     val dataType: String = "expense",
     val report: FinanceReport? = null,
     val topTransactions: List<TopTransaction> = emptyList()
@@ -59,6 +62,23 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
         loadReport()
     }
 
+    /** 切换时间维度：按月 / 按年 / 自定义。切换后自动将 period 截取为对应精度并刷新 */
+    fun setPeriodMode(mode: String) {
+        if (mode == _state.value.periodMode) return
+        val s = _state.value
+        val newPeriod = when (mode) {
+            "year" -> s.period.take(4)           // "2026-08" → "2026"
+            "custom" -> s.period                  // 自定义保持原值（由选择器设置完整范围）
+            else -> {
+                // 年→月：补当前月
+                val m = s.period
+                if (m.length == 4) "$m-${currentMonth().substring(5)}" else m
+            }
+        }
+        _state.value = s.copy(periodMode = mode, period = newPeriod)
+        loadReport()
+    }
+
     fun setDataType(type: String) {
         if (type == _state.value.dataType) return
         _state.value = _state.value.copy(dataType = type)
@@ -66,10 +86,16 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
     }
 
     private fun loadReport() {
-        val period = _state.value.period
+        val s = _state.value
+        // 根据时间维度选择报表粒度：后端 /reports 接口支持 monthly/yearly/custom
+        val granularity = when (s.periodMode) {
+            "year" -> "yearly"
+            "custom" -> "custom"
+            else -> "monthly"
+        }
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
-            when (val r = repo.getReport("monthly", period)) {
+            when (val r = repo.getReport(granularity, s.period)) {
                 is ApiResult.Success -> {
                     _state.value = _state.value.copy(loading = false, report = r.data)
                     if (_state.value.dataType != "balance") loadTopTransactions(_state.value.dataType)

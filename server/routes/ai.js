@@ -1196,6 +1196,7 @@ ${accRef}`;
         if (!reply) reply = '已完成处理。';
         res.json(success({ reply, transactions: mutations }));
     } catch (err) {
+        if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));
         handleServerError(res, err, 'AI 对话');
     }
 });
@@ -1235,6 +1236,7 @@ router.post('/transcribe', async (req, res) => {
         if (!text) return res.status(502).json(fail('语音转写失败：服务商未返回文字'));
         res.json(success({ text }));
     } catch (err) {
+        if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));
         handleServerError(res, err, '语音转写');
     }
 });

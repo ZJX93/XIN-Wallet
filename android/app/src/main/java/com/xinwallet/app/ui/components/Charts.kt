@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,7 +44,6 @@ import kotlin.math.atan2
 import kotlin.math.sqrt
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
-import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.util.formatMoney
 
@@ -263,27 +266,29 @@ fun CategoryBars(items: List<ReportCategorySlice>, modifier: Modifier = Modifier
     }
 }
 
-/** 分类占比配色（暖棕品牌族，与 Web tokens 一致；红=收入、绿=支出、琥珀=告警、蓝=信息） */
+/** 分类占比配色：莫兰迪低饱和色系（灰调柔和，适合饼图/条形多分类并列） */
 private val SLICE_PALETTE = listOf(
-    Color(0xFF995F2C),  // accent-500 主品牌（暖棕）
-    Color(0xFFD39562),  // accent-300
-    Color(0xFFB58300),  // warning-500 琥珀
-    Color(0xFFC11435),  // error-500 红（收入语义）
-    Color(0xFF009558),  // success-500 绿（支出语义）
-    Color(0xFF61370D),  // accent-700 深棕
-    Color(0xFF6A9BC7),  // info-500 蓝（来自 Web chart.js）
-    Color(0xFF8C6A4A),  // 中性棕
-    Color(0xFFED324B),  // error-400 亮红
-    Color(0xFF00B870)   // success-400 亮绿
+    Color(0xFFB5A89B),  // 暖灰棕
+    Color(0xFFA3B0A2),  // 鼠尾草绿
+    Color(0xFFC2B2C0),  // 雾紫
+    Color(0xFF9FB1B8),  // 雾霾蓝
+    Color(0xFFD2C3B3),  // 沙色
+    Color(0xFFB6A6B0),  // 藕荷粉
+    Color(0xFFA9BCC2),  // 灰蓝
+    Color(0xFFC9B79C),  // 陶土
+    Color(0xFFA7B7A0),  // 苔绿
+    Color(0xFFC4A8A0)   // 灰粉
 )
 
 /**
  * 环形图（中央可叠加文本），用于"分类排行"卡片中的占比可视化。
- * 单系列数据，按数值从大到小上色：主色始终给最大项，其余用调色板降序分配。
+ * 单系列数据，按数值从大到小上色，使用莫兰迪低饱和配色。
  *
  * @param data (标签, 数值) 列表，data 为空时不绘制并返回 EmptyState。
  * @param centerTitle 中心第一行文本（如"工资"）。
  * @param centerAmount 中心第二行金额（如"¥ 50.00"），为空则不显示金额行。
+ * @param selectedLabel 当前选中分类名；非空时该色块向外"爆炸"放大，并从色块引一根直线到离它最近的画布角落，
+ *  角落处固定显示名称与百分比（与色块同色），文字下方画一条同色横线。
  */
 @Composable
 fun DonutChart(
@@ -291,25 +296,55 @@ fun DonutChart(
     modifier: Modifier = Modifier,
     centerTitle: String? = null,
     centerAmount: String? = null,
+    selectedLabel: String? = null,
     onSliceClick: ((String) -> Unit)? = null
 ) {
-    val positive = data.filter { it.second > 0 }.sortedByDescending { it.second }
+    // 稳定化：data 仅在周期切换时变化；用 remember 固定 identity，
+    // 避免每次点击选中都重建 pointerInput 手势检测器，导致点击丢失/卡顿。
+    val positive = remember(data) { data.filter { it.second > 0 }.sortedByDescending { it.second } }
     if (positive.isEmpty()) {
         EmptyState("该周期暂无数据")
         return
     }
     val total = positive.sumOf { it.second }.coerceAtLeast(0.0001)
     val track = MaterialTheme.colorScheme.surfaceVariant
-    val ring = Brown500
+    // 选中项在 positive 中的索引（选中色块放大 + 角落标签）
+    val selIdx = if (selectedLabel != null) positive.indexOfFirst { it.first == selectedLabel }.let { if (it >= 0) it else null } else null
+
+    // 预计算各色块角度（Composable 与 Canvas 共用）
+    val sliceGeo = remember(positive) {
+        val list = mutableListOf<Pair<Float, Float>>()
+        var start = -90f
+        positive.forEach { (_, v) ->
+            val sweep = (v / total * 360.0).toFloat()
+            list.add(start to sweep)
+            start += sweep
+        }
+        list
+    }
+
+    // 选中色块的中心方向（用于选最近角落 + 引线）
+    val selDir = selIdx?.let { i ->
+        val (s, sweep) = sliceGeo[i]
+        val mid = Math.toRadians((s + sweep / 2).toDouble())
+        Offset(kotlin.math.cos(mid).toFloat(), kotlin.math.sin(mid).toFloat())
+    }
+    val selColor = selIdx?.let { SLICE_PALETTE[it % SLICE_PALETTE.size] }
+    val selText = selIdx?.let { i ->
+        val pct = positive[i].second / total * 100
+        "${positive[i].first}  ${"%.1f".format(pct)}%"
+    }
+    // 标注固定在离色块最近的角落；cornerPos = 角落锚点(dp)，align = 文字对齐方向
+    val corner = selDir?.let { nearestCorner(it) }
 
     Column(
         modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(CANVAS_SIZE.dp)) {
             Canvas(
                 Modifier
-                    .size(160.dp)
+                    .size(CANVAS_SIZE.dp)
                     .pointerInput(positive) {
                         if (onSliceClick != null) {
                             detectTapGestures { offset ->
@@ -317,14 +352,13 @@ fun DonutChart(
                                 val cy: Float = size.height / 2f
                                 val dx: Float = offset.x - cx
                                 val dy: Float = offset.y - cy
-                                val strokePx: Float = 18.dp.toPx()
-                                val r: Float = (size.width.toFloat() - strokePx) / 2f
+                                val strokePx: Float = DONUT_STROKE.dp.toPx()
+                                val donutPx: Float = DONUT_DIAMETER.dp.toPx()
+                                val r: Float = (donutPx - strokePx) / 2f
                                 val dist: Float = sqrt(dx * dx + dy * dy)
-                                // 只在环带范围内命中（内径~外径），避免点圆心误触发
-                                if (dist >= r - strokePx && dist <= r + strokePx) {
-                                    // 角度：drawArc start=-90 为 12 点方向，顺时针累加
+                                if (dist >= r - strokePx / 2f && dist <= r + strokePx / 2f) {
                                     var a = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                                    if (a < -90f) a += 360f // 归一化到 [-90, 270)
+                                    if (a < -90f) a += 360f
                                     var acc = -90f
                                     var hitIdx = -1
                                     for (idx in positive.indices) {
@@ -341,25 +375,36 @@ fun DonutChart(
                         }
                     }
             ) {
-                val stroke = 18.dp.toPx()
-                val r = (size.minDimension - stroke) / 2f
+                val stroke = DONUT_STROKE.dp.toPx()
+                val donut = DONUT_DIAMETER.dp.toPx()
+                val r = (donut - stroke) / 2f
                 val c = Offset(size.width / 2, size.height / 2)
+                val tl = Offset(c.x - r, c.y - r)
                 drawCircle(track, style = Stroke(stroke), radius = r, center = c)
-                var start = -90f
+
+                val explode = 10.dp.toPx()
                 positive.forEachIndexed { idx, (_, v) ->
-                    val sweep = (v / total * 360.0).toFloat()
-                    val color = when (idx) {
-                        0 -> ring
-                        else -> SLICE_PALETTE[idx % SLICE_PALETTE.size]
+                    val (s, sweep) = sliceGeo[idx]
+                    val color = SLICE_PALETTE[idx % SLICE_PALETTE.size]
+                    val mid = Math.toRadians((s + sweep / 2).toDouble())
+                    val dir = Offset(kotlin.math.cos(mid).toFloat(), kotlin.math.sin(mid).toFloat())
+                    val t = tl + dir * (if (selIdx == idx) explode else 0f)
+                    drawArc(color, s, sweep, useCenter = false, style = Stroke(stroke), topLeft = t, size = Size(r * 2, r * 2))
+                }
+
+                // 引线：色块外端点 → 最近角落（向文字方向回缩 36dp，确保不穿过文字）
+                if (selIdx != null && selDir != null && corner != null && selColor != null) {
+                    val pBlock = c + selDir * (r + stroke / 2f + explode)
+                    val f = size.width / CANVAS_SIZE
+                    val rawAnchor = Offset(corner.anchorX * f, corner.anchorY * f)
+                    // 从锚点向圆心方向回缩 36dp，让线停在文字前方
+                    val toCenter = (c - rawAnchor).let { v ->
+                        val len = sqrt(v.x * v.x + v.y * v.y).coerceAtLeast(1f)
+                        Offset(v.x / len, v.y / len)
                     }
-                    drawArc(
-                        color = color,
-                        startAngle = start, sweepAngle = sweep, useCenter = false,
-                        style = Stroke(stroke),
-                        topLeft = Offset(c.x - r, c.y - r),
-                        size = Size(r * 2, r * 2)
-                    )
-                    start += sweep
+                    val lineEnd = rawAnchor + toCenter * 36.dp.toPx()
+                    drawLine(selColor, pBlock, lineEnd, strokeWidth = 1.5f.dp.toPx())
+                    drawCircle(selColor, radius = 3.dp.toPx(), center = pBlock)
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -371,9 +416,77 @@ fun DonutChart(
                     Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
+            // 固定角落标签（名称 + 百分比，与色块同色），仅保留连接线，不再画下划线
+            Box(Modifier.fillMaxSize()) {
+                if (selText != null && corner != null && selColor != null) {
+                    Box(
+                        Modifier.fillMaxSize().padding(CALLOUT_MARGIN.dp),
+                        contentAlignment = corner.align
+                    ) {
+                        Text(
+                            selText, color = selColor, fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp, maxLines = 1,
+                            overflow = TextOverflow.Visible,
+                            modifier = Modifier.wrapContentSize(unbounded = true)
+                        )
+                    }
+                }
+            }
         }
     }
 }
+
+// ──── 固定角落标注几何 ────
+
+/** 容器尺寸(dp)，给四角标签留足空间 */
+private const val CANVAS_SIZE = 280
+/** 标注边距(dp) */
+private const val CALLOUT_MARGIN = 12f
+
+private data class CornerLabel(
+    /** 标签块在容器中的对齐角 */
+    val align: Alignment,
+    /** 标签内部水平对齐（左/右） */
+    val hAlign: Alignment.Horizontal,
+    /** 引线终点 / 横线靠角落外端(dp) */
+    val anchorX: Float,
+    val anchorY: Float
+)
+
+/**
+ * 根据色块方向向量选出同一象限的最近画布角落（标签放在色块所在的那一侧，引线直接向外，不斜穿整图）。
+ * anchor 取该角横线的外端，作为引线终点。
+ */
+private fun nearestCorner(dir: Offset): CornerLabel {
+    val S = CANVAS_SIZE
+    val M = CALLOUT_MARGIN
+    return when {
+        dir.x >= 0f && dir.y >= 0f -> // 右下块 → 右下角
+            CornerLabel(
+                align = Alignment.BottomEnd, hAlign = Alignment.End,
+                anchorX = S - M, anchorY = S - M
+            )
+        dir.x >= 0f && dir.y < 0f ->  // 右上块 → 右上角
+            CornerLabel(
+                align = Alignment.TopEnd, hAlign = Alignment.End,
+                anchorX = S - M, anchorY = M
+            )
+        dir.x < 0f && dir.y >= 0f ->   // 左下块 → 左下角
+            CornerLabel(
+                align = Alignment.BottomStart, hAlign = Alignment.Start,
+                anchorX = M, anchorY = S - M
+            )
+        else ->                        // 左上块 → 左上角
+            CornerLabel(
+                align = Alignment.TopStart, hAlign = Alignment.Start,
+                anchorX = M, anchorY = M
+            )
+    }
+}
+
+/** 环形图参数：直径与描边（描边为原 18dp 的两倍 = 36dp，环更粗） */
+private const val DONUT_DIAMETER = 160
+private const val DONUT_STROKE = 36
 
 /** 环形进度（预算/储蓄目标用） */
 @Composable

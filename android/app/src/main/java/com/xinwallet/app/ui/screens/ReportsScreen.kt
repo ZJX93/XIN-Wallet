@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +31,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +49,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Calendar
+import java.util.Locale
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xinwallet.app.data.model.ReportCategorySlice
 import com.xinwallet.app.data.model.TopTransaction
@@ -63,6 +69,7 @@ import com.xinwallet.app.ui.viewmodel.ReportsViewModel
 import com.xinwallet.app.ui.viewmodel.shiftMonth
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.ui.theme.Brown500
+import com.xinwallet.app.ui.theme.ExpenseColor
 import com.xinwallet.app.util.formatMoney
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -77,6 +84,20 @@ private fun monthLabel(period: String): String {
     val m = Pattern.compile("(\\d{4})-(\\d{2})").matcher(period)
     if (!m.find()) return period
     return "${m.group(1)}年${m.group(2)?.toIntOrNull() ?: 0}月"
+}
+
+/** 顶部时间选择器显示文案：月=年月，年=年份，自定义=年月-年月 */
+private fun periodDisplay(period: String, periodMode: String): String {
+    return when (periodMode) {
+        "year" -> "${period.take(4)}年"
+        "custom" -> {
+            val p = period.split("~")
+            val s = p.getOrNull(0)?.take(7) ?: period
+            val e = p.getOrNull(1)?.take(7) ?: period
+            "$s - $e"
+        }
+        else -> monthLabel(period)
+    }
 }
 
 /** "2026-08-12" → "2026-08-12"（趋势头部用 ISO 日期，跟截图一致） */
@@ -112,9 +133,12 @@ fun ReportsScreen(navController: NavHostController) {
                 report = state.report!!,
                 dataType = state.dataType,
                 period = state.period,
+                periodMode = state.periodMode,
+                months = emptyList(), // TODO: 从后端获取有交易的月份列表
+                minYear = Calendar.getInstance().get(Calendar.YEAR) - 5, // 默认近 5 年，可从数据推算
                 topTransactions = state.topTransactions,
                 onDataTypeChange = vm::setDataType,
-                onShiftMonth = { vm.setPeriod(shiftMonth(state.period, it)) },
+                onPeriodChange = { period, mode -> vm.setPeriodMode(mode); vm.setPeriod(period) },
                 onSearch = { navController.navigate(Screen.Search.route) },
                 modifier = Modifier.fillMaxSize().padding(padding)
             )
@@ -129,18 +153,22 @@ private fun ReportContent(
     report: com.xinwallet.app.data.model.FinanceReport,
     dataType: String,
     period: String,
+    periodMode: String = "month",
+    months: List<String> = emptyList(),
+    minYear: Int,
     topTransactions: List<TopTransaction>,
     onDataTypeChange: (String) -> Unit,
-    onShiftMonth: (Int) -> Unit,
+    onPeriodChange: (String, String) -> Unit,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var granularity by remember { mutableStateOf("major") } // 默认"大类"激活
     var showBookSheet by remember { mutableStateOf(false) }
+    var showPeriodPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // KPI 计算
-    val kpis = remember(report, dataType) { buildKpis(dataType, report) }
+    val kpis = remember(report, dataType, periodMode, period) { buildKpis(dataType, report, periodMode, period) }
 
     // 趋势序列 + 峰值日
     val series = remember(report, dataType) {
@@ -184,6 +212,20 @@ private fun ReportContent(
         }
     )
 
+    // 时间选择器弹窗
+    if (showPeriodPicker) {
+        ReportPeriodPickerDialog(
+            initialPeriod = period,
+            initialMode = periodMode,
+            minYear = minYear,
+            onDismiss = { showPeriodPicker = false },
+            onConfirm = { newPeriod, newMode ->
+                showPeriodPicker = false
+                onPeriodChange(newPeriod, newMode)
+            }
+        )
+    }
+
     Column(modifier) {
         // —— 顶部固定区（账本头） ——
         BookHeader(onSwapBook = { showBookSheet = true }, onSearch = onSearch)
@@ -223,34 +265,51 @@ private fun ReportContent(
                     }
                 }
             }
-            // 右列：月份选择器（右对齐，右边缘对齐"日均支出"卡）
+            // 右列：周期选择器（点击打开选择弹窗）
             Row(
                 Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End
             ) {
                 Box(
-                    Modifier.size(32.dp).clickable { onShiftMonth(-1) },
+                    Modifier.size(32.dp).clickable(enabled = periodMode != "custom") {
+                        // 左箭头：按月 shiftMonth，按年 ±1 年（自定义模式无相邻周期概念）
+                        if (periodMode == "year") {
+                            val y = period.take(4).toIntOrNull() ?: return@clickable
+                            onPeriodChange("${y - 1}", "year")
+                        } else {
+                            onPeriodChange(shiftMonth(period, -1), periodMode)
+                        }
+                    },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.ChevronLeft, "上个月",
+                        Icons.Filled.ChevronLeft, "上一个周期",
                         modifier = Modifier.size(20.dp),
                         tint = Brown500
                     )
                 }
                 Text(
-                    monthLabel(period),
+                    periodDisplay(period, periodMode),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickable { showPeriodPicker = true }
                 )
                 Box(
-                    Modifier.size(32.dp).clickable { onShiftMonth(1) },
+                    Modifier.size(32.dp).clickable(enabled = periodMode != "custom") {
+                        // 右箭头：按月 shiftMonth，按年 +1 年（自定义模式无相邻周期概念）
+                        if (periodMode == "year") {
+                            val y = period.take(4).toIntOrNull() ?: return@clickable
+                            onPeriodChange("${y + 1}", "year")
+                        } else {
+                            onPeriodChange(shiftMonth(period, 1), periodMode)
+                        }
+                    },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Filled.ChevronRight, "下个月",
+                        Icons.Filled.ChevronRight, "下一个周期",
                         modifier = Modifier.size(20.dp),
                         tint = Brown500
                     )
@@ -265,7 +324,7 @@ private fun ReportContent(
             item { Spacer(Modifier.height(12.dp)) }
 
             // 趋势
-            item { TrendCard(dataType, report, series, peakIndex) }
+            item { TrendCard(dataType, report, series, peakIndex, periodMode) }
             item { Spacer(Modifier.height(12.dp)) }
 
             // 支出 / 收入：分类排行 + 明细排行
@@ -297,30 +356,73 @@ private fun ReportContent(
 
 private data class KpiSpec(val title: String, val value: String, val accent: Color, val icon: String)
 
-private fun buildKpis(dataType: String, report: com.xinwallet.app.data.model.FinanceReport): List<KpiSpec> {
+/**
+ * 根据时间维度计算「均值」标签与除数：
+ * - 按月：日均，除数 30
+ * - 按年：月均，除数 12
+ * - 自定义：≤2月→日均(天数)；>2月 且 ≤2年→月均(月数)；>2年→年均(年数)
+ */
+private fun avgLabelAndDivisor(periodMode: String, period: String): Pair<String, Double> {
+    return when (periodMode) {
+        "year" -> "月均" to 12.0
+        "custom" -> {
+            val parts = period.split("~")
+            if (parts.size == 2) {
+                val s = parseDate(parts[0]); val e = parseDate(parts[1])
+                if (s != null && e != null) {
+                    val days = ((e.timeInMillis - s.timeInMillis) / 86_400_000L).toInt() + 1
+                    if (days <= 60) return "日均" to days.toDouble().coerceAtLeast(1.0)
+                    val months = (e.get(Calendar.YEAR) - s.get(Calendar.YEAR)) * 12 +
+                        (e.get(Calendar.MONTH) - s.get(Calendar.MONTH))
+                    if (months > 24) return "年均" to (e.get(Calendar.YEAR) - s.get(Calendar.YEAR)).toDouble().coerceAtLeast(1.0)
+                    return "月均" to months.toDouble().coerceAtLeast(1.0)
+                }
+            }
+            "日均" to 30.0
+        }
+        else -> "日均" to 30.0
+    }
+}
+
+/** "YYYY-MM" 或 "YYYY-MM-DD" → Calendar（解析失败返回 null） */
+private fun parseDate(d: String): Calendar? {
+    val m = Regex("(\\d{4})-(\\d{2})(?:-(\\d{2}))?").find(d) ?: return null
+    val y = m.groupValues[1].toIntOrNull() ?: return null
+    val mo = m.groupValues[2].toIntOrNull()?.minus(1) ?: return null
+    val day = m.groupValues[3].toIntOrNull() ?: 1
+    return Calendar.getInstance().apply { set(y, mo, day) }
+}
+
+private fun buildKpis(dataType: String, report: com.xinwallet.app.data.model.FinanceReport, periodMode: String = "month", period: String): List<KpiSpec> {
     val s = report.summary
-    val dark = false // ReportsScreen 通过 LocalIsDark 读取时再分辨颜色
-    val main = Color(0xFF995F2C) // 暖棕主色，跟暖棕品牌一致
+    val main = Color(0xFF995F2C) // 暖棕主色
+    // 预算前缀：本月 / 本年 / (自定义无前缀)
+    val periodPrefix = when (periodMode) {
+        "year" -> "本年"
+        "custom" -> ""
+        else -> "本月"
+    }
+    val (avgLabel, avgDivisor) = avgLabelAndDivisor(periodMode, period)
     return when (dataType) {
         "income" -> listOf(
-            KpiSpec("收入金额", "¥ ${formatMoney(s.income)}", Color(0xFFC11435), "💵"),
-            KpiSpec("日均收入", "¥ ${formatMoney(s.income / 30.coerceAtLeast(1))}", Color(0xFFC11435), "📅")
+            KpiSpec("收入金额", formatMoney(s.income), Color(0xFFC11435), "💵"),
+            KpiSpec("${avgLabel}收入", formatMoney(s.income / avgDivisor), Color(0xFFC11435), "📅")
         )
         "balance" -> listOf(
-            KpiSpec("结余金额", "¥ ${formatMoney(s.balance)}", main, "🎯"),
-            KpiSpec("日均结余", "¥ ${formatMoney(s.balance / 30.coerceAtLeast(1))}", main, "📅")
+            KpiSpec("结余金额", formatMoney(s.balance), main, "🎯"),
+            KpiSpec("${avgLabel}结余", formatMoney(s.balance / avgDivisor), main, "📅")
         )
         else -> {
-            // 支出：4 张 = 支出金额 / 日均支出 / 本月预算 / 剩余预算
+            // 支出：4 张 = 支出金额 / (日均|月均|年均)支出 / (本月|本年)预算 / 剩余预算
             val totalBudget = report.budgetExecution.sumOf { it.budget }
             val totalActual = report.budgetExecution.sumOf { it.actual }
             val remaining = totalBudget - totalActual
             val green = Color(0xFF009558)
             listOf(
-                KpiSpec("支出金额", "¥ ${formatMoney(s.expense)}", green, "💸"),
-                KpiSpec("日均支出", "¥ ${formatMoney(s.avgDailyExpense)}", green, "📅"),
-                KpiSpec("本月预算", "¥ ${formatMoney(totalBudget)}", main, "💰"),
-                KpiSpec("剩余预算", "¥ ${formatMoney(remaining)}", main, "⏳")
+                KpiSpec("支出金额", formatMoney(s.expense), green, "💸"),
+                KpiSpec("${avgLabel}支出", formatMoney(s.expense / avgDivisor), green, "📅"),
+                KpiSpec(if (periodPrefix.isEmpty()) "预算" else "${periodPrefix}预算", formatMoney(totalBudget), main, "💰"),
+                KpiSpec("剩余预算", formatMoney(remaining), main, "⏳")
             )
         }
     }
@@ -368,7 +470,8 @@ private fun TrendCard(
     dataType: String,
     report: com.xinwallet.app.data.model.FinanceReport,
     series: List<Double>,
-    peakIndex: Int?
+    peakIndex: Int?,
+    periodMode: String = "month"
 ) {
     // 选中日索引：默认峰值日；点击图表切换为点中的那一天
     var selectedIndex by remember(series) { mutableStateOf(peakIndex) }
@@ -424,7 +527,13 @@ private fun TrendCard(
                 )
                 Spacer(Modifier.height(2.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf("01", "05", "10", "15", "20", "25", "30").forEach {
+                    // 按年模式显示 01-12 月，按月模式显示日期
+                    val xLabels = if (periodMode == "year") {
+                        (1..12).map { String.format("%02d", it) }
+                    } else {
+                        listOf("01", "05", "10", "15", "20", "25", "30")
+                    }
+                    xLabels.forEach {
                         Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -481,25 +590,15 @@ private fun CategoryRankingCard(
             } else {
                 // 选中的分类（默认金额最大的分类），点击环形图色块切换
                 var selectedName by remember(categories) { mutableStateOf(categories.maxByOrNull { it.total }?.name) }
-                val totalSum = categories.sumOf { it.total }.coerceAtLeast(0.0001)
                 val selected = categories.find { it.name == selectedName } ?: categories.firstOrNull()
-                val selectedRatio = if (selected != null) (selected.total / totalSum * 100) else 0.0
-                // 顶部 label: "选中分类 占比%" + 引导线（点击色块联动）
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "${selected?.name ?: ""} ${"%.1f".format(selectedRatio)}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.height(1.dp).width(36.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                }
                 Spacer(Modifier.height(6.dp))
+                // 稳定 data：避免每次点击都重建 DonutChart 手势检测器导致卡顿
+                val pieData = remember(categories) { categories.map { it.name to it.total } }
                 DonutChart(
-                    data = categories.map { it.name to it.total },
+                    data = pieData,
                     centerTitle = selected?.name,
-                    centerAmount = selected?.let { "¥ ${formatMoney(it.total)}" },
+                    centerAmount = selected?.let { formatMoney(it.total) },
+                    selectedLabel = selected?.name,
                     onSliceClick = { name -> selectedName = name }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -546,7 +645,7 @@ private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
                     )
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            (if (isIncome) "¥ " else "-¥ ") + formatMoney(tx.amount),
+                            (if (isIncome) "" else "-") + formatMoney(tx.amount),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (isIncome) Color(0xFFC11435) else Color(0xFF009558)
@@ -673,3 +772,302 @@ private fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier =
             onClick = onClick
         )
     )
+
+/* ────────── 统计页时间选择器弹窗（三 tab：按月/按年/自定义） ────────── */
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReportPeriodPickerDialog(
+    initialPeriod: String,      // "YYYY-MM" 或 "YYYY"
+    initialMode: String,        // "month" / "year" / "custom"
+    minYear: Int,               // 最早交易年份（按年视图首页起点）
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit   // (period, mode)
+) {
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val currentMonthInt = Calendar.getInstance().get(Calendar.MONTH) + 1
+
+    val initYear = initialPeriod.take(4).toIntOrNull() ?: currentYear
+    val initMonth = if (initialPeriod.length >= 7) initialPeriod.substring(5, 7).trimStart('0').toIntOrNull() ?: currentMonthInt else currentMonthInt
+
+    var mode by remember { mutableStateOf(initialMode) }
+    var selYear by remember { mutableStateOf(initYear) }
+    var selMonth by remember { mutableStateOf(initMonth) }
+    // 按年视图：12 年一页
+    var selYearBase by remember {
+        mutableStateOf(((initYear - minYear).coerceAtLeast(0) / 12) * 12 + minYear)
+    }
+    // 自定义：起止月份（格式 YYYY-MM）
+    var customStart by remember { mutableStateOf(if (initialMode == "custom" && initialPeriod.contains("~")) initialPeriod.substringBefore("~") else "") }
+    var customEnd by remember { mutableStateOf(if (initialMode == "custom" && initialPeriod.contains("~")) initialPeriod.substringAfter("~") else "") }
+
+    val months = remember { (1..12).toList() }
+    val monthYears = remember { (currentYear - 8)..(currentYear + 3) }
+    val pageYears = remember(selYearBase) { (selYearBase..selYearBase + 11).toList() }
+
+    // 选中色：青绿色（与截图一致）
+    val accentColor = ExpenseColor
+
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        containerColor = Color.White,
+        dragHandle = null
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            // 顶部 tab：按月查看 / 按年查看 / 自定义（无背景，选中显示下划线）
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                listOf("month" to "按月查看", "year" to "按年查看", "custom" to "自定义").forEach { (key, label) ->
+                    val on = mode == key
+                    Column(
+                        Modifier.clickable { mode = key }.padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            label,
+                            color = if (on) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        if (on) {
+                            Spacer(Modifier.height(6.dp))
+                            Box(Modifier.width(28.dp).height(2.dp).background(accentColor))
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            when (mode) {
+                "month" -> {
+                    // 第二行：年份选择
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { selYear -= 1 }, enabled = selYear > monthYears.first()) {
+                            Icon(Icons.Filled.ChevronLeft, "上一年", tint = accentColor)
+                            Spacer(Modifier.width(4.dp))
+                            Text("${selYear - 1}", color = accentColor, fontSize = 13.sp)
+                        }
+                        Text("$selYear", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { selYear += 1 }, enabled = selYear < monthYears.last()) {
+                            Text("${selYear + 1}", color = accentColor, fontSize = 13.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.ChevronRight, "下一年", tint = accentColor)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    // 12 个月份网格，点击即确认
+                    val cols = 4
+                    months.chunked(cols).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { m ->
+                                val isSelected = m == selMonth && selYear == initYear
+                                val isCurrent = m == currentMonthInt && currentYear == selYear
+                                // 未来月份置灰（当前年且月份 > 当前月）
+                                val isFuture = currentYear == selYear && m > currentMonthInt
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .aspectRatio(2.2f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            when {
+                                                isSelected -> accentColor
+                                                isCurrent -> Color(0xFFE8F5E9)
+                                                isFuture -> Color(0xFFF0F0F0)
+                                                else -> Color(0xFFF5F5F5)
+                                            }
+                                        )
+                                        .clickable(enabled = !isFuture) {
+                                            onConfirm(String.format("%04d-%02d", selYear, m), "month")
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "${m}月",
+                                        color = when {
+                                            isSelected -> Color.White
+                                            isCurrent -> accentColor
+                                            isFuture -> Color(0xFFBDBDBD)
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
+                                        fontWeight = if (isSelected || isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                            repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+                "year" -> {
+                    // 第二行：年份翻页（12 年一页）
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { selYearBase = (selYearBase - 12).coerceAtLeast(minYear) }, enabled = selYearBase > minYear) {
+                            Icon(Icons.Filled.ChevronLeft, "上一页", tint = accentColor)
+                            Spacer(Modifier.width(4.dp))
+                            Text("${selYearBase - 1}", color = accentColor, fontSize = 13.sp)
+                        }
+                        Text("年份", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { selYearBase += 12 }) {
+                            Text("${selYearBase + 12}", color = accentColor, fontSize = 13.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.ChevronRight, "下一页", tint = accentColor)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    // 年份网格：12 个年份，点击即确认
+                    val yCols = 4
+                    pageYears.chunked(yCols).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { y ->
+                                val isSelected = y == selYear
+                                val isCurrent = y == currentYear
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .aspectRatio(2.0f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            when {
+                                                isSelected -> accentColor
+                                                isCurrent -> Color(0xFFE8F5E9)
+                                                else -> Color(0xFFF5F5F5)
+                                            }
+                                        )
+                                        .clickable { onConfirm("$y", "year") },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "$y",
+                                        color = when {
+                                            isSelected -> Color.White
+                                            isCurrent -> accentColor
+                                            else -> MaterialTheme.colorScheme.onSurface
+                                        },
+                                        fontWeight = if (isSelected || isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
+                            repeat(yCols - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+                "custom" -> {
+                    // 自定义：按月选择起止（开始/结束切换 + 年份箭头 + 12 月网格）
+                    var editing by remember { mutableStateOf("start") }
+                    var sy by remember { mutableStateOf(customStart.take(4).toIntOrNull() ?: currentYear) }
+                    var ey by remember { mutableStateOf(customEnd.take(4).toIntOrNull() ?: currentYear) }
+                    val cols = 4
+                    val activeYear = if (editing == "start") sy else ey
+
+                    // 开始 / 结束 切换（无背景，选中白底）
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFFF0EDEE)).padding(3.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        listOf("start" to "开始", "end" to "结束").forEach { (key, label) ->
+                            val on = editing == key
+                            Box(
+                                Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
+                                    .background(if (on) Color.White else Color.Transparent)
+                                    .clickable { editing = key }
+                                    .padding(vertical = 7.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    // 当前编辑字段的年份箭头
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { if (editing == "start") sy -= 1 else ey -= 1 }) {
+                            Icon(Icons.Filled.ChevronLeft, "上一年", tint = accentColor)
+                            Spacer(Modifier.width(4.dp))
+                            Text("${activeYear - 1}", color = accentColor, fontSize = 13.sp)
+                        }
+                        Text("$activeYear", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { if (editing == "start") sy += 1 else ey += 1 }) {
+                            Text("${activeYear + 1}", color = accentColor, fontSize = 13.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Filled.ChevronRight, "下一年", tint = accentColor)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+
+                    // 12 个月份网格：点击设置当前编辑字段
+                    months.chunked(cols).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { m ->
+                                val mm = String.format("%04d-%02d", activeYear, m)
+                                val isSel = if (editing == "start") mm == customStart else mm == customEnd
+                                Box(
+                                    Modifier
+                                        .weight(1f)
+                                        .aspectRatio(2.2f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSel) accentColor else Color(0xFFF5F5F5))
+                                        .clickable { if (editing == "start") customStart = mm else customEnd = mm },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "${m}月",
+                                        color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                            repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    // 已选范围提示
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        Text(
+                            "${if (customStart.isEmpty()) "开始?" else customStart}  ~  ${if (customEnd.isEmpty()) "结束?" else customEnd}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    // 确定按钮
+                    androidx.compose.material3.Button(
+                        onClick = { onConfirm("$customStart~$customEnd", "custom") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = accentColor),
+                        enabled = customStart.isNotEmpty() && customEnd.isNotEmpty()
+                    ) {
+                        Text("确定", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
