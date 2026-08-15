@@ -898,7 +898,7 @@ ${accRef}`;
             },
             {
                 name: 'create_transfer',
-                description: '在两个账户间转账（如银行卡转余额宝）。from_account_id/to_account_id 从账户列表选取。',
+                description: '在两个账户间转账（如储蓄卡转余额宝）。from_account_id/to_account_id 从账户列表选取。',
                 parameters: {
                     type: 'object',
                     properties: {

@@ -415,6 +415,7 @@
                         <button class="dc-tab active" data-dctab="categories">📂 分类管理</button>
                         <button class="dc-tab" data-dctab="invtypes">💹 理财类型</button>
                         <button class="dc-tab" data-dctab="tags">🏷️ 标签管理</button>
+                        <button class="dc-tab" data-dctab="books">📒 账本管理</button>
                     </div>
 
                     <!-- 分类管理 -->
@@ -436,6 +437,12 @@
                     <div class="dc-panel" id="dcPanel-tags">
                         <div class="dc-toolbar"><button class="btn btn-primary" id="addTagBtn">＋ 新建标签</button></div>
                         <div class="tag-grid" id="tagGrid"><div class="skeleton-wrap" data-skeleton="grid"><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div><div class="skeleton-card shimmer"></div></div></div>
+                    </div>
+
+                    <!-- 账本管理 -->
+                    <div class="dc-panel" id="dcPanel-books">
+                        <div class="dc-toolbar"><button class="btn btn-primary" id="addBookBtn">＋ 新增账本</button></div>
+                        <div class="dc-table-wrap"><table class="dc-table"><thead><tr><th>图标</th><th>名称</th><th>颜色</th><th>默认</th><th>操作</th></tr></thead><tbody id="bookTableBody"><tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📒</div><div class="empty-text">暂无账本</div></div></td></tr></tbody></table></div>
                     </div>
                 </div>
 
@@ -661,7 +668,7 @@
     <div class="modal-overlay" id="accountModal"><div class="modal glass-card">
         <div class="modal-header"><h3 id="accModalTitle">新增账户</h3><button class="modal-close" id="accModalClose">✕</button></div>
         <form class="trans-form" id="accForm"><input type="hidden" id="accEditId">
-            <div class="form-row"><div class="form-group"><label>账户名称</label><input type="text" id="accName" required placeholder="如：工资卡"></div><div class="form-group"><label>账户类型</label><select id="accType" required><option value="cash">现金 💵</option><option value="bank_card">银行卡 🏦</option><option value="credit_card">信用卡 💳</option><option value="electronic_payment">电子支付 📱</option><option value="financial_account">金融账户 🏛️</option><option value="digital">数字货币 🪙</option><option value="other">其他 💰</option></select></div></div>
+            <div class="form-row"><div class="form-group"><label>账户名称</label><input type="text" id="accName" required placeholder="如：工资卡"></div><div class="form-group"><label>账户类型</label><select id="accType" required><option value="cash">现金 💵</option><option value="bank_card">储蓄卡 🏦</option><option value="credit_card">信用卡 💳</option><option value="electronic_payment">电子支付 📱</option><option value="financial_account">金融账户 🏛️</option><option value="digital">数字货币 🪙</option><option value="other">其他 💰</option></select></div></div>
             <div class="form-row"><div class="form-group"><label>图标</label><input type="text" id="accIcon" value="💰" placeholder="emoji图标"></div><div class="form-group"><label>初始余额 (¥)</label><input type="number" id="accBalance" step="0.01" value="0" autocomplete="off"></div></div>
             <div class="form-row" id="accCreditLimitRow" style="display:none;">
                 <div class="form-group full-width">

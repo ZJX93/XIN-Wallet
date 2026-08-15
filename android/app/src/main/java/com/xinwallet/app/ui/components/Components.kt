@@ -240,7 +240,7 @@ fun StatKpiCard(
 
 fun accountTypeLabel(type: String): String = when (type) {
     "cash" -> "现金"
-    "bank_card" -> "银行卡"
+    "bank_card" -> "储蓄卡"
     "credit_card" -> "信用卡"
     "electronic_payment" -> "电子支付"
     "financial_account" -> "理财账户"

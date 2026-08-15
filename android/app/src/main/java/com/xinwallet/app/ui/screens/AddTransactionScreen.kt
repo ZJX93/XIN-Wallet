@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.xinwallet.app.ui.components.LoadingBox
+import com.xinwallet.app.ui.components.accountTypeLabel
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown500
@@ -336,25 +337,46 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                     containerColor = MaterialTheme.colorScheme.surface
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
                         Text("选择账户", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
                         Spacer(Modifier.height(4.dp))
-                        state.accounts.forEach { acc ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { accountId = acc.id; showAccountSheet = false }
-                                    .padding(vertical = 12.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(acc.icon ?: "💰", fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(acc.name, style = MaterialTheme.typography.bodyLarge)
-                                    Text("余额 ${formatMoney(acc.balance)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // 与资产账户页一致：按类型分组显示（现金/储蓄卡/信用卡/电子支付/金融账户/数字货币/其他）
+                        val grouped = ACCOUNT_TYPE_ORDER.mapNotNull { t ->
+                            val list = state.accounts.filter { it.type == t }
+                            if (list.isEmpty()) null else t to list
+                        }
+                        val known = ACCOUNT_TYPE_ORDER.toSet()
+                        val other = state.accounts.filter { it.type !in known }
+                        val allGroups = grouped + if (other.isNotEmpty()) listOf("other" to other) else emptyList()
+                        allGroups.forEach { (type, list) ->
+                            Text(
+                                "${accountTypeLabel(type)}（${list.size}）",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
+                            list.forEach { acc ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { accountId = acc.id; showAccountSheet = false }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(acc.icon ?: "💰", fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(acc.name, style = MaterialTheme.typography.bodyLarge)
+                                        Text("余额 ${formatMoney(acc.balance)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (accountId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
                                 }
-                                if (accountId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                         }
                     }
                 }

@@ -571,10 +571,10 @@ const InvestmentManager = {
         // 资产配置饼图
         await ChartManager.renderInvestPie(data.byType);
 
-        // 市值趋势折线图 + 类型对比柱状图
+        // 市值趋势折线图（仅总市值）+ 类型对比柱状图
         const trendData = await api('/stats/investments');
         if (trendData) {
-            await ChartManager.renderInvTrend(trendData.trendSeries);
+            await ChartManager.renderInvTrend(trendData.totalTrend);
             await ChartManager.renderInvTypeBar(trendData.byType);
         }
     },

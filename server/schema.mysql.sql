@@ -36,7 +36,7 @@ CREATE INDEX idx_books_user ON books (user_id);
 
 -- 账户表
 -- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
---   如 A0201=银行卡-工商银行，A0100=现金类（虚拟分组）
+--   如 A0201=储蓄卡-工商银行，A0100=现金类（虚拟分组）
 CREATE TABLE IF NOT EXISTS accounts (
   id INT AUTO_INCREMENT PRIMARY KEY,
   code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 A0201）

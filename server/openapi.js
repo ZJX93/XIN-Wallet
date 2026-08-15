@@ -99,7 +99,7 @@ const spec = {
   security: [{ bearerAuth: [] }],
   tags: [
     { name: '认证', description: '注册/登录/演示登录/刷新 Token' },
-    { name: '账户', description: '现金/银行卡/信用卡/电子支付/理财账户' },
+    { name: '账户', description: '现金/储蓄卡/信用卡/电子支付/理财账户' },
     { name: '交易', description: '收入/支出/转账记录（复式记账）' },
     { name: '转账', description: '账户间资金划转' },
     { name: '预算', description: '分类预算设定与执行跟踪' },

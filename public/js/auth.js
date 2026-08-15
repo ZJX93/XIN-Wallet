@@ -287,10 +287,6 @@ export function renderBookSwitcher() {
             </button>
             <div class="book-switcher-panel" id="bookSwitcherPanel" style="display:none">
                 <div class="book-switcher-list" id="bookSwitcherList"></div>
-                <div class="book-switcher-create">
-                    <input type="text" id="bookSwitcherNewName" placeholder="新账本名称" maxlength="20" autocomplete="off">
-                    <button class="btn btn-primary btn-sm" id="bookSwitcherCreateBtn" type="button">＋ 新建</button>
-                </div>
             </div>`;
         mount.dataset.bound = '1';
 
@@ -311,25 +307,7 @@ export function renderBookSwitcher() {
             }
         });
 
-        document.getElementById('bookSwitcherCreateBtn').addEventListener('click', async () => {
-            const input = document.getElementById('bookSwitcherNewName');
-            const name = (input.value || '').trim();
-            if (!name) { input.focus(); return; }
-            try {
-                const res = await window.api('/books', 'POST', { name });
-                if (res && res.id) {
-                    input.value = '';
-                    await loadBooks();
-                    selectBook(res.id, name);
-                    if (typeof showToast === 'function') showToast('账本已创建', 'success');
-                }
-            } catch (err) {
-                if (typeof showToast === 'function') showToast(err.message || '创建账本失败', 'error');
-            }
-        });
-        document.getElementById('bookSwitcherNewName').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('bookSwitcherCreateBtn').click();
-        });
+        // 顶部仅支持切换账本；新增/编辑/删除统一在「设置 → 基础数据 → 账本管理」中进行
     }
 
     loadBooks();
@@ -383,3 +361,6 @@ function selectBook(id, name) {
     // 通知各页面刷新（app.js 监听后重初始化缓存 + 刷新当前页）
     window.dispatchEvent(new CustomEvent('book:changed', { detail: { bookId: id } }));
 }
+
+// 供基础数据的「账本管理」模块在增删改账本后刷新顶部切换器
+window.loadBooks = loadBooks;

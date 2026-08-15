@@ -57,7 +57,7 @@ const AccountManager = {
         if (!data) return;
         cache.accounts = data.accounts;
         document.getElementById('accTotalAssets').textContent = fmt(data.totalAssets);
-        const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
+        const typeLabels = { cash: '现金', bank_card: '储蓄卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
         this.typeLabels = typeLabels;
         if (!data.accounts || data.accounts.length === 0) { showEmpty(container, '还没有账户，点击「新增账户」开始记录你的资产', '🏦'); return; }
 
@@ -326,7 +326,7 @@ const AccountManager = {
 
     /* ---- 账户：全屏网格铺开 ---- */
     buildAccGridCard(a) {
-        const typeLabels = { cash: '现金', bank_card: '银行卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
+        const typeLabels = { cash: '现金', bank_card: '储蓄卡', credit_card: '信用卡', electronic_payment: '电子支付', financial_account: '金融账户', digital: '数字货币', other: '其他' };
         return `
         <div class="acc-grid-card" data-acc-id="${a.id}" tabindex="0" role="button" aria-label="${escapeHtml(a.name)} 资金明细">
             <div class="goal-head">

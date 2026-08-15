@@ -30,6 +30,7 @@ const DataManager = {
                 tab.classList.add('active');
                 document.getElementById('dcPanel-' + tab.dataset.dctab).classList.add('active');
                 if (tab.dataset.dctab === 'tags') TagManager.refresh();
+                if (tab.dataset.dctab === 'books') this.refreshBooks();
             });
         });
 
@@ -67,6 +68,17 @@ const DataManager = {
             const action = btn.dataset.action;
             if (action === 'edit-invtype') this.openInvTypeModal(parseInt(btn.dataset.id));
             else if (action === 'del-invtype') this.deleteInvType(parseInt(btn.dataset.id), btn.dataset.name);
+        });
+
+        // 账本管理
+        document.getElementById('addBookBtn').addEventListener('click', () => this.openBookModal());
+        document.getElementById('bookTableBody').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            if (action === 'edit-book') this.openBookModal(parseInt(btn.dataset.id));
+            else if (action === 'switch-book') this.switchBook(parseInt(btn.dataset.id));
+            else if (action === 'del-book') this.deleteBook(parseInt(btn.dataset.id), btn.dataset.name);
         });
     },
 
@@ -237,6 +249,78 @@ const DataManager = {
         }
     },
 
+    // ---- 账本管理 ----
+    async refreshBooks() {
+        const data = await api('/books');
+        const tbody = document.getElementById('bookTableBody');
+        const books = (data && data.books) || [];
+        this._books = books;
+        if (books.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📒</div><div class="empty-text">暂无账本</div></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = books.map(b => `
+            <tr>
+                <td><span style="font-size:20px">${escapeHtml(b.icon || '📒')}</span></td>
+                <td>${escapeHtml(b.name)}</td>
+                <td><span class="color-dot" style="background:${escapeHtml(b.color || '#6366f1')}"></span></td>
+                <td>${b.is_default ? '<span class="badge">默认</span>' : ''}</td>
+                <td class="dc-actions">
+                    <button class="btn-ghost-sm" data-action="edit-book" data-id="${b.id}" title="编辑">✏️</button>
+                    ${b.is_default ? '' : `<button class="btn-ghost-sm" data-action="switch-book" data-id="${b.id}" title="设为默认">⭐</button>`}
+                    <button class="btn-ghost-sm btn-danger-sm" data-action="del-book" data-id="${b.id}" data-name="${escapeHtml(b.name)}" title="删除">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    },
+
+    openBookModal(id) {
+        document.getElementById('dcEditKind').value = 'book';
+        document.getElementById('dcRowCatExtra').style.display = 'none';
+        document.getElementById('dcRowInvExtra').style.display = 'none';
+        document.getElementById('dcRowDesc').style.display = 'none';
+        document.getElementById('dcRowColor').style.display = '';
+        if (id) {
+            const b = (this._books || []).find(x => x.id === id);
+            if (!b) return;
+            document.getElementById('dcEditTitle').textContent = '编辑账本';
+            document.getElementById('dcEditId').value = b.id;
+            document.getElementById('dcEditName').value = b.name;
+            document.getElementById('dcEditIcon').value = b.icon || '📒';
+            document.getElementById('dcEditColor').value = b.color || '#6366f1';
+        } else {
+            document.getElementById('dcEditTitle').textContent = '新增账本';
+            document.getElementById('dcEditId').value = '';
+            document.getElementById('dcEditName').value = '';
+            document.getElementById('dcEditIcon').value = '📒';
+            document.getElementById('dcEditColor').value = '#6366f1';
+        }
+        document.getElementById('dcEditModal').classList.add('show');
+    },
+
+    async switchBook(id) {
+        try {
+            await api(`/books/${id}/switch`, 'POST');
+            showToast('已切换默认账本', 'success');
+            await this.refreshBooks();
+            if (typeof window.loadBooks === 'function') await window.loadBooks();
+        } catch (err) {
+            // api() 已显示错误 toast
+        }
+    },
+
+    async deleteBook(id, name) {
+        if (!confirm(`确定删除账本「${name}」？其下数据将并入默认账本。`)) return;
+        try {
+            await api('/books/' + id, 'DELETE');
+            showToast('账本已删除', 'success');
+            await this.refreshBooks();
+            if (typeof window.loadBooks === 'function') await window.loadBooks();
+        } catch (err) {
+            // api() 已显示错误 toast
+        }
+    },
+
     // ---- 通用保存 ----
     async saveEdit() {
         const kind = document.getElementById('dcEditKind').value;
@@ -267,6 +351,17 @@ const DataManager = {
             else await api('/investment-types', 'POST', body);
             this.closeEditModal();
             this.refreshInvTypes();
+        } else if (kind === 'book') {
+            const body = {
+                name: document.getElementById('dcEditName').value,
+                icon: document.getElementById('dcEditIcon').value,
+                color: document.getElementById('dcEditColor').value
+            };
+            if (id) await api('/books/' + id, 'PUT', body);
+            else await api('/books', 'POST', body);
+            this.closeEditModal();
+            await this.refreshBooks();
+            if (typeof window.loadBooks === 'function') await window.loadBooks();
         }
     },
 

@@ -218,15 +218,15 @@ const ChartManager = {
     },
 
     // 理财市值趋势折线图 — 渐变填充 + 平滑曲线
-    async renderInvTrend(trendSeries) {
+    async renderInvTrend(totalTrend) {
         this.destroy('invTrend');
         const canvas = document.getElementById('invTrendChart');
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const c = this.colors();
-        if (!trendSeries || trendSeries.length === 0) return;
+        if (!totalTrend || totalTrend.length === 0) return;
 
-        const allDates = [...new Set(trendSeries.flatMap(s => s.points.map(p => p.date)))].sort();
+        const allDates = [...new Set(totalTrend.map(p => p.date))].sort();
         if (allDates.length === 0) return;
 
         // 数据点不足时显示提示
@@ -250,28 +250,26 @@ const ChartManager = {
         const hint = wrap.querySelector('.chart-hint');
         if (hint) hint.style.display = 'none';
 
-        // 为每条线生成渐变色
-        const datasets = trendSeries.map((s, i) => {
-            const baseColor = c.cats[i % c.cats.length];
-            const grad = ctx.createLinearGradient(0, 0, 0, 220);
-            grad.addColorStop(0, baseColor + '40');
-            grad.addColorStop(1, baseColor + '02');
-            return {
-                label: s.name,
-                data: allDates.map(d => { const pt = s.points.find(p => p.date === d); return pt ? pt.value : null; }),
-                borderColor: baseColor,
-                backgroundColor: grad,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHoverBackgroundColor: baseColor,
-                pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 2,
-                borderWidth: 2.5,
-                spanGaps: true
-            };
-        });
+        // 只画一条「总市值」线（按日期汇总所有持仓市值）
+        const baseColor = c.pri;
+        const grad = ctx.createLinearGradient(0, 0, 0, 220);
+        grad.addColorStop(0, baseColor + '40');
+        grad.addColorStop(1, baseColor + '02');
+        const datasets = [{
+            label: '总市值',
+            data: allDates.map(d => { const pt = totalTrend.find(p => p.date === d); return pt ? pt.value : null; }),
+            borderColor: baseColor,
+            backgroundColor: grad,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: baseColor,
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
+            borderWidth: 2.5,
+            spanGaps: true
+        }];
 
         this.charts['invTrend'] = new Chart(ctx, {
             type: 'line',

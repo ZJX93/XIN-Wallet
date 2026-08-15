@@ -447,6 +447,7 @@ router.get('/investments', async (req, res) => {
         // 性能修复（审核报告 M5 · N+1）：原实现在 for 循环内逐持仓查询快照，
         // 持仓数 N 就是 N 次串行 DB 往返。改为一次性取回全部快照后在内存按持仓分组。
         const trendSeries = [];
+        const totalTrend = [];
         if (investments.length > 0) {
             const allSnaps = await db.query(
                 `SELECT investment_id, nav_date, total_value, total_cost
@@ -477,6 +478,16 @@ router.get('/investments', async (req, res) => {
                     });
                 }
             }
+
+            // 总市值趋势：按日期汇总所有持仓市值，前端只画一条总市值线
+            const totalByDate = new Map();
+            for (const s of allSnaps) {
+                const d = s.nav_date instanceof Date ? s.nav_date.toISOString().slice(0, 10) : String(s.nav_date).slice(0, 10);
+                totalByDate.set(d, (totalByDate.get(d) || 0) + parseFloat(s.total_value));
+            }
+            for (const d of [...totalByDate.keys()].sort()) {
+                totalTrend.push({ date: d, value: totalByDate.get(d) });
+            }
         }
 
         const byType = {};
@@ -490,6 +501,7 @@ router.get('/investments', async (req, res) => {
 
         res.json(success({
             trendSeries,
+            totalTrend,
             byType: Object.values(byType).sort((a, b) => b.total_value - a.total_value),
             summary: calcPortfolioMetrics(investments)
         }));
