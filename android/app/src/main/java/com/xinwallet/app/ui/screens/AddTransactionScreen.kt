@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -417,19 +415,21 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
                             Spacer(Modifier.height(12.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("秒：", style = MaterialTheme.typography.bodyLarge)
-                                listOf(0, 15, 30, 45).forEach { s ->
-                                    val on = seconds == s
-                                    Row(
-                                        Modifier
-                                            .padding(end = 8.dp)
-                                            .clip(RoundedCornerShape(50))
-                                            .background(if (on) Brown500 else Brown50)
-                                            .clickable { seconds = s }
-                                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("%02d".format(s), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
-                                            style = MaterialTheme.typography.labelMedium)
+                                // 横向滚动钟盘：0~59 逐秒选择
+                                LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(60) { s ->
+                                        val on = seconds == s
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .background(if (on) Brown500 else Brown50)
+                                                .clickable { seconds = s }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("%02d".format(s), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                                                style = MaterialTheme.typography.labelMedium)
+                                        }
                                     }
                                 }
                             }

@@ -232,9 +232,15 @@ class ChatViewModel(
             // 端上模式：stopListening 等 onResults 回调
             speechRecognizer?.stopListening()
             viewModelScope.launch {
-                delay(5000)
+                delay(8000)
                 if (_state.value.transcribing) {
-                    _state.value = _state.value.copy(transcribing = false, error = "语音识别超时")
+                    // 部分设备 stopListening 后不回调 onResults，但 onPartialResults 已实时更新 input；
+                    // 此时已有识别文字则视为成功，避免误报超时丢失内容
+                    val hasPartial = _state.value.input.isNotBlank() && _state.value.input != inputBeforeVoice
+                    _state.value = _state.value.copy(
+                        transcribing = false,
+                        error = if (hasPartial) null else "语音识别超时"
+                    )
                 }
             }
             return
