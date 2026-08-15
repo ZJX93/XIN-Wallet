@@ -26,7 +26,10 @@ async function createTestUser() {
         'INSERT INTO users (username, password_hash, nickname) VALUES (?, ?, ?)',
         [username, 'test_hash_' + Math.random(), '测试用户']
     );
-    return { id: Number(result.insertId), username };
+    const userId = Number(result.insertId);
+    // 多账本：为测试用户创建默认账本（与 resolveBookContext 行为一致）
+    const bookId = await db.ensureDefaultBookId(userId);
+    return { id: userId, bookId, username };
 }
 
 async function cleanupTestUser(userId) {
@@ -40,6 +43,7 @@ async function cleanupTestUser(userId) {
     await db.query('DELETE FROM tags WHERE user_id = ?', [userId]);
     await db.query('DELETE FROM debts WHERE user_id = ?', [userId]);
     await db.query('DELETE FROM investments WHERE user_id = ?', [userId]);
+    await db.query('DELETE FROM books WHERE user_id = ?', [userId]);
     await db.query('DELETE FROM users WHERE id = ?', [userId]);
 }
 
@@ -289,7 +293,7 @@ dbTest('createInvestmentCreateTxn: 创建持仓时扣减关联账户余额', asy
     try {
         const accId = await createTestAccount(user.id, '证券账户', 10000);
         const txId = await db.transaction(async (conn) => {
-            return await createInvestmentCreateTxn(conn, user.id, accId, 5000, '沪深300ETF', '2026-08-08');
+            return await createInvestmentCreateTxn(conn, user.id, user.bookId, accId, 5000, '沪深300ETF', '2026-08-08');
         });
         assert.ok(txId, '应生成台账交易');
 
@@ -313,7 +317,7 @@ dbTest('rollbackInvestmentCreateTxn: 删除持仓时恢复关联账户余额', a
     try {
         const accId = await createTestAccount(user.id, '证券账户', 10000);
         const txId = await db.transaction(async (conn) => {
-            return await createInvestmentCreateTxn(conn, user.id, accId, 3000, '国债ETF', '2026-08-08');
+            return await createInvestmentCreateTxn(conn, user.id, user.bookId, accId, 3000, '国债ETF', '2026-08-08');
         });
         assert.ok(txId);
         assert.strictEqual(await computeAccountBalance(db, user.id, accId), 7000);

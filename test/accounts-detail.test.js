@@ -16,10 +16,11 @@ const db = require('../server/db');
 const accountsRouter = require('../server/routes/accounts');
 
 const TEST_USER_ID = 987654;
+let testBookId = null;
 const app = express();
 app.use(express.json());
-// mock 鉴权：直接注入固定 userId（本测试不验证鉴权本身）
-app.use((req, res, next) => { req.userId = TEST_USER_ID; next(); });
+// mock 鉴权：注入固定 userId + bookId（本测试不验证鉴权本身，但需模拟多账本 resolveBookContext）
+app.use((req, res, next) => { req.userId = TEST_USER_ID; req.bookId = testBookId; next(); });
 app.use('/api/accounts', accountsRouter);
 
 let server;
@@ -46,6 +47,8 @@ async function req(method, path, body) {
 
 test.before(async () => {
     await listen();
+    // 模拟多账本 resolveBookContext：为测试用户确保默认账本并注入 bookId
+    testBookId = await db.ensureDefaultBookId(TEST_USER_ID);
     const create = await req('POST', '/api/accounts', {
         name: '回归测试账户', type: 'cash', icon: '💵', balance: 0, opening_balance: 0
     });
@@ -55,6 +58,7 @@ test.before(async () => {
 
 test.after(async () => {
     try { await db.query('DELETE FROM accounts WHERE user_id = ?', [TEST_USER_ID]); } catch (_) {}
+    try { await db.query('DELETE FROM books WHERE user_id = ?', [TEST_USER_ID]); } catch (_) {}
     if (server) server.close();
 });
 
