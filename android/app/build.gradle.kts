@@ -108,8 +108,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // 离线语音识别（中文）：完全本地运行，不依赖系统语音助手或云端 AI，华为等国产 ROM 上可用
-    implementation("com.alphacephei:vosk-android:0.3.75")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

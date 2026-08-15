@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,8 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -47,6 +50,9 @@ import com.xinwallet.app.data.model.ReportCategorySlice
 import com.xinwallet.app.data.model.TopTransaction
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.BookHeader
+import androidx.navigation.NavHostController
+import com.xinwallet.app.ui.navigation.Screen
+import com.xinwallet.app.ui.components.BookSwitcherSheet
 import com.xinwallet.app.ui.components.CategoryBars
 import com.xinwallet.app.ui.components.DonutChart
 import com.xinwallet.app.ui.components.EmptyState
@@ -85,14 +91,18 @@ private fun isoDay(iso: String): String = iso.take(10)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportsScreen() {
+fun ReportsScreen(navController: NavHostController) {
     val vm: ReportsViewModel = viewModel(factory = viewModelFactory { ReportsViewModel(AppContainer.reportRepository) })
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    // 当前账本切换后重新拉取报表
+    val curBookId = AppContainer.currentBookId.collectAsState().value
+    LaunchedEffect(curBookId) { vm.reload() }
 
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0), // 与首页/账单一致：让 BookHeader.statusBarsPadding 单独负责状态栏 inset，避免双层留白
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
         when {
@@ -105,6 +115,7 @@ fun ReportsScreen() {
                 topTransactions = state.topTransactions,
                 onDataTypeChange = vm::setDataType,
                 onShiftMonth = { vm.setPeriod(shiftMonth(state.period, it)) },
+                onSearch = { navController.navigate(Screen.Search.route) },
                 modifier = Modifier.fillMaxSize().padding(padding)
             )
             else -> EmptyState("暂无报表数据")
@@ -121,9 +132,12 @@ private fun ReportContent(
     topTransactions: List<TopTransaction>,
     onDataTypeChange: (String) -> Unit,
     onShiftMonth: (Int) -> Unit,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var granularity by remember { mutableStateOf("minor") } // 截图：默认"小类"激活
+    var granularity by remember { mutableStateOf("major") } // 默认"大类"激活
+    var showBookSheet by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // KPI 计算
     val kpis = remember(report, dataType) { buildKpis(dataType, report) }
@@ -157,108 +171,120 @@ private fun ReportContent(
         if (granularity == "major") rawCats.filter { it.parentId == null } else rawCats
     }
 
-    LazyColumn(modifier, contentPadding = PaddingValues(bottom = 24.dp)) {
+    BookSwitcherSheet(
+        show = showBookSheet,
+        onDismiss = { showBookSheet = false },
+        onSelect = { id ->
+            scope.launch { AppContainer.switchBook(id) }
+            showBookSheet = false
+        },
+        onCreate = { name ->
+            scope.launch { AppContainer.createBook(name) }
+            showBookSheet = false
+        }
+    )
 
-        // 顶部：账本标题
-        item { BookHeader() }
+    Column(modifier) {
+        // —— 顶部固定区（账本头） ——
+        BookHeader(onSwapBook = { showBookSheet = true }, onSearch = onSearch)
 
-        // 类型 tab + 月份选择器（同一行；与下方 KPI 两列网格对齐：
-        // 左列=段选择器(宽度=支出金额卡)，右列=月份选择器(右对齐，右边缘=日均支出卡)，中间间隙=卡片间隙）
-        item {
+        // —— 类型 tab + 月份选择器（同一行；不随下方报表滚动） ——
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 左列：类型 tab（填充整列，宽度对齐"支出金额"卡；3 段均分列宽）
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFFE7EDEE))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                // 左列：类型 tab（填充整列，宽度对齐"支出金额"卡；3 段均分列宽）
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFFE7EDEE))
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    DATA_TYPE_OPTIONS.forEach { (value, label) ->
-                        val on = dataType == value
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(if (on) Brown500 else Color.Transparent)
-                                .clickable { onDataTypeChange(value) }
-                                .padding(vertical = 3.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                label,
-                                color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp,
-                                softWrap = false
-                            )
-                        }
+                DATA_TYPE_OPTIONS.forEach { (value, label) ->
+                    val on = dataType == value
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(if (on) Brown500 else Color.Transparent)
+                            .clickable { onDataTypeChange(value) }
+                            .padding(vertical = 3.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            label,
+                            color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            softWrap = false
+                        )
                     }
                 }
-                // 右列：月份选择器（右对齐，右边缘对齐"日均支出"卡）
-                Row(
-                    Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
+            }
+            // 右列：月份选择器（右对齐，右边缘对齐"日均支出"卡）
+            Row(
+                Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                Box(
+                    Modifier.size(32.dp).clickable { onShiftMonth(-1) },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        Modifier.size(32.dp).clickable { onShiftMonth(-1) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.ChevronLeft, "上个月",
-                            modifier = Modifier.size(20.dp),
-                            tint = Brown500
-                        )
-                    }
-                    Text(
-                        monthLabel(period),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                    Icon(
+                        Icons.Filled.ChevronLeft, "上个月",
+                        modifier = Modifier.size(20.dp),
+                        tint = Brown500
                     )
-                    Box(
-                        Modifier.size(32.dp).clickable { onShiftMonth(1) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.ChevronRight, "下个月",
-                            modifier = Modifier.size(20.dp),
-                            tint = Brown500
-                        )
-                    }
+                }
+                Text(
+                    monthLabel(period),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Box(
+                    Modifier.size(32.dp).clickable { onShiftMonth(1) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.ChevronRight, "下个月",
+                        modifier = Modifier.size(20.dp),
+                        tint = Brown500
+                    )
                 }
             }
         }
 
-        // KPI 卡片（按维度不同）
-        item { KpiGrid(kpis) }
-        item { Spacer(Modifier.height(12.dp)) }
-
-        // 趋势
-        item { TrendCard(dataType, report, series, peakIndex) }
-        item { Spacer(Modifier.height(12.dp)) }
-
-        // 支出 / 收入：分类排行 + 明细排行
-        if (dataType != "balance") {
-            item {
-                CategoryRankingCard(
-                    categories = cats,
-                    granularity = granularity,
-                    onGranularityChange = { granularity = it }
-                )
-            }
+        // —— 仅下方报表内容滚动 ——
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            // KPI 卡片（按维度不同）
+            item { KpiGrid(kpis) }
             item { Spacer(Modifier.height(12.dp)) }
-            if (topTransactions.isNotEmpty()) {
-                item { DetailRankingCard(topTransactions, isIncome = dataType == "income") }
+
+            // 趋势
+            item { TrendCard(dataType, report, series, peakIndex) }
+            item { Spacer(Modifier.height(12.dp)) }
+
+            // 支出 / 收入：分类排行 + 明细排行
+            if (dataType != "balance") {
+                item {
+                    CategoryRankingCard(
+                        categories = cats,
+                        granularity = granularity,
+                        onGranularityChange = { granularity = it }
+                    )
+                }
+                item { Spacer(Modifier.height(12.dp)) }
+                if (topTransactions.isNotEmpty()) {
+                    item { DetailRankingCard(topTransactions, isIncome = dataType == "income") }
+                }
+            } else {
+                // 结余：每日概况大表格
+                item { DailyOverviewTable(report) }
             }
-        } else {
-            // 结余：每日概况大表格
-            item { DailyOverviewTable(report) }
         }
     }
 }
@@ -319,7 +345,7 @@ private fun KpiCard(s: KpiSpec, modifier: Modifier = Modifier) {
         modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -344,53 +370,62 @@ private fun TrendCard(
     series: List<Double>,
     peakIndex: Int?
 ) {
-    val (title, color, peakLabel, cumLabel) = when (dataType) {
+    // 选中日索引：默认峰值日；点击图表切换为点中的那一天
+    var selectedIndex by remember(series) { mutableStateOf(peakIndex) }
+
+    val (title, color, dayLabelPrefix, cumLabel) = when (dataType) {
         "income" -> Quadruple(
             "收入趋势",
             Color(0xFFC11435),
-            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    结余: ¥ ${formatMoney(series[it])}" }
-                ?: "本月暂无收入",
-            "累计收入: ¥ ${formatMoney(series.sum())}"
+            "收入",
+            "累计收入 ${formatMoney(series.sum())}"
         )
         "balance" -> Quadruple(
             "结余趋势",
             Color(0xFF995F2C),
-            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    结余: ¥ ${formatMoney(series[it])}" }
-                ?: "本月暂无结余",
-            "期末结余: ¥ ${formatMoney(series.lastOrNull() ?: 0.0)}"
+            "结余",
+            "期末结余 ${formatMoney(series.lastOrNull() ?: 0.0)}"
         )
         else -> Quadruple(
             "支出趋势",
             Color(0xFF009558),
-            peakIndex?.let { "${isoDay(report.dailyTrend[it].date)}    支出: ¥ ${formatMoney(series[it])}" }
-                ?: "本月暂无支出",
-            "累计支出: ¥ ${formatMoney(series.sum())}"
+            "支出",
+            "累计支出 ${formatMoney(series.sum())}"
         )
     }
-    Column(Modifier.padding(horizontal = 16.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(Modifier.padding(14.dp)) {
+
+    // 左：选中日期 + 当日值（无 ¥ 符号）；累计始终为整月累计
+    val dayLabel = selectedIndex
+        ?.takeIf { it in report.dailyTrend.indices && it in series.indices }
+        ?.let { "${isoDay(report.dailyTrend[it].date)}  $dayLabelPrefix ${formatMoney(series[it])}" }
+        ?: "本月暂无数据"
+
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(dayLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(cumLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = color)
+            }
+            Spacer(Modifier.height(8.dp))
+            if (series.isEmpty() || (series.maxOrNull() ?: 0.0) <= 0) {
+                EmptyState("该周期暂无数据")
+            } else {
+                com.xinwallet.app.ui.components.TrendLineChartSingle(
+                    series, color,
+                    peakIndex = selectedIndex,
+                    onTapIndex = { selectedIndex = it }
+                )
+                Spacer(Modifier.height(2.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(peakLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(cumLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = color)
-                }
-                Spacer(Modifier.height(8.dp))
-                if (series.isEmpty() || (series.maxOrNull() ?: 0.0) <= 0) {
-                    EmptyState("该周期暂无数据")
-                } else {
-                    com.xinwallet.app.ui.components.TrendLineChartSingle(series, color, peakIndex = peakIndex)
-                    Spacer(Modifier.height(2.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("01", "05", "10", "15", "20", "25", "30").forEach {
-                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                    listOf("01", "05", "10", "15", "20", "25", "30").forEach {
+                        Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -406,66 +441,69 @@ private fun CategoryRankingCard(
     granularity: String,
     onGranularityChange: (String) -> Unit
 ) {
-    Column(Modifier.padding(horizontal = 16.dp)) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("分类排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Row {
-                GRAN_OPTIONS.forEach { (value, label) ->
-                    val selected = granularity == value
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = if (selected) Color(0xFF1F1F1F) else MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        Text(
-                            label,
-                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .noRippleClickable { onGranularityChange(value) }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("分类排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Row {
+                    GRAN_OPTIONS.forEach { (value, label) ->
+                        val selected = granularity == value
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (selected) Color(0xFF1F1F1F) else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp)
+                        ) {
+                            Text(
+                                label,
+                                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .noRippleClickable { onGranularityChange(value) }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(Modifier.padding(14.dp)) {
-                if (categories.isEmpty()) {
-                    EmptyState("该周期暂无分类数据")
-                } else {
-                    val top = categories.maxByOrNull { it.total }
-                    // 顶部 label: "餐饮 100%" + 引导线
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${top?.name ?: ""} 100%",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Box(Modifier.height(1.dp).width(36.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    DonutChart(
-                        data = categories.map { it.name to it.total },
-                        centerTitle = top?.name,
-                        centerAmount = top?.let { "¥ ${formatMoney(it.total)}" }
+            Spacer(Modifier.height(8.dp))
+            if (categories.isEmpty()) {
+                EmptyState("该周期暂无分类数据")
+            } else {
+                // 选中的分类（默认金额最大的分类），点击环形图色块切换
+                var selectedName by remember(categories) { mutableStateOf(categories.maxByOrNull { it.total }?.name) }
+                val totalSum = categories.sumOf { it.total }.coerceAtLeast(0.0001)
+                val selected = categories.find { it.name == selectedName } ?: categories.firstOrNull()
+                val selectedRatio = if (selected != null) (selected.total / totalSum * 100) else 0.0
+                // 顶部 label: "选中分类 占比%" + 引导线（点击色块联动）
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${selected?.name ?: ""} ${"%.1f".format(selectedRatio)}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
                     )
-                    Spacer(Modifier.height(8.dp))
-                    CategoryBars(categories)
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.height(1.dp).width(36.dp).background(MaterialTheme.colorScheme.outlineVariant))
                 }
+                Spacer(Modifier.height(6.dp))
+                DonutChart(
+                    data = categories.map { it.name to it.total },
+                    centerTitle = selected?.name,
+                    centerAmount = selected?.let { "¥ ${formatMoney(it.total)}" },
+                    onSliceClick = { name -> selectedName = name }
+                )
+                Spacer(Modifier.height(8.dp))
+                CategoryBars(categories)
             }
         }
     }
@@ -475,47 +513,49 @@ private fun CategoryRankingCard(
 
 @Composable
 private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
-    Column(Modifier.padding(horizontal = 16.dp)) {
-        Text("明细排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(Modifier.padding(vertical = 4.dp)) {
-                items.forEach { tx ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.padding(vertical = 4.dp)) {
+            Text(
+                "明细排行",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+            items.forEach { tx ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) { Text(tx.categoryIcon ?: "📌") }
-                        }
-                        Spacer(Modifier.width(12.dp))
+                        Box(contentAlignment = Alignment.Center) { Text(tx.categoryIcon ?: "📌") }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        tx.categoryName ?: "交易",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            tx.categoryName ?: "交易",
+                            (if (isIncome) "¥ " else "-¥ ") + formatMoney(tx.amount),
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isIncome) Color(0xFFC11435) else Color(0xFF009558)
                         )
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                (if (isIncome) "¥ " else "-¥ ") + formatMoney(tx.amount),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isIncome) Color(0xFFC11435) else Color(0xFF009558)
-                            )
-                            Text(
-                                tx.date.take(10).replace("-", "."),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            tx.date.take(10).replace("-", "."),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -527,22 +567,25 @@ private fun DetailRankingCard(items: List<TopTransaction>, isIncome: Boolean) {
 
 @Composable
 private fun DailyOverviewTable(report: com.xinwallet.app.data.model.FinanceReport) {
-    Column(Modifier.padding(horizontal = 16.dp)) {
-        Text("每日概况", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column {
-                // 表头（暖棕品牌色，截图是薄荷绿——这里保留暖棕保持一致）
-                Row(
-                    Modifier.fillMaxWidth().background(Color(0xFF995F2C)),
-                    horizontalArrangement = Arrangement.SpaceAround,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column {
+            Text(
+                "每日概况",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+            // 表头（暖棕品牌色，截图是薄荷绿——这里保留暖棕保持一致）
+            Row(
+                Modifier.fillMaxWidth().background(Color(0xFF995F2C)),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                     listOf("日期", "支出", "收入", "结余").forEach {
                         Text(
                             it,
@@ -615,7 +658,6 @@ private fun DailyOverviewTable(report: com.xinwallet.app.data.model.FinanceRepor
                 }
             }
         }
-    }
 }
 
 /* ────────── 工具 ────────── */

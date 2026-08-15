@@ -3,6 +3,7 @@ package com.xinwallet.app.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,62 +35,18 @@ import androidx.compose.ui.unit.sp
 import com.xinwallet.app.data.model.ReportCategorySlice
 import com.xinwallet.app.ui.components.EmptyState
 import com.xinwallet.app.ui.components.LinearProgress
-import com.xinwallet.app.ui.theme.ExpenseColor
-import com.xinwallet.app.ui.theme.ExpenseColorDark
-import com.xinwallet.app.ui.theme.IncomeColor
-import com.xinwallet.app.ui.theme.IncomeColorDark
-import com.xinwallet.app.ui.theme.LocalIsDark
+import kotlin.math.roundToInt
+import kotlin.math.atan2
+import kotlin.math.sqrt
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.util.formatMoney
 
-/** 近 N 月收支趋势折线图（Canvas 自绘，零依赖） */
-@Composable
-fun TrendLineChart(
-    incomes: List<Double>,
-    expenses: List<Double>,
-    modifier: Modifier = Modifier
-) {
-    val dark = LocalIsDark.current
-    val incomeColor = if (dark) IncomeColorDark else IncomeColor
-    val expenseColor = if (dark) ExpenseColorDark else ExpenseColor
-    val maxV = ((incomes + expenses).maxOrNull() ?: 1.0).let { if (it <= 0) 1.0 else it }
-
-    Canvas(modifier.fillMaxWidth().height(170.dp)) {
-        val w = size.width
-        val h = size.height
-        val n = maxOf(incomes.size, expenses.size, 1)
-        val pad = 18.dp.toPx()
-        val usableH = h - pad * 2
-        val xAt: (Int) -> Float = { i -> if (n == 1) w / 2f else (i.toFloat() / (n - 1)) * w }
-        val yAt: (Double) -> Float = { v -> h - pad - (v / maxV).toFloat() * usableH }
-
-        fun drawSeries(values: List<Double>, color: Color) {
-            if (values.isEmpty()) return
-            val line = Path().apply {
-                values.forEachIndexed { i, v -> if (i == 0) moveTo(xAt(i), yAt(v)) else lineTo(xAt(i), yAt(v)) }
-            }
-            val fill = Path().apply {
-                moveTo(xAt(0), h - pad)
-                values.forEachIndexed { i, v -> lineTo(xAt(i), yAt(v)) }
-                lineTo(xAt(values.lastIndex), h - pad)
-                close()
-            }
-            drawPath(fill, color.copy(alpha = 0.12f))
-            drawPath(line, color, style = Stroke(width = 3.dp.toPx()))
-            values.forEachIndexed { i, v -> drawCircle(color, 4.dp.toPx(), Offset(xAt(i), yAt(v))) }
-        }
-
-        drawSeries(expenses, expenseColor)
-        drawSeries(incomes, incomeColor)
-    }
-}
-
 /**
  * 单条趋势折线图（统计页按维度切换：支出线 / 收入线 / 结余累计线）。
- * 自动标出峰值点（series 中最大值）并高亮，其余与 [TrendLineChart] 视觉一致。
+ * 自动标出峰值点（series 中最大值）并高亮。
  *
  * @param values 单系列数值（按日顺序）。
  * @param color  线条颜色（支出=绿、收入=红、结余=品牌棕）。
@@ -99,10 +57,28 @@ fun TrendLineChartSingle(
     values: List<Double>,
     color: Color,
     modifier: Modifier = Modifier,
-    peakIndex: Int? = null
+    peakIndex: Int? = null,
+    onTapIndex: ((Int) -> Unit)? = null
 ) {
     val maxV = (values.maxOrNull() ?: 1.0).let { if (it <= 0) 1.0 else it }
-    Canvas(modifier.fillMaxWidth().height(170.dp)) {
+    Canvas(
+        modifier
+            .fillMaxWidth()
+            .height(170.dp)
+            .pointerInput(values.size, onTapIndex) {
+                if (onTapIndex != null) {
+                    detectTapGestures { offset ->
+                        val w = size.width.toFloat()
+                        val n = values.size
+                        if (n > 0 && w > 0f) {
+                            val idx = if (n == 1) 0
+                                      else ((offset.x / w) * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                            onTapIndex(idx)
+                        }
+                    }
+                }
+            }
+    ) {
         val w = size.width
         val h = size.height
         val n = maxOf(values.size, 1)
@@ -314,7 +290,8 @@ fun DonutChart(
     data: List<Pair<String, Double>>,
     modifier: Modifier = Modifier,
     centerTitle: String? = null,
-    centerAmount: String? = null
+    centerAmount: String? = null,
+    onSliceClick: ((String) -> Unit)? = null
 ) {
     val positive = data.filter { it.second > 0 }.sortedByDescending { it.second }
     if (positive.isEmpty()) {
@@ -330,7 +307,40 @@ fun DonutChart(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(160.dp)) {
-            Canvas(Modifier.size(160.dp)) {
+            Canvas(
+                Modifier
+                    .size(160.dp)
+                    .pointerInput(positive) {
+                        if (onSliceClick != null) {
+                            detectTapGestures { offset ->
+                                val cx: Float = size.width / 2f
+                                val cy: Float = size.height / 2f
+                                val dx: Float = offset.x - cx
+                                val dy: Float = offset.y - cy
+                                val strokePx: Float = 18.dp.toPx()
+                                val r: Float = (size.width.toFloat() - strokePx) / 2f
+                                val dist: Float = sqrt(dx * dx + dy * dy)
+                                // 只在环带范围内命中（内径~外径），避免点圆心误触发
+                                if (dist >= r - strokePx && dist <= r + strokePx) {
+                                    // 角度：drawArc start=-90 为 12 点方向，顺时针累加
+                                    var a = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                    if (a < -90f) a += 360f // 归一化到 [-90, 270)
+                                    var acc = -90f
+                                    var hitIdx = -1
+                                    for (idx in positive.indices) {
+                                        val sweep = (positive[idx].second / total * 360.0).toFloat()
+                                        if (a >= acc && a < acc + sweep) {
+                                            hitIdx = idx
+                                            break
+                                        }
+                                        acc += sweep
+                                    }
+                                    if (hitIdx >= 0) onSliceClick(positive[hitIdx].first)
+                                }
+                            }
+                        }
+                    }
+            ) {
                 val stroke = 18.dp.toPx()
                 val r = (size.minDimension - stroke) / 2f
                 val c = Offset(size.width / 2, size.height / 2)

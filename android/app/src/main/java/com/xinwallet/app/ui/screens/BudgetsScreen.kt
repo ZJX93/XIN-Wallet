@@ -51,6 +51,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.Scaffold
+import androidx.navigation.NavHostController
+import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.data.model.Budget
 import com.xinwallet.app.data.model.CreateBudgetRequest
 import com.xinwallet.app.data.model.UpdateBudgetRequest
@@ -254,5 +257,14 @@ private fun BudgetFormDialog(
         },
         dismissButton = { TextButton(enabled = !submitting, onClick = onDismiss) { Text("取消") } }
     )
+}
+
+@Composable
+fun BudgetScreen(navController: NavHostController) {
+    Scaffold(
+        topBar = { TopBar("预算管理", onBack = { navController.popBackStack() }) }
+    ) { innerPadding ->
+        Box(Modifier.fillMaxSize().padding(innerPadding)) { BudgetsTab() }
+    }
 }
 

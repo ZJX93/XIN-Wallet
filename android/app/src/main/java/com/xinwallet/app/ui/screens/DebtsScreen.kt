@@ -47,6 +47,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.Scaffold
+import androidx.navigation.NavHostController
+import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.CreateDebtRequest
 import com.xinwallet.app.data.model.CreateRepaymentRequest
@@ -277,7 +280,7 @@ private fun DebtRow(debt: Debt, onClick: () -> Unit, onLongClick: () -> Unit) {
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth()) {
             Text("${directionLabel(debt.direction)} · 剩余 ${formatMoney(debt.remaining)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            if (debt.dueDate.isNotBlank()) Text("到期 ${debt.dueDate}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!debt.dueDate.isNullOrBlank()) Text("到期 ${debt.dueDate}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(6.dp))
         LinearProgress(ratio, color)
@@ -459,5 +462,14 @@ private fun DebtDetailDialog(
         confirmButton = { TextButton(onClick = onRepay) { Text(if (detail?.debt?.direction == "receivable") "记收款" else "记还款") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
     )
+}
+
+@Composable
+fun LoanScreen(navController: NavHostController) {
+    Scaffold(
+        topBar = { TopBar("债务管理", onBack = { navController.popBackStack() }) }
+    ) { innerPadding ->
+        Box(Modifier.fillMaxSize().padding(innerPadding)) { DebtsTab() }
+    }
 }
 

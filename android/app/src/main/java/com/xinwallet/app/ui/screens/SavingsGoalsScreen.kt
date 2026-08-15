@@ -47,6 +47,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.Scaffold
+import androidx.navigation.NavHostController
+import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.data.model.Account
 import com.xinwallet.app.data.model.CreateSavingGoalRequest
 import com.xinwallet.app.data.model.SavingGoal
@@ -388,5 +391,14 @@ private fun IconChoice(emoji: String, selected: Boolean, onClick: () -> Unit) {
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.size(40.dp).clickable { onClick() }
     ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(emoji, style = MaterialTheme.typography.titleMedium) } }
+}
+
+@Composable
+fun SavingsGoalsScreen(navController: NavHostController) {
+    Scaffold(
+        topBar = { TopBar("储蓄目标", onBack = { navController.popBackStack() }) }
+    ) { innerPadding ->
+        Box(Modifier.fillMaxSize().padding(innerPadding)) { SavingsTab() }
+    }
 }
 

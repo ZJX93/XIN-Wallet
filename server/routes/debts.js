@@ -8,7 +8,7 @@ const { success, fail, handleServerError, fmtDateOnly, calcDebtDueSummary, compu
 // - 应收/借出：资金从关联账户流出（支出），扣减余额
 // - 应付/借款：资金进入关联账户（收入），增加余额
 // 返回生成的交易 id；不满足条件时返回 null
-async function createDebtCreateTxn(db, userId, accId, direction, principal, name, dateStr) {
+async function createDebtCreateTxn(db, userId, bookId, accId, direction, principal, name, dateStr) {
   if (!accId || !(principal > 0)) return null;
   const isRecv = direction === 'receivable';
   const catName = isRecv ? '借出' : '借入';
@@ -26,8 +26,8 @@ async function createDebtCreateTxn(db, userId, accId, direction, principal, name
   const srcAcc = isRecv ? accId : null;
   const dstAcc = isRecv ? null : accId;
   const txResult = await db.query(
-    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-    [userId, accId, cat.id, txType, principal, txNote, txDate, srcAcc, dstAcc]
+    'INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+    [userId, bookId, accId, cat.id, txType, principal, txNote, txDate, srcAcc, dstAcc]
   );
   // 以账本为准重算关联账户余额
   const newBalance = await computeAccountBalance(db, userId, accId);
@@ -37,9 +37,9 @@ async function createDebtCreateTxn(db, userId, accId, direction, principal, name
 }
 
 // 回滚创建债务时生成的台账交易（删除交易并按账本重算账户余额）
-async function rollbackDebtCreateTxn(db, userId, txId, accId) {
+async function rollbackDebtCreateTxn(db, userId, bookId, txId, accId) {
   if (!txId) return;
-  await db.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2', [txId, userId]);
+  await db.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [txId, userId, bookId]);
   if (accId) {
     const newBalance = await computeAccountBalance(db, userId, accId);
     await enforceBalanceLimit(db, userId, accId, newBalance);
@@ -119,14 +119,14 @@ router.get('/', async (req, res) => {
     try {
         // 自动清理已还清超过7天的债务（仅删债务记录，保留还款流水和交易不变）
         await db.query(
-            "DELETE FROM debts WHERE user_id = $1 AND status = 'paid_off' AND updated_at < NOW() - INTERVAL '7 days'",
-            [req.userId]
+            "DELETE FROM debts WHERE user_id = $1 AND book_id = $2 AND status = 'paid_off' AND updated_at < NOW() - INTERVAL '7 days'",
+            [req.userId, req.bookId]
         );
         const debts = await db.query(
-            'SELECT * FROM debts WHERE user_id = $1 ORDER BY status = \'paid_off\', status = \'overdue\', due_date IS NULL, due_date ASC, id DESC',
-            [req.userId]
+            'SELECT * FROM debts WHERE user_id = $1 AND book_id = $2 ORDER BY status = \'paid_off\', status = \'overdue\', due_date IS NULL, due_date ASC, id DESC',
+            [req.userId, req.bookId]
         );
-        const repayTotals = await db.query('SELECT debt_id, COALESCE(SUM(amount),0) as paid FROM debt_repayments WHERE user_id = $1 GROUP BY debt_id', [req.userId]);
+        const repayTotals = await db.query('SELECT debt_id, COALESCE(SUM(amount),0) as paid FROM debt_repayments WHERE user_id = $1 AND book_id = $2 GROUP BY debt_id', [req.userId, req.bookId]);
         const paidMap = {};
         repayTotals.forEach(r => { paidMap[r.debt_id] = parseFloat(r.paid); });
         const ym = new Date().toISOString().slice(0, 7);
@@ -166,8 +166,8 @@ router.get('/', async (req, res) => {
         // 本月需还款 / 逾期：基于全部还款流水逐期核对（仅对应付生效）
         const todayStr = new Date().toISOString().slice(0, 10);
         const allReps = await db.query(
-            'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1',
-            [req.userId]
+            'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1 AND book_id = $2',
+            [req.userId, req.bookId]
         );
         const repaymentsByDebt = {};
         allReps.forEach(r => {
@@ -235,14 +235,14 @@ router.post('/', async (req, res) => {
         const accId = b.account_id ? parseInt(b.account_id) : null;
         await db.transaction(async (conn) => {
         const result = await conn.query(
-            `INSERT INTO debts (user_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [req.userId, accId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
+            `INSERT INTO debts (user_id, book_id, account_id, name, type, direction, creditor, principal, remaining, interest_rate, term_months, method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, note, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [req.userId, req.bookId, accId, b.name.trim(), b.type || 'loan', directionV, b.creditor || '', P, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '']
         );
         const newId = result.insertId;
         // 关联账户：借出扣减 / 借入增加关联账户余额，保持账本一致
         let createTxnId = null;
-        createTxnId = await createDebtCreateTxn(conn, req.userId, accId, directionV, P, b.name.trim(), b.start_date);
+        createTxnId = await createDebtCreateTxn(conn, req.userId, req.bookId, accId, directionV, P, b.name.trim(), b.start_date);
         if (createTxnId) await conn.query('UPDATE debts SET create_transaction_id = $1 WHERE id = $2', [createTxnId, newId]);
         res.json(success({ id: newId }, directionV === 'receivable' ? '借出已记录' : '借款已记录'));
         });
@@ -254,7 +254,7 @@ router.put('/:id', async (req, res) => {
     try {
         const b = req.body;
         if (!b.name || !b.name.trim()) return res.status(400).json(fail('债务名称必填'));
-        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
         const methodV = b.method || debt.method;
         const directionV = b.direction === 'receivable' ? 'receivable' : (b.direction === 'payable' ? 'payable' : debt.direction);
@@ -276,14 +276,14 @@ router.put('/:id', async (req, res) => {
         await db.transaction(async (conn) => {
         // 回滚旧的创建交易（避免账本残留）
         if (debt.create_transaction_id) {
-          await rollbackDebtCreateTxn(conn, req.userId, debt.create_transaction_id, debt.account_id);
+          await rollbackDebtCreateTxn(conn, req.userId, debt.book_id, debt.create_transaction_id, debt.account_id);
         }
         // 重算后若符合"关联账户+本金>0"，按方向重建创建交易（借出支出/借入收入）
         let newCreateTxnId = null;
-        newCreateTxnId = await createDebtCreateTxn(conn, req.userId, accId, directionV, newPrincipal, b.name.trim(), b.start_date);
+        newCreateTxnId = await createDebtCreateTxn(conn, req.userId, debt.book_id, accId, directionV, newPrincipal, b.name.trim(), b.start_date);
         await conn.query(
-            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=?, create_transaction_id=? WHERE id=? AND user_id=?`,
-            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, newCreateTxnId, req.params.id, req.userId]
+            `UPDATE debts SET name=?, type=?, direction=?, creditor=?, account_id=?, principal=?, remaining=?, interest_rate=?, term_months=?, method=?, monthly_payment=?, start_date=?, due_date=?, billing_day=?, payment_day=?, min_payment=?, note=?, status=?, create_transaction_id=? WHERE id=? AND user_id=? AND book_id=?`,
+            [b.name.trim(), b.type || debt.type, directionV, b.creditor || '', accId, newPrincipal, rem, parseFloat(b.interest_rate) || 0, parseInt(b.term_months) || 0, methodV, Math.round(monthly * 100) / 100, b.start_date || null, b.due_date || null, parseInt(b.billing_day) || null, parseInt(b.payment_day) || null, parseFloat(b.min_payment) || 0, b.note || '', newStatus, newCreateTxnId, req.params.id, req.userId, req.bookId]
         );
         res.json(success(null, '债务已更新'));
         });
@@ -293,20 +293,20 @@ router.put('/:id', async (req, res) => {
 // 删除债务（级联删除还款流水 + 创建时生成的台账交易）
 router.delete('/:id', async (req, res) => {
     try {
-        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
         await db.transaction(async (conn) => {
         // 回滚创建应收借出时生成的台账交易（恢复账户余额）
         if (debt.create_transaction_id) {
-          await rollbackDebtCreateTxn(conn, req.userId, debt.create_transaction_id, debt.account_id);
+          await rollbackDebtCreateTxn(conn, req.userId, debt.book_id, debt.create_transaction_id, debt.account_id);
         }
         // 清理关联的入账交易（还款出账记录）
-        const txs = await conn.query('SELECT transaction_id FROM debt_repayments WHERE debt_id = $1 AND user_id = $2 AND transaction_id IS NOT NULL', [req.params.id, req.userId]);
+        const txs = await conn.query('SELECT transaction_id FROM debt_repayments WHERE debt_id = $1 AND user_id = $2 AND book_id = $3 AND transaction_id IS NOT NULL', [req.params.id, req.userId, debt.book_id]);
         for (const t of txs) {
-            if (t.transaction_id) await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2', [t.transaction_id, req.userId]);
+            if (t.transaction_id) await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [t.transaction_id, req.userId, debt.book_id]);
         }
-        await conn.query('DELETE FROM debt_repayments WHERE debt_id = $1 AND user_id = $2', [req.params.id, req.userId]);
-        await conn.query('DELETE FROM debts WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+        await conn.query('DELETE FROM debt_repayments WHERE debt_id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, debt.book_id]);
+        await conn.query('DELETE FROM debts WHERE id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, debt.book_id]);
         res.json(success(null, '债务已删除'));
         });
     } catch (err) { handleServerError(res, err); }
@@ -315,9 +315,9 @@ router.delete('/:id', async (req, res) => {
 // 债务详情（含还款计划 + 流水）
 router.get('/:id', async (req, res) => {
     try {
-        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
-        const repayments = await db.query('SELECT r.*, a.name AS account_name, a.icon AS account_icon FROM debt_repayments r LEFT JOIN accounts a ON r.account_id = a.id WHERE r.debt_id = $1 AND r.user_id = $2 ORDER BY r.paid_at DESC, r.id DESC', [req.params.id, req.userId]);
+        const repayments = await db.query('SELECT r.*, a.name AS account_name, a.icon AS account_icon FROM debt_repayments r LEFT JOIN accounts a ON r.account_id = a.id WHERE r.debt_id = $1 AND r.user_id = $2 AND r.book_id = $3 ORDER BY r.paid_at DESC, r.id DESC', [req.params.id, req.userId, req.bookId]);
         const auto = autoCalcMethods().includes(debt.method);
         const monthly = auto
             ? (parseFloat(debt.monthly_payment) || calcMonthlyPayment(debt.principal, debt.interest_rate, debt.term_months, debt.method))
@@ -339,7 +339,7 @@ router.post('/:id/repayments', async (req, res) => {
         const { amount, paid_at, note, principal_part, interest_part, account_id } = req.body;
         const amt = parseFloat(amount);
         if (!amt || amt <= 0) return res.status(400).json(fail('金额必填'));
-        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
         if (!debt) return res.status(404).json(fail('债务不存在'));
         const accId = account_id ? parseInt(account_id) : null;
         if (!accId) return res.status(400).json(fail('请选择账户'));
@@ -349,8 +349,8 @@ router.post('/:id/repayments', async (req, res) => {
         const ip = interest_part !== undefined && interest_part !== '' && interest_part !== null ? parseFloat(interest_part) : 0;
         // 1) 插入还款/收款记录
         const repResult = await conn.query(
-            'INSERT INTO debt_repayments (user_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-            [req.userId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString().slice(0, 10), note || '']
+            'INSERT INTO debt_repayments (user_id, book_id, debt_id, account_id, amount, principal_part, interest_part, paid_at, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+            [req.userId, req.bookId, debt.id, accId, amt, pp, ip, paid_at || new Date().toISOString().slice(0, 10), note || '']
         );
         const repId = repResult.insertId;
         // 2) 准备分类
@@ -368,8 +368,8 @@ router.post('/:id/repayments', async (req, res) => {
         const txNote = isReceivable ? `收回·${debt.name}` : `还款·${debt.name}`;
         const srcCol = isReceivable ? 'NULL' : '?';
         const dstCol = isReceivable ? '?' : 'NULL';
-        const insertSQL = `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol})`;
-        const txParams = [req.userId, accId, cat.id, txType, amt, txNote, txDate];
+        const insertSQL = `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${srcCol}, ${dstCol})`;
+        const txParams = [req.userId, req.bookId, accId, cat.id, txType, amt, txNote, txDate];
         if (isReceivable) txParams.push(accId); else txParams.push(accId);
         const txResult = await conn.query(insertSQL, txParams);
         await conn.query('UPDATE debt_repayments SET transaction_id = $1 WHERE id = $2', [txResult.insertId, repId]);
@@ -391,13 +391,13 @@ router.post('/:id/repayments', async (req, res) => {
 // 删除还款记录（回滚剩余本金 + 删除关联入账交易）
 router.delete('/:id/repayments/:rid', async (req, res) => {
     try {
-        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
-        const rep = await db.queryOne('SELECT * FROM debt_repayments WHERE id = ? AND debt_id = ? AND user_id = ?', [req.params.rid, req.params.id, req.userId]);
+        const debt = await db.queryOne('SELECT * FROM debts WHERE id = ? AND user_id = ? AND book_id = ?', [req.params.id, req.userId, req.bookId]);
+        const rep = await db.queryOne('SELECT * FROM debt_repayments WHERE id = ? AND debt_id = ? AND user_id = ? AND book_id = ?', [req.params.rid, req.params.id, req.userId, req.bookId]);
         if (!debt || !rep) return res.status(404).json(fail('记录不存在'));
         await db.transaction(async (conn) => {
         // 回滚关联的入账交易（恢复账户余额）
         if (rep.transaction_id) {
-            await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2', [rep.transaction_id, req.userId]);
+            await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [rep.transaction_id, req.userId, debt.book_id]);
             if (rep.account_id) {
                 const restoredBalance = await computeAccountBalance(conn, req.userId, rep.account_id);
                 await enforceBalanceLimit(conn, req.userId, rep.account_id, restoredBalance);

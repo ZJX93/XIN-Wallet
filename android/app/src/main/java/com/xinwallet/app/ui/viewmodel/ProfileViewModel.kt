@@ -5,6 +5,7 @@ import android.os.Environment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.local.SessionManager
+import com.xinwallet.app.data.model.UpdateProfileRequest
 import com.xinwallet.app.data.repository.AuthRepository
 import com.xinwallet.app.data.repository.UpdateRepository
 import com.xinwallet.app.di.AppContainer
@@ -17,7 +18,10 @@ data class ProfileUiState(
     val themeMode: String = "system",
     val baseUrl: String = "",
     val username: String = "",
+    val nickname: String = "",
+    val avatar: String? = null,
     val memberDays: Int = 0,
+    val editing: Boolean = false,
     val message: String? = null
 )
 
@@ -55,8 +59,21 @@ class ProfileViewModel(
                 themeMode = session.themeMode(),
                 baseUrl = session.baseUrl().takeUnless(::isPlaceholderUrl) ?: "",
                 username = session.username(),
+                nickname = session.nickname(),
                 memberDays = session.memberDays()
             )
+            // 从服务端拉取最新资料（用户名/昵称/头像），覆盖本地缓存
+            when (val r = authRepo.profile()) {
+                is com.xinwallet.app.data.remote.ApiResult.Success -> {
+                    val u = r.data?.user
+                    _state.value = _state.value.copy(
+                        username = u?.username?.takeIf { it.isNotBlank() } ?: _state.value.username,
+                        nickname = u?.nickname ?: _state.value.nickname,
+                        avatar = u?.avatar
+                    )
+                }
+                else -> Unit
+            }
         }
     }
 
@@ -82,6 +99,35 @@ class ProfileViewModel(
 
     fun clearMessage() {
         _state.value = _state.value.copy(message = null)
+    }
+
+    /** 提交资料修改（头像 / 用户名 / 昵称 / 改密）。 */
+    fun submitProfile(avatar: String?, username: String?, nickname: String?, oldPwd: String?, newPwd: String?) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(editing = true, message = null)
+            val req = UpdateProfileRequest(
+                avatar = avatar?.takeIf { it.isNotBlank() },
+                username = username?.takeIf { it.isNotBlank() },
+                nickname = nickname?.takeIf { it.isNotBlank() },
+                oldPassword = oldPwd?.takeIf { it.isNotBlank() },
+                newPassword = newPwd?.takeIf { it.isNotBlank() }
+            )
+            when (val r = authRepo.updateProfile(req)) {
+                is com.xinwallet.app.data.remote.ApiResult.Success -> {
+                    val u = r.data?.user
+                    _state.value = _state.value.copy(
+                        editing = false,
+                        username = u?.username ?: _state.value.username,
+                        nickname = u?.nickname ?: _state.value.nickname,
+                        avatar = u?.avatar ?: _state.value.avatar,
+                        message = if (oldPwd.isNullOrBlank() && newPwd.isNullOrBlank()) "资料已更新" else "密码已更新"
+                    )
+                }
+                is com.xinwallet.app.data.remote.ApiResult.Error -> {
+                    _state.value = _state.value.copy(editing = false, message = r.message)
+                }
+            }
+        }
     }
 
     fun logout() {

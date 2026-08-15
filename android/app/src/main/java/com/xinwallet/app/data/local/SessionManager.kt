@@ -2,6 +2,7 @@ package com.xinwallet.app.data.local
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -26,8 +27,18 @@ class SessionManager(private val context: Context) {
         val BASE_URL = stringPreferencesKey("base_url")
         val THEME_MODE = stringPreferencesKey("theme_mode") // system / light / dark
         val USERNAME = stringPreferencesKey("username")
+        val NICKNAME = stringPreferencesKey("nickname")
+        // 当前账本 id：前端切换账本后持久化，AuthInterceptor 据此注入 X-Book-Id。
+        // 0 表示未设置（后端退化为默认账本）。
+        val CURRENT_BOOK_ID = intPreferencesKey("current_book_id")
         // 首次启动时间戳（毫秒）。为空时会在首次访问时回写今天 0 点，从而稳定计算「陪伴天数」。
         val FIRST_LAUNCH_AT = longPreferencesKey("first_launch_at")
+        // 首页卡片可见性：逗号分隔的卡片 id（month_summary / today_bills / calendar）。
+        // 空串表示全部展示（默认值）。
+        val HOME_CARDS = stringPreferencesKey("home_cards")
+        // 应用锁：PIN 哈希值（SHA-256 hex）；空串 = 未启用应用锁
+        val APP_LOCK_PIN_HASH = stringPreferencesKey("app_lock_pin_hash")
+        val APP_LOCK_ENABLED = stringPreferencesKey("app_lock_enabled")
     }
 
     suspend fun saveTokens(access: String, refresh: String) {
@@ -50,11 +61,19 @@ class SessionManager(private val context: Context) {
         context.dataStore.edit { it[USERNAME] = name }
     }
 
+    suspend fun saveNickname(name: String) {
+        context.dataStore.edit { it[NICKNAME] = name }
+    }
+
+    suspend fun nickname(): String = context.dataStore.data.first()[NICKNAME] ?: ""
+    fun nicknameFlow(): Flow<String> = context.dataStore.data.map { it[NICKNAME] ?: "" }
+
     suspend fun clearSession() {
         context.dataStore.edit {
             it.remove(ACCESS_TOKEN)
             it.remove(REFRESH_TOKEN)
             it.remove(USERNAME)
+            it.remove(CURRENT_BOOK_ID)
         }
     }
 
@@ -64,8 +83,33 @@ class SessionManager(private val context: Context) {
     suspend fun themeMode(): String = context.dataStore.data.first()[THEME_MODE] ?: "system"
     suspend fun username(): String = context.dataStore.data.first()[USERNAME] ?: ""
 
+    suspend fun saveCurrentBookId(id: Int) {
+        context.dataStore.edit { it[CURRENT_BOOK_ID] = id }
+    }
+    /** 当前账本 id；0 表示未设置（后端退化为默认账本） */
+    suspend fun currentBookId(): Int = context.dataStore.data.first()[CURRENT_BOOK_ID] ?: 0
+    fun currentBookIdFlow(): Flow<Int> = context.dataStore.data.map { it[CURRENT_BOOK_ID] ?: 0 }
+
     fun themeModeFlow(): Flow<String> = context.dataStore.data.map { it[THEME_MODE] ?: "system" }
     fun baseUrlFlow(): Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
+
+    /** 首页卡片可见 id 集合（空串 = 全部展示）。点击「编辑首页卡片」后用逗号分隔串回写。 */
+    fun homeCardsFlow(): Flow<String> = context.dataStore.data.map { it[HOME_CARDS] ?: "" }
+    suspend fun saveHomeCards(csv: String) {
+        context.dataStore.edit { it[HOME_CARDS] = csv }
+    }
+
+    // —— 应用锁（PIN）持久化 ——
+    /** PIN 哈希值（SHA-256）；空串表示未设置 */
+    fun appLockPinHashFlow(): Flow<String> = context.dataStore.data.map { it[APP_LOCK_PIN_HASH] ?: "" }
+    suspend fun appLockPinHash(): String = context.dataStore.data.first()[APP_LOCK_PIN_HASH] ?: ""
+    suspend fun saveAppLockPinHash(hash: String) {
+        context.dataStore.edit { it[APP_LOCK_PIN_HASH] = hash }
+    }
+    fun appLockEnabledFlow(): Flow<Boolean> = context.dataStore.data.map { it[APP_LOCK_ENABLED] == "true" }
+    suspend fun setAppLockEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[APP_LOCK_ENABLED] = if (enabled) "true" else "false" }
+    }
 
     /**
      * 获取「陪伴天数」：自首次启动起算到今天的天数（含今天）。

@@ -40,6 +40,9 @@ import kotlinx.coroutines.launch
 private fun isPlaceholderUrl(url: String): Boolean =
     url.isBlank() || url.contains("127.0.0.1") || url.contains("localhost")
 
+// UI 上隐藏 baseUrl 末尾的 /api 后缀（内部 Retrofit baseUrl 仍保留 /api 以正确拼接口路径）
+private fun stripApiSuffix(url: String): String = url.replace(Regex("/api/?$"), "")
+
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
     val vm: LoginViewModel = viewModel(factory = viewModelFactory { LoginViewModel(AppContainer.authRepository) })
@@ -57,7 +60,11 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         showServer = serverUrl.isBlank()
     }
     LaunchedEffect(state.success) {
-        if (state.success) onLoginSuccess()
+        if (state.success) {
+            // 登录成功后拉取账本列表，写入当前账本（供 X-Book-Id 注入与切换 UI）
+            try { AppContainer.loadBooks() } catch (_: Exception) { }
+            onLoginSuccess()
+        }
     }
     LaunchedEffect(state.error) {
         state.error?.let {
@@ -78,9 +85,9 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
             if (showServer) {
                 OutlinedTextField(
-                    value = serverUrl, onValueChange = { serverUrl = it },
+                    value = stripApiSuffix(serverUrl), onValueChange = { serverUrl = it },
                     label = { Text("NAS 服务器地址") },
-                    placeholder = { Text("https://your-nas.com:18888/api") },
+                    placeholder = { Text("https://your-nas.com:18888") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -103,7 +110,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
             } else {
                 TextButton(onClick = { showServer = true }) {
-                    Text("服务器：${if (serverUrl.isBlank()) "未设置" else serverUrl}（点击修改）")
+                    Text("服务器：${if (serverUrl.isBlank()) "未设置" else stripApiSuffix(serverUrl)}（点击修改）")
                 }
             }
 

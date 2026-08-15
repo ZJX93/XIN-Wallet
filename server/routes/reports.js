@@ -20,8 +20,8 @@ const REPORT_CACHE_TTL_MS = 30 * 1000;
 const REPORT_CACHE_MAX = 200;
 const reportCache = new Map();
 
-function reportCacheKey(userId, type, period) {
-    return `${userId}:${type}:${period}`;
+function reportCacheKey(userId, bookId, type, period) {
+    return `${userId}:${bookId}:${type}:${period}`;
 }
 
 function getCachedReport(key) {
@@ -120,7 +120,7 @@ function daysInRange(start, end) {
     return Math.max(1, Math.round((b - a) / (1000 * 60 * 60 * 24)) + 1);
 }
 
-async function buildReport(userId, type, period) {
+async function buildReport(userId, bookId, type, period) {
     const range = parseReportPeriod(type, period);
     const start = range.start, end = range.end;
     const days = daysInRange(start, end);
@@ -146,17 +146,17 @@ async function buildReport(userId, type, period) {
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
                 COUNT(*) as tx_count
              FROM transactions
-             WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')`,
-            [userId, start, end]
+             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')`,
+            [userId, bookId, start, end]
         ),
         db.query(
             `SELECT TO_CHAR(date, 'YYYY-MM-DD') as date,
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
              FROM transactions
-             WHERE user_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
+             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ? AND type IN ('expense','income','transfer_in','transfer_out')
              GROUP BY TO_CHAR(date, 'YYYY-MM-DD') ORDER BY date`,
-            [userId, start, end]
+            [userId, bookId, start, end]
         ),
         // 分类金额「子级向父级汇总」——在数据库层用递归 CTE 完成，语义同财务成本科目：
         // 每个分类的 total = 自身发生额 + 其全部子孙（任意层级）发生额之和。
@@ -176,7 +176,7 @@ async function buildReport(userId, type, period) {
                FROM anc a
                JOIN transactions t
                  ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'expense'
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense'
                 AND t.date >= ? AND t.date <= ?
                GROUP BY a.ancestor_id
              )
@@ -184,7 +184,7 @@ async function buildReport(userId, type, period) {
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
              ORDER BY agg.total DESC`,
-            [userId, start, end]
+            [userId, bookId, start, end]
         ),
         db.query(
             `WITH RECURSIVE anc AS (
@@ -200,7 +200,7 @@ async function buildReport(userId, type, period) {
                FROM anc a
                JOIN transactions t
                  ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'income'
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'income'
                 AND t.date >= ? AND t.date <= ?
                GROUP BY a.ancestor_id
              )
@@ -208,23 +208,23 @@ async function buildReport(userId, type, period) {
              FROM agg
              JOIN categories c ON c.id = agg.cat_id
              ORDER BY agg.total DESC`,
-            [userId, start, end]
+            [userId, bookId, start, end]
         ),
         db.query(
             `SELECT a.id, a.name, a.icon, a.type,
                 COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0) as net
              FROM transactions t JOIN accounts a ON t.account_id = a.id
-             WHERE t.user_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
+             WHERE t.user_id = ? AND t.book_id = ? AND t.date >= ? AND t.date <= ? AND t.type IN ('expense','income','transfer_in','transfer_out')
              GROUP BY a.id, a.name, a.icon, a.type
              ORDER BY ABS(COALESCE(SUM(CASE WHEN t.type IN ('income','transfer_in') THEN t.amount ELSE -t.amount END), 0)) DESC`,
-            [userId, start, end]
+            [userId, bookId, start, end]
         ),
         db.query(
             `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
              FROM transactions t JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
              ORDER BY t.amount DESC LIMIT 5`,
-            [userId, start, end]
+            [userId, bookId, start, end]
         ),
         // 仅当周期含月份时才查预算（无月份范围时预算执行无意义）
         hasMonths
@@ -233,27 +233,27 @@ async function buildReport(userId, type, period) {
                         c.id as cat_id, c.icon
                  FROM budgets b
                  LEFT JOIN categories c ON c.name = b.name AND c.type = 'expense'
-                 WHERE b.user_id = ? AND b.start_date <= ? AND b.end_date >= ?
+                 WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?
                  ORDER BY b.amount DESC`,
-                [userId, end, start]
+                [userId, bookId, end, start]
             )
             : Promise.resolve([]),
         hasMonths
             ? db.query(
                 `SELECT c.id, COALESCE(SUM(t.amount), 0) as actual
                  FROM transactions t JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
+                 WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND t.date >= ? AND t.date <= ?
                  GROUP BY c.id`,
-                [userId, start, end]
+                [userId, bookId, start, end]
             )
             : Promise.resolve([]),
         db.query(
-            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = $1 AND status = \'active\'',
-            [userId]
+            'SELECT COALESCE(SUM(balance), 0) as total FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'',
+            [userId, bookId]
         ),
         db.queryOne(
-            'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND status = \'holding\'',
-            [userId]
+            'SELECT COALESCE(SUM(current_value), 0) as total FROM investments WHERE user_id = ? AND book_id = ? AND status = \'holding\'',
+            [userId, bookId]
         ),
         prev
             ? db.queryOne(
@@ -261,19 +261,19 @@ async function buildReport(userId, type, period) {
                     COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
                     COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
                  FROM transactions
-                 WHERE user_id = ? AND date >= ? AND date <= ?`,
-                [userId, prevRange.start, prevRange.end]
+                 WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?`,
+                [userId, bookId, prevRange.start, prevRange.end]
             )
             : Promise.resolve({ income: 0, expense: 0 }),
         db.query(
             `SELECT id, name, type, principal, remaining, monthly_payment, status, due_date
-             FROM debts WHERE user_id = ? AND status != 'paid_off'`,
-            [userId]
+             FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
+            [userId, bookId]
         ),
         db.query(
             `SELECT debt_id, amount, principal_part, interest_part, paid_at, note
-             FROM debt_repayments WHERE user_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
-            [userId, start, end]
+             FROM debt_repayments WHERE user_id = ? AND book_id = ? AND paid_at >= ? AND paid_at <= ? ORDER BY paid_at DESC`,
+            [userId, bookId, start, end]
         ),
     ]);
 
@@ -379,9 +379,9 @@ async function buildReport(userId, type, period) {
     });
 
     // 资产负债表与现金流量表彼此独立，与上方查询也无依赖，并发执行进一步压缩延迟
-    const [balanceSheet, cashFlow] = await Promise.all([
-        buildBalanceSheet(userId, start, end, totalAssets),
-        buildCashFlow(userId, start, end, income, expense, periodPaid),
+        const [balanceSheet, cashFlow] = await Promise.all([
+        buildBalanceSheet(userId, bookId, start, end, totalAssets),
+        buildCashFlow(userId, bookId, start, end, income, expense, periodPaid),
     ]);
 
     return {
@@ -430,32 +430,32 @@ async function buildReport(userId, type, period) {
 }
 
 // ==================== 资产负债表（期末快照+期初对比）====================
-async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAssets) {
+async function buildBalanceSheet(userId, bookId, periodStart, periodEnd, currentTotalAssets) {
     // 资产明细 / 投资持仓 / 长期负债 / 期初前交易净额 —— 彼此独立，并发查询压缩延迟
     const [accounts, investments, longTermDebts, txBefore] = await Promise.all([
         db.query(
-            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = $1 AND status = \'active\' ORDER BY balance DESC',
-            [userId]
+            'SELECT id, name, type, balance, credit_limit FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\' ORDER BY balance DESC',
+            [userId, bookId]
         ),
         db.query(
             `SELECT i.id, i.name, i.total_cost, i.current_value, i.investment_type_id, it.category, it.name AS type_name 
              FROM investments i 
              LEFT JOIN investment_types it ON i.investment_type_id = it.id 
-             WHERE i.user_id = ? AND i.status = 'holding'`,
-            [userId]
+             WHERE i.user_id = ? AND i.book_id = ? AND i.status = 'holding'`,
+            [userId, bookId]
         ),
         db.query(
             `SELECT id, name, type, remaining, term_months FROM debts
-             WHERE user_id = ? AND status != 'paid_off'
+             WHERE user_id = ? AND book_id = ? AND status != 'paid_off'
              ORDER BY term_months DESC`,
-            [userId]
+            [userId, bookId]
         ),
         db.queryOne(
             `SELECT
                 COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END), 0) as net,
                 COUNT(*) as cnt
-             FROM transactions WHERE user_id = ? AND date < ?`,
-            [userId, periodStart]
+             FROM transactions WHERE user_id = ? AND book_id = ? AND date < ?`,
+            [userId, bookId, periodStart]
         ),
     ]);
 
@@ -587,7 +587,7 @@ async function buildBalanceSheet(userId, periodStart, periodEnd, currentTotalAss
 }
 
 // ==================== 现金流量表（按活动分类）====================
-async function buildCashFlow(userId, start, end, income, expense, debtRepayment) {
+async function buildCashFlow(userId, bookId, start, end, income, expense, debtRepayment) {
     // 经营活动：日常收支（expense + income，不含投资交易和转账的净额）
     const operatingIncome = income;
     const operatingExpense = expense;
@@ -597,18 +597,18 @@ async function buildCashFlow(userId, start, end, income, expense, debtRepayment)
     const [investBuy, investSell, debtNew] = await Promise.all([
         db.query(
             `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-             WHERE user_id = ? AND type = 'buy' AND date BETWEEN ? AND ?`,
-            [userId, start, end]
+             WHERE user_id = ? AND book_id = ? AND type = 'buy' AND date BETWEEN ? AND ?`,
+            [userId, bookId, start, end]
         ),
         db.query(
             `SELECT COALESCE(SUM(amount), 0) as total FROM investment_transactions
-             WHERE user_id = ? AND type = 'sell' AND date BETWEEN ? AND ?`,
-            [userId, start, end]
+             WHERE user_id = ? AND book_id = ? AND type = 'sell' AND date BETWEEN ? AND ?`,
+            [userId, bookId, start, end]
         ),
         db.query(
             `SELECT COALESCE(SUM(principal), 0) as total FROM debts
-             WHERE user_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?`,
-            [userId, start + ' 00:00:00', end + ' 23:59:59']
+             WHERE user_id = ? AND book_id = ? AND status != 'paid_off' AND created_at BETWEEN ? AND ?`,
+            [userId, bookId, start + ' 00:00:00', end + ' 23:59:59']
         ),
     ]);
     const investInflow = parseFloat(investSell[0]?.total || 0);  // 卖出 = 现金流入
@@ -669,9 +669,9 @@ router.get('/top-transactions', async (req, res) => {
         const rows = await db.query(
             `SELECT t.id, t.date, t.amount, t.note, c.name as category_name, c.icon as category_icon
              FROM transactions t JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.type = ? AND t.date >= ? AND t.date <= ?
              ORDER BY t.amount DESC LIMIT 5`,
-            [req.userId, tType, start, end]
+            [req.userId, req.bookId, tType, start, end]
         );
         res.json(success({ items: rows.map(r => ({ ...r, amount: parseFloat(r.amount) })) }));
     } catch (err) {
@@ -685,7 +685,7 @@ router.get('/', async (req, res) => {
         if (!period) return res.status(400).json(fail('请指定报表周期'));
 
         const fresh = req.query.fresh === '1' || req.query.fresh === 'true';
-        const key = reportCacheKey(req.userId, type, period);
+        const key = reportCacheKey(req.userId, req.bookId, type, period);
 
         if (!fresh) {
             const cached = getCachedReport(key);
@@ -696,7 +696,7 @@ router.get('/', async (req, res) => {
             }
         }
 
-        const data = await buildReport(req.userId, type, period);
+        const data = await buildReport(req.userId, req.bookId, type, period);
         setCachedReport(key, data);
         res.set('X-Cache', fresh ? 'BYPASS' : 'MISS');
         res.set('Cache-Control', `public, max-age=${Math.floor(REPORT_CACHE_TTL_MS / 1000)}`);

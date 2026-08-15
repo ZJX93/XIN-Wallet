@@ -48,6 +48,11 @@ class ReportsViewModel(private val repo: ReportRepository) : ViewModel() {
 
     init { loadReport() }
 
+    /** 账本切换后重新拉取报表（X-Book-Id 由 AuthInterceptor 注入，后端按当前账本隔离） */
+    fun reload() {
+        loadReport()
+    }
+
     fun setPeriod(period: String) {
         if (period == _state.value.period) return
         _state.value = _state.value.copy(period = period)

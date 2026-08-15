@@ -1,6 +1,7 @@
 package com.xinwallet.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -25,10 +28,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -37,6 +52,21 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.xinwallet.app.di.AppContainer
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import java.util.Calendar
+import java.util.TimeZone
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,13 +80,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.components.LoadingBox
-import com.xinwallet.app.ui.components.TopBar
 import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown500
@@ -64,23 +93,69 @@ import com.xinwallet.app.ui.theme.Brown50
 import com.xinwallet.app.ui.viewmodel.AddTransactionViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.todayDateTime
+import com.xinwallet.app.util.formatMoney
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.LocationManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
-/**
- * 记一笔 / 编辑交易（参考暖棕记账 app 改版）
- *
- * 布局：
- *   [TopBar]
- *   1) 类型段（支出 / 收入 / 转账 / 借贷） — 选中态暖棕填充 + 白字
- *   2) 分类圆形网格（4 列 × N 行） — 选中态实心青底 + 白字
- *   3) 金额区：大字号 ¥0.00 + 备注行
- *   4) Chip 栏：今天 / 账本 / 资产账户 / 图片 / 不报销
- *   5) 4×5 自定义数字键盘（最右列：⌫ + - 完成）
- *
- * 转账模式：分类网格替换为「转出/转入」账户网格
- *
- * @param editId >0 表示编辑模式（转账项编辑被禁用）
- */
+/* ============================================================
+ * 屏幕
+ * 布局（按截图）：
+ *   [顶栏 返回 | 支出 / 收入 | (空)]
+ *   1) 一级标签 区（收起按钮 + 5 列分类网格）
+ *   2) chips 行：默认账本 / 账户 / 日期 / 时间 / 不关联 / 收起（固定在分类下方）
+ *   3) 位置 chip 行：合肥
+ *   4) ¥0.00 + 备注占位
+ *   5) 选择记账心情 5 个 chips
+ *   6) 4×5 自定义键盘（+-×/ 数字 ( ) ⌫ 清空 . 确定）
+ * ============================================================ */
+
+/** GPS 定位：通过 LocationManager 拿经纬度，反向地理编码为城市/区/街道。 */
+private suspend fun getCurrentLocation(context: android.content.Context): String? {
+    return withContext(Dispatchers.IO) {
+        try {
+            val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager ?: return@withContext null
+            // 优先使用 GPS，否则 NETWORK
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            val loc = providers.asSequence()
+                .filter { lm.isProviderEnabled(it) }
+                .mapNotNull { runCatching { @Suppress("MissingPermission") lm.getLastKnownLocation(it) }.getOrNull() }
+                .firstOrNull() ?: return@withContext null
+
+            if (!Geocoder.isPresent()) return@withContext null
+            val geocoder = Geocoder(context)
+            val addrs = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+            val a = addrs?.firstOrNull() ?: return@withContext null
+            // 拼接：city > subAdmin > featureName；优先显示"市-区"
+            val parts = listOfNotNull(
+                a.locality?.takeIf { it.isNotBlank() },
+                a.subAdminArea?.takeIf { it.isNotBlank() }?.removeSuffix("市")?.removeSuffix("区"),
+                a.thoroughfare?.takeIf { it.isNotBlank() }
+            ).distinct()
+            if (parts.isEmpty()) null else parts.joinToString("·")
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
+
+private data class Mood(val emoji: String, val label: String)
+private val MOODS = listOf(
+    Mood("🚕", "该花的"),
+    Mood("💸", "剁手了"),
+    Mood("🐶", "情势我"),
+    Mood("💃", "踩雷单"),
+    Mood("🧘", "心如止水")
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, month: String? = null) {
@@ -92,27 +167,69 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     val scope = rememberCoroutineScope()
     val isEdit = editId > 0
 
-    // 类型段：支出 / 收入 / 转账 / 借贷
-    var type by remember { mutableStateOf("expense") }
-    var amount by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var accountId by remember { mutableStateOf<Int?>(null) }
-    var categoryId by remember { mutableStateOf<Int?>(null) }
-    var fromId by remember { mutableStateOf<Int?>(null) }
-    var toId by remember { mutableStateOf<Int?>(null) }
-    // 业务侧日期字段（保留到分钟级）；UI 上 Chip 显示 "今天"，点击改日期
-    var date by remember { mutableStateOf(todayDateTime()) }
+    // 顶层状态：仅支出/收入（截图布局，转账/借贷暂不暴露在 UI）
+    var type by rememberSaveable { mutableStateOf("expense") }
+    var amount by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
+    var accountId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var categoryId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var date by rememberSaveable { mutableStateOf(todayDateTime()) }
     var prefilled by remember { mutableStateOf(false) }
-    // 借贷模式：标记属于借出/借入。0=out, 1=in
-    var debtDirection by remember { mutableStateOf(0) }
-    // 不报销开关（仅支出）
-    var notReimbursable by remember { mutableStateOf(false) }
-    // 图片附件（占位：暂未接入选图）
-    var hasImage by remember { mutableStateOf(false) }
-    // AI 内联面板
-    var aiMode by remember { mutableStateOf(false) }
+    var notReimbursable by rememberSaveable { mutableStateOf(false) }
+    var tagsCollapsed by rememberSaveable { mutableStateOf(false) }
+    var selectedMood by rememberSaveable { mutableStateOf<String?>(null) }
+    var location by rememberSaveable { mutableStateOf("") }
+    var selectedBookId by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    // 选择类弹层 / 对话框状态
+    var showAccountSheet by remember { mutableStateOf(false) }
+    var showBookSheet by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var showLocationDialog by remember { mutableStateOf(false) }
+    var noteDraft by remember { mutableStateOf("") }
+    var locationDraft by remember { mutableStateOf("") }
+
+    val books by AppContainer.books.collectAsState()
+    val currentBookId by AppContainer.currentBookId.collectAsState()
+
+    // —— GPS 定位 ——
+    val context = LocalContext.current
+    var isLocating by remember { mutableStateOf(false) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                       perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            isLocating = true
+            scope.launch {
+                val addr = getCurrentLocation(context)
+                if (addr != null) locationDraft = addr
+                isLocating = false
+                if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
+            }
+        } else {
+            isLocating = false
+            scope.launch { snackbar.showSnackbar("未授予定位权限") }
+        }
+    }
 
     LaunchedEffect(Unit) { vm.loadOptions(if (isEdit) editId else null, month) }
+
+    // 账户加载完成后，若用户尚未手动选择，则默认选中「默认账户」(没有则首个)，避免永远卡在"请选择账户"
+    LaunchedEffect(state.accounts) {
+        if (accountId == null && state.accounts.isNotEmpty()) {
+            accountId = state.accounts.firstOrNull { it.isDefault }?.id ?: state.accounts.first().id
+        }
+    }
+    // 账本默认选中当前账本
+    LaunchedEffect(books) {
+        if (selectedBookId == null && books.isNotEmpty()) {
+            selectedBookId = currentBookId.takeIf { it > 0 } ?: books.firstOrNull()?.id
+        }
+    }
     LaunchedEffect(state.success) { if (state.success) navController.popBackStack() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
 
@@ -125,6 +242,8 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
             accountId = tx.account?.id
             categoryId = tx.category?.id
             date = tx.date.trim().let { if (it.length >= 19) it.substring(0, 19) else it.take(10) + " 00:00:00" }
+            location = tx.location.orEmpty()
+            notReimbursable = (tx.linkType == "none")
             prefilled = true
         }
     }
@@ -132,155 +251,287 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
     fun doSubmit(keepOpen: Boolean) {
         val amt = amount.toDoubleOrNull() ?: 0.0
         if (amt <= 0) { scope.launch { snackbar.showSnackbar("请输入有效金额") }; return }
-        when {
-            isEdit -> {
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
-                vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date)
-            }
-            type == "transfer" -> {
-                if (fromId == null || toId == null) { scope.launch { snackbar.showSnackbar("请选择转出和转入账户") }; return }
-                if (fromId == toId) { scope.launch { snackbar.showSnackbar("转出和转入账户不能相同") }; return }
-                vm.submitTransfer(fromId!!, toId!!, amt, note, date)
-            }
-            type == "debt" -> {
-                // 借贷：复用转账端点的方向语义；当前实现暂用支出/收入标记作为兜底
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
-                val t = if (debtDirection == 0) "expense" else "income"
-                vm.submitExpense(accountId!!, categoryId!!, amt, note, t, date)
-            }
-            else -> {
-                if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
-                if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
-                vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date)
-            }
+        if (accountId == null) { scope.launch { snackbar.showSnackbar("请选择账户") }; return }
+        if (categoryId == null) { scope.launch { snackbar.showSnackbar("请选择分类") }; return }
+        val loc = location.takeIf { it.isNotBlank() }
+        val lt = if (notReimbursable) "none" else null
+        if (isEdit) {
+            vm.submitEdit(editId, accountId!!, categoryId!!, amt, note, type, date, loc, lt, null)
+        } else {
+            vm.submitExpense(accountId!!, categoryId!!, amt, note, type, date, loc, lt, null)
         }
         if (keepOpen) {
-            // "再记" 模式：保留当前类型/账户/分类，清空金额与备注
             amount = ""
             note = ""
         }
     }
 
     Scaffold(
-        topBar = { TopBar(if (isEdit) "编辑交易" else "记一笔", onBack = { navController.popBackStack() }) },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        topBar = { TopBarSegmented(type, onBack = { navController.popBackStack() }, onChange = { type = it; categoryId = null }) },
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        if (aiMode) {
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("AI 智能记账", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { aiMode = false }) { Text("收起") }
-                }
-                Box(Modifier.weight(1f)) { AiScanContent(navController, PaddingValues()) }
-            }
-            return@Scaffold
-        }
         if (state.loading && state.accounts.isEmpty() && state.categories.isEmpty()) {
             LoadingBox()
             return@Scaffold
         }
 
         Column(Modifier.fillMaxSize().padding(padding)) {
-            // ---- 类型段（4 列） ----
-            TypeSegmentedRow(
-                current = type,
-                isEdit = isEdit,
-                onChange = {
-                    type = it
-                    categoryId = null
-                    if (it == "transfer") { fromId = null; toId = null }
-                }
-            )
-
-            // ---- 分类 / 账户选择区 ----
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (type) {
-                    "transfer" -> AccountGridSelector(
-                        titleLeft = "转出账户",
-                        titleRight = "转入账户",
-                        accounts = state.accounts,
-                        selectedLeftId = fromId,
-                        selectedRightId = toId,
-                        onSelectLeft = { fromId = it },
-                        onSelectRight = { toId = it }
-                    )
-                    "debt" -> Column {
-                        DebtDirectionToggle(debtDirection) { debtDirection = it }
-                        CategoryGrid(
-                            categories = state.categories.filter { it.type == if (debtDirection == 0) "expense" else "income" },
-                            selectedId = categoryId,
-                            onSelect = { categoryId = it }
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        AccountChipRow(
-                            accounts = state.accounts,
-                            selectedId = accountId,
-                            onSelect = { accountId = it }
-                        )
-                    }
-                    else -> CategoryGrid(
-                        categories = state.categories.filter { it.type == type },
-                        selectedId = categoryId,
-                        onSelect = { categoryId = it }
-                    )
-                }
-            }
-
-            // ---- 金额区 ----
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        "¥",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 4.dp, bottom = 6.dp)
-                    )
-                    Text(
-                        if (amount.isBlank()) "0.00" else amount,
-                        style = MaterialTheme.typography.displayLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    if (note.isBlank()) "点击填写备注..." else note,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (note.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            // 备注行点击：在金额键盘上方弹出一个简易输入条（这里仅占位）
-                            scope.launch { snackbar.showSnackbar("备注：长按或侧边补充（可在设置里启用全键盘）") }
-                        }
+            // —— 上半部：可滚动（分类） ——
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                CategorySection(
+                    categories = state.categories.filter { it.type == type },
+                    selectedId = categoryId,
+                    collapsed = tagsCollapsed,
+                    onToggleCollapsed = { tagsCollapsed = !tagsCollapsed },
+                    onSelect = { categoryId = it }
                 )
             }
 
-            // ---- Chip 栏（转账/借贷模式只显示日期 chip） ----
-            ChipRow(
-                type = type,
-                date = date.take(10),
-                accountName = state.accounts.find { it.id == accountId }?.name ?: "默认账本",
-                hasImage = hasImage,
+            // —— chips 行固定在滚动区下方（不随分类滚动跑掉） ——
+            ContextChipsRow(
+                date = date,
+                accountName = state.accounts.find { it.id == accountId }?.name ?: "请选择账户",
+                bookName = books.find { it.id == selectedBookId }?.name ?: "默认账本",
                 notReimbursable = notReimbursable,
-                onPickDate = {
-                    scope.launch { snackbar.showSnackbar("日期选择：${date.take(10)}（后续接入日历弹窗）") }
-                },
-                onToggleImage = { hasImage = !hasImage },
                 onToggleNotReimbursable = { notReimbursable = !notReimbursable },
-                onAi = { aiMode = true }
+                onPickAccount = { showAccountSheet = true },
+                onPickBook = { showBookSheet = true },
+                onPickDate = { showDatePicker = true },
+                onPickTime = { showTimePicker = true },
+                onCollapse = { tagsCollapsed = !tagsCollapsed }
             )
 
-            // ---- 4×5 自定义数字键盘 ----
-            NumericKeypad(
-                value = amount,
-                onValueChange = { amount = it },
-                onSubmit = { doSubmit(false) },
-                onSubmitAndNew = { doSubmit(true) }
+            LocationChipRow(
+                location = location,
+                onPickLocation = { locationDraft = location; showLocationDialog = true }
             )
+
+            // —— 下半部：记账功能固定在底部（不随上半部滚动跑掉） ——
+            //   金额 + 备注 + 心情 + 键盘 永远在视口下方；加 navigationBarsPadding 防系统手势条覆盖
+            Column(Modifier.navigationBarsPadding()) {
+                AmountBlock(
+                    amount = amount,
+                    note = note,
+                    onAmountChange = { amount = it },
+                    onNoteChange = { note = it },
+                    onEditNote = { noteDraft = note; showNoteDialog = true }
+                )
+
+                MoodSection(selected = selectedMood, onSelect = { selectedMood = it })
+
+                NewKeypad(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    onSubmit = { doSubmit(false) },
+                    onSubmitAndNew = { doSubmit(true) }
+                )
+            }
+
+            // —— 账户选择底部弹层 ——
+            if (showAccountSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showAccountSheet = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("选择账户", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                        Spacer(Modifier.height(4.dp))
+                        state.accounts.forEach { acc ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable { accountId = acc.id; showAccountSheet = false }
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(acc.icon ?: "💰", fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(acc.name, style = MaterialTheme.typography.bodyLarge)
+                                    Text("余额 ${formatMoney(acc.balance)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (accountId == acc.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        }
+                    }
+                }
+            }
+
+            // —— 日期选择 ——
+            if (showDatePicker) {
+                val dateState = rememberDatePickerState(initialSelectedDateMillis = dateToMillis(date))
+                DatePickerDialog(
+                    onDismissRequest = { showDatePicker = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            dateState.selectedDateMillis?.let { date = millisToDateStr(it, date) }
+                            showDatePicker = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("取消") } }
+                ) {
+                    DatePicker(state = dateState)
+                }
+            }
+
+            // —— 时间选择（到秒）——
+            if (showTimePicker) {
+                val parts = date.split(" ").getOrNull(1)?.split(":") ?: listOf("0", "0", "0")
+                val tpState = rememberTimePickerState(
+                    initialHour = parts.getOrNull(0)?.toIntOrNull() ?: 0,
+                    initialMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+                    is24Hour = true
+                )
+                var seconds by remember { mutableStateOf(parts.getOrNull(2)?.toIntOrNull() ?: 0) }
+                AlertDialog(
+                    onDismissRequest = { showTimePicker = false },
+                    title = { Text("选择时间（到秒）") },
+                    text = {
+                        Column {
+                            TimePicker(state = tpState)
+                            Spacer(Modifier.height(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("秒：", style = MaterialTheme.typography.bodyLarge)
+                                listOf(0, 15, 30, 45).forEach { s ->
+                                    val on = seconds == s
+                                    Row(
+                                        Modifier
+                                            .padding(end = 8.dp)
+                                            .clip(RoundedCornerShape(50))
+                                            .background(if (on) Brown500 else Brown50)
+                                            .clickable { seconds = s }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("%02d".format(s), color = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
+                                            style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val datePart = date.split(" ").getOrNull(0) ?: todayDateTime().split(" ").first()
+                            date = "%s %02d:%02d:%02d".format(datePart, tpState.hour, tpState.minute, seconds)
+                            showTimePicker = false
+                        }) { Text("确定") }
+                    },
+                    dismissButton = { TextButton(onClick = { showTimePicker = false }) { Text("取消") } }
+                )
+            }
+
+            // —— 账本选择 ——
+            if (showBookSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showBookSheet = false },
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("选择账本", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+                        Spacer(Modifier.height(4.dp))
+                        books.forEach { book ->
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable {
+                                        selectedBookId = book.id
+                                        showBookSheet = false
+                                        scope.launch { AppContainer.switchBook(book.id) }
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(book.icon.ifBlank { "📒" }, fontSize = 22.sp, modifier = Modifier.padding(end = 12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(book.name, style = MaterialTheme.typography.bodyLarge)
+                                    if (book.isDefault) Text("默认账本", style = MaterialTheme.typography.labelSmall, color = Brown500)
+                                }
+                                if (selectedBookId == book.id) Icon(Icons.Filled.Check, contentDescription = null, tint = Brown500)
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        }
+                    }
+                }
+            }
+
+            // —— 地点输入 ——
+            if (showLocationDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLocationDialog = false },
+                    title = { Text("地点") },
+                    text = {
+                        Column {
+                            OutlinedTextField(
+                                value = locationDraft,
+                                onValueChange = { locationDraft = it },
+                                singleLine = true,
+                                placeholder = { Text("输入地点（如：合肥、公司）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        isLocating = true
+                                        scope.launch {
+                                            val addr = getCurrentLocation(context)
+                                            if (addr != null) locationDraft = addr
+                                            isLocating = false
+                                            if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
+                                        }
+                                    } else {
+                                        locationPermissionLauncher.launch(arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION
+                                        ))
+                                    }
+                                },
+                                enabled = !isLocating,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = Brown500)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (isLocating) "定位中…" else "获取设备定位")
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { location = locationDraft.trim(); showLocationDialog = false }) { Text("保存") } },
+                    dismissButton = {
+                        Row {
+                            if (location.isNotBlank()) {
+                                TextButton(onClick = { location = ""; locationDraft = ""; showLocationDialog = false }) { Text("清除", color = MaterialTheme.colorScheme.error) }
+                            }
+                            TextButton(onClick = { showLocationDialog = false }) { Text("取消") }
+                        }
+                    }
+                )
+            }
+
+            // —— 备注编辑 ——
+            if (showNoteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showNoteDialog = false },
+                    title = { Text("备注") },
+                    text = {
+                        OutlinedTextField(
+                            value = noteDraft,
+                            onValueChange = { noteDraft = it },
+                            singleLine = false,
+                            maxLines = 3,
+                            placeholder = { Text("最多30个字符") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { note = noteDraft.take(30); showNoteDialog = false }) { Text("保存") } },
+                    dismissButton = { TextButton(onClick = { showNoteDialog = false }) { Text("取消") } }
+                )
+            }
         }
     }
 }
@@ -289,285 +540,434 @@ fun AddTransactionScreen(navController: NavHostController, editId: Int = 0, mont
  * 私有组件
  * ============================================================ */
 
-/** 4 段类型选择：支出 / 收入 / 转账 / 借贷 */
+/** 顶栏：返回 + 支出/收入 2 段 tab（截图风格，标题居中） */
 @Composable
-private fun TypeSegmentedRow(current: String, isEdit: Boolean, onChange: (String) -> Unit) {
-    val items = listOf(
-        Triple("expense", "支出", false),
-        Triple("income", "收入", false),
-        Triple("transfer", "转账", isEdit),       // 编辑模式隐藏转账
-        Triple("debt", "借贷", false)
-    )
+private fun TopBarSegmented(current: String, onBack: () -> Unit, onChange: (String) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding()
+            .height(56.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        items.forEach { (key, label, hidden) ->
-            if (hidden) return@forEach
-            val selected = current == key
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(36.dp)
-                    .clickable { onChange(key) },
-                shape = RoundedCornerShape(50),
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                border = if (!selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
-            ) {
-                Box(contentAlignment = Alignment.Center) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+        }
+        // 支出 / 收入 段控件
+        Row(
+            Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf("expense" to "支出", "income" to "收入").forEach { (key, label) ->
+                val on = current == key
+                Column(
+                    Modifier
+                        .clickable { onChange(key) }
+                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium
                     )
+                    Spacer(Modifier.height(2.dp))
+                    if (on) {
+                        Box(
+                            Modifier
+                                .height(2.dp)
+                                .width(28.dp)
+                                .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(1.dp))
+                        )
+                    }
                 }
             }
         }
+        Spacer(Modifier.width(48.dp)) // 与左侧 IconButton 视觉对齐
     }
 }
 
-/** 分类圆形网格：4 列 × N 行。选中态：实心青底 + 白字；未选中：浅青填充 + 灰文字 */
+/* 快捷记账卡片已删除 */
+
+/**
+ * 2) 分类 卡片：一级 + 二级合并到同一 Card 内。
+ *  - 顶部标题 + 收起/展开（控制整个一级卡的整体折叠）
+ *  - 一级 5 列网格；点一级：选中 + 如有子级则在卡片内追加该一级的二级网格
+ *  - 点同一已展开一级 → 折叠二级；点其他一级 → 切换展开到新的一级
+ *  - 二级选中不改变展开状态
+ */
 @Composable
-private fun CategoryGrid(
+private fun CategorySection(
     categories: List<com.xinwallet.app.data.model.Category>,
     selectedId: Int?,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
     onSelect: (Int) -> Unit
 ) {
-    if (categories.isEmpty()) {
-        emptyGridPlaceholder()
-        return
+    val oneLevel = remember(categories) { categories.filter { it.parentId == null } }
+    val childrenMap = remember(categories) {
+        categories.filter { it.parentId != null }.groupBy { it.parentId!! }
     }
-    val list = categories
-    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-        list.chunked(4).forEach { row ->
-            Row(Modifier.fillMaxWidth()) {
-                row.forEach { cat ->
-                    CategoryGridCell(cat = cat, selected = selectedId == cat.id, onClick = { onSelect(cat.id) }, modifier = Modifier.weight(1f))
+    var expandedId by remember { mutableStateOf<Int?>(null) }
+
+    Surface(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+            // 顶部：标题 + 收起/展开
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                Text("一级标签：", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Brown50,
+                    modifier = Modifier.clickable(onClick = onToggleCollapsed)
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (collapsed) "展开" else "收起", style = MaterialTheme.typography.labelMedium, color = Brown500)
+                        Spacer(Modifier.width(2.dp))
+                        Icon(
+                            if (collapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                            contentDescription = null,
+                            tint = Brown500,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
-                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+            if (oneLevel.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Text("暂无分类", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                return@Column
+            }
+            // 一级标签网格
+            if (collapsed) {
+                Row(Modifier.fillMaxWidth()) {
+                    oneLevel.take(5).forEach { cat ->
+                        CategoryCell(
+                            cat = cat,
+                            selected = selectedId == cat.id,
+                            onClick = {
+                                onSelect(cat.id)
+                                val kids = childrenMap[cat.id].orEmpty()
+                                expandedId = when {
+                                    kids.isEmpty() -> null
+                                    expandedId == cat.id -> null
+                                    else -> cat.id
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (oneLevel.size < 5) repeat(5 - oneLevel.size) { Spacer(Modifier.weight(1f)) }
+                }
+                return@Column
+            }
+            Column {
+                val rows = oneLevel.chunked(5)
+                rows.forEach { row ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        row.forEach { cat ->
+                            CategoryCell(
+                                cat = cat,
+                                selected = selectedId == cat.id || (childrenMap[cat.id].orEmpty().any { it.id == selectedId }),
+                                onClick = {
+                                    onSelect(cat.id)
+                                    val kids = childrenMap[cat.id].orEmpty()
+                                    expandedId = when {
+                                        kids.isEmpty() -> null
+                                        expandedId == cat.id -> null
+                                        else -> cat.id
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (row.size < 5) repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+            // 二级展开区：在同一卡片内追加（不跳出卡片边界）
+            val expandedCat = oneLevel.firstOrNull { it.id == expandedId }
+            val children = expandedCat?.let { childrenMap[it.id].orEmpty() }.orEmpty()
+            if (expandedCat != null && children.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("${expandedCat.name} 二级标签：", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(6.dp))
+                Column {
+                    children.chunked(5).forEach { row ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                            row.forEach { cat ->
+                                CategoryCell(
+                                    cat = cat,
+                                    selected = selectedId == cat.id,
+                                    onClick = { onSelect(cat.id) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (row.size < 5) repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
             }
         }
-        if (list.size % 4 != 0) Spacer(Modifier.height(4.dp))
-        // "+ 分类管理" 占位 cell
-        CategoryGridCell(
-            cat = com.xinwallet.app.data.model.Category(id = -1, name = "分类管理", icon = "➕"),
-            selected = false,
-            onClick = { /* 跳分类管理 - 由调用方在 Chips 处理；此处仅占位 */ },
-            isPlaceholder = true,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
+/** 分类 cell：选中实心棕 + 白字；未选中浅棕背景 */
 @Composable
-private fun emptyGridPlaceholder() {
-    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("暂无分类", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun CategoryGridCell(
+private fun CategoryCell(
     cat: com.xinwallet.app.data.model.Category,
     selected: Boolean,
     onClick: () -> Unit,
-    isPlaceholder: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val bg = when {
-        isPlaceholder -> MaterialTheme.colorScheme.surfaceVariant
-        selected -> Brown500
-        else -> Brown50
-    }
-    val fg = when {
-        isPlaceholder -> MaterialTheme.colorScheme.onSurfaceVariant
-        selected -> Color.White
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+    val bg = if (selected) Brown500 else Brown50
+    val fg = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
     Column(
-        modifier = modifier.clickable(onClick = onClick).padding(vertical = 10.dp),
+        modifier = modifier.clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier.size(44.dp).clip(CircleShape).background(bg),
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(bg),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                cat.icon ?: "📌",
-                fontSize = 22.sp,
-                color = fg
-            )
+            Text(cat.icon?.takeIf { it.isNotBlank() } ?: "📌", fontSize = 22.sp, color = fg)
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
         Text(
             cat.name,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
-/** 转账模式：左右两组账户圆形按钮 */
+/** 3) 上下文 chips 行：账本 / 账户 / 日期 / 时间 / 不关联 / 收起 ✓ */
 @Composable
-private fun AccountGridSelector(
-    titleLeft: String,
-    titleRight: String,
-    accounts: List<com.xinwallet.app.data.model.Account>,
-    selectedLeftId: Int?,
-    selectedRightId: Int?,
-    onSelectLeft: (Int) -> Unit,
-    onSelectRight: (Int) -> Unit
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Text(titleLeft, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(6.dp))
-        AccountChipRow(accounts = accounts, selectedId = selectedLeftId, onSelect = onSelectLeft)
-        Spacer(Modifier.height(16.dp))
-        Text(titleRight, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(6.dp))
-        AccountChipRow(accounts = accounts, selectedId = selectedRightId, onSelect = onSelectRight)
-    }
-}
-
-@Composable
-private fun AccountChipRow(
-    accounts: List<com.xinwallet.app.data.model.Account>,
-    selectedId: Int?,
-    onSelect: (Int) -> Unit
-) {
-    if (accounts.isEmpty()) {
-        Text("暂无账户，请先在「账户」页添加", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        return
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        items(accounts) { acc ->
-            val selected = selectedId == acc.id
-            Surface(
-                modifier = Modifier.fillMaxWidth().height(56.dp).clickable { onSelect(acc.id) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (selected) Brown500 else Brown50,
-                border = if (!selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
-            ) {
-                Column(
-                    Modifier.padding(6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(acc.icon ?: "💰", fontSize = 18.sp)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        acc.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 借贷方向切换（借出/借入） */
-@Composable
-private fun DebtDirectionToggle(current: Int, onChange: (Int) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        listOf(0 to "借出", 1 to "借入").forEach { (idx, label) ->
-            val selected = current == idx
-            Surface(
-                modifier = Modifier.height(36.dp).clickable { onChange(idx) },
-                shape = RoundedCornerShape(50),
-                color = if (selected) Brown500 else MaterialTheme.colorScheme.surface,
-                border = if (!selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null
-            ) {
-                Box(Modifier.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-                    Text(label, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface)
-                }
-            }
-        }
-    }
-}
-
-/** Chip 栏：今天 / 账本 / 资产账户 / 图片 / 不报销 / AI */
-@Composable
-private fun ChipRow(
-    type: String,
+private fun ContextChipsRow(
     date: String,
     accountName: String,
-    hasImage: Boolean,
+    bookName: String,
     notReimbursable: Boolean,
-    onPickDate: () -> Unit,
-    onToggleImage: () -> Unit,
     onToggleNotReimbursable: () -> Unit,
-    onAi: () -> Unit
+    onPickAccount: () -> Unit,
+    onPickBook: () -> Unit,
+    onPickDate: () -> Unit,
+    onPickTime: () -> Unit,
+    onCollapse: () -> Unit
 ) {
-    if (type == "transfer") {
-        // 转账模式只显示日期 Chip
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-            Chip(date, leading = "🗓", onClick = onPickDate)
-        }
-        return
+    val scroll = rememberScrollState()
+    val dateLabel = remember(date) { date.split(" ").getOrNull(0)?.let { "今天" } ?: "今天" }
+    val timeLabel = remember(date) {
+        val t = date.split(" ").getOrNull(1)?.take(8) ?: "00:00:00"
+        t
     }
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .horizontalScroll(scroll)
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Chip(date, leading = "🗓", onClick = onPickDate)
-        Chip(accountName, leading = "💼")
-        if (type == "expense") {
-            Chip(if (hasImage) "图片 ✓" else "图片", leading = "🖼", onClick = onToggleImage)
-            Chip(if (notReimbursable) "不报销 ✓" else "不报销", leading = "🚫", onClick = onToggleNotReimbursable)
-        }
-        Chip("AI 拍照", leading = "📷", onClick = onAi)
-    }
-}
-
-/** Chip 单元：暖棕淡填充 + 圆角胶囊 */
-@Composable
-private fun Chip(label: String, leading: String? = null, onClick: (() -> Unit)? = null) {
-    val mod = if (onClick != null) Modifier.clickable { onClick() } else Modifier
-    Surface(
-        modifier = mod,
-        shape = RoundedCornerShape(50),
-        color = Brown50,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Brown100)
-    ) {
+        QuickChip(icon = Icons.Filled.MenuBook, label = bookName, onClick = onPickBook)
+        QuickChip(icon = Icons.Filled.AccountBox, label = accountName, onClick = onPickAccount)
+        QuickChip(icon = Icons.Filled.CalendarToday, label = dateLabel, onClick = onPickDate)
+        QuickChip(icon = Icons.Filled.Schedule, label = timeLabel, onClick = onPickTime)
+        QuickChip(
+            icon = Icons.Filled.LinkOff,
+            label = if (notReimbursable) "不关联 ✓" else "不关联",
+            active = notReimbursable,
+            onClick = onToggleNotReimbursable
+        )
+        // 收起 按钮
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                .clickable(onClick = onCollapse)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (leading != null) {
-                Text(leading, fontSize = 12.sp)
-                Spacer(Modifier.width(4.dp))
-            }
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text("收起", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(2.dp))
+            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-/** 4×5 自定义数字键盘 */
+/** 4) 位置 chip 行（地点可点击编辑） */
 @Composable
-private fun NumericKeypad(
+private fun LocationChipRow(
+    location: String,
+    onPickLocation: () -> Unit
+) {
+    val scroll = rememberScrollState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scroll)
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        QuickChip(
+            icon = Icons.Filled.LocationOn,
+            label = if (location.isBlank()) "添加地点" else location,
+            onClick = onPickLocation,
+            tintIcon = Brown500
+        )
+    }
+}
+
+@Composable
+private fun QuickChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    active: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    tintIcon: Color? = null
+) {
+    val mod = if (onClick != null) Modifier.clickable { onClick() } else Modifier
+    val bg = if (active) Brown500 else Brown50
+    val border = if (active) Brown500 else Brown100
+    val fg = if (active) Color.White else MaterialTheme.colorScheme.onSurface
+    val iconColor = when {
+        active -> Color.White
+        tintIcon != null -> tintIcon
+        else -> Brown500
+    }
+    Row(
+        modifier = mod
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = iconColor)
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = fg)
+    }
+}
+
+/** 5) ¥0.00 + 备注占位（截图：金额大字 + 占位备注） */
+@Composable
+private fun AmountBlock(
+    amount: String,
+    note: String,
+    onAmountChange: (String) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onEditNote: () -> Unit = {}
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                "¥",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 6.dp, bottom = 8.dp)
+            )
+            Text(
+                if (amount.isBlank()) "0.00" else amount,
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (note.isBlank()) "点击填写备注(最多30个字符)" else note,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (note.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).clickable { onEditNote() }
+            )
+            if (note.isNotBlank()) {
+                Spacer(Modifier.width(8.dp))
+                Text("✕", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { onNoteChange("") })
+            }
+        }
+    }
+}
+
+/** 6) 选择记账心情：5 个 chips，截图风格（红心 emoji + 文字） */
+@Composable
+private fun MoodSection(selected: String?, onSelect: (String) -> Unit) {
+    val scroll = rememberScrollState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scroll)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 标题（截图：🧡 选择记账心情）
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Brown50)
+                .border(1.dp, Brown100, RoundedCornerShape(50))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🧡", fontSize = 12.sp)
+            Spacer(Modifier.width(4.dp))
+            Text("选择记账心情", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+        }
+        MOODS.forEach { m ->
+            val on = selected == m.label
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (on) Brown500 else Brown50)
+                    .border(1.dp, if (on) Brown500 else Brown100, RoundedCornerShape(50))
+                    .clickable { onSelect(if (on) "" else m.label) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(m.emoji, fontSize = 12.sp)
+                Spacer(Modifier.width(4.dp))
+                Text(m.label, style = MaterialTheme.typography.labelMedium, color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+/** 7) 4×5 自定义键盘（截图布局） */
+@Composable
+private fun NewKeypad(
     value: String,
     onValueChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onSubmitAndNew: () -> Unit
 ) {
     fun append(ch: String) {
-        // 限制：仅 1 个小数点；小数位最多 2 位；开头不能有多个 0
         var next = value + ch
         if (ch == ".") {
             if (value.contains(".")) return
@@ -578,86 +978,101 @@ private fun NumericKeypad(
         if (next.startsWith("0") && !next.startsWith("0.") && next.length > 1) next = next.trimStart('0').let { if (it.startsWith(".")) "0$it" else it }
         onValueChange(next)
     }
-    fun backspace() {
-        if (value.isEmpty()) return
-        onValueChange(value.dropLast(1))
-    }
+    fun backspace() { if (value.isNotEmpty()) onValueChange(value.dropLast(1)) }
     fun clear() = onValueChange("")
 
-    Column(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(8.dp)
-    ) {
-        // 行 1：1 2 3 ⌫
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyCell("1", Modifier.weight(1f)) { append("1") }
-            KeyCell("2", Modifier.weight(1f)) { append("2") }
-            KeyCell("3", Modifier.weight(1f)) { append("3") }
-            KeyCell("⌫", Modifier.weight(1f), isAction = true) { backspace() }
-        }
-        Spacer(Modifier.height(6.dp))
-        // 行 2：4 5 6 +
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyCell("4", Modifier.weight(1f)) { append("4") }
-            KeyCell("5", Modifier.weight(1f)) { append("5") }
-            KeyCell("6", Modifier.weight(1f)) { append("6") }
-            KeyCell("+", Modifier.weight(1f), isAction = true) { append("+") }
-        }
-        Spacer(Modifier.height(6.dp))
-        // 行 3：7 8 9 -
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyCell("7", Modifier.weight(1f)) { append("7") }
-            KeyCell("8", Modifier.weight(1f)) { append("8") }
-            KeyCell("9", Modifier.weight(1f)) { append("9") }
-            KeyCell("-", Modifier.weight(1f), isAction = true) { append("-") }
-        }
-        Spacer(Modifier.height(6.dp))
-        // 行 4：. 0 再记 完成
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyCell(".", Modifier.weight(1f)) { append(".") }
-            KeyCell("0", Modifier.weight(1f)) { append("0") }
-            KeyCell("再记", Modifier.weight(1f), isAction = true) { onSubmitAndNew() }
-            KeyCell("完成", Modifier.weight(1f), isPrimary = true) { onSubmit() }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        val rows = listOf(
+            listOf("+" to { append("+") }, "1" to { append("1") }, "2" to { append("2") }, "3" to { append("3") }, "⌫" to { backspace() }),
+            listOf("-" to { append("-") }, "4" to { append("4") }, "5" to { append("5") }, "6" to { append("6") }, "清空" to { clear() }),
+            listOf("×" to { append("*") }, "7" to { append("7") }, "8" to { append("8") }, "9" to { append("9") }, "." to { append(".") }),
+            listOf("/" to { append("/") }, "(" to { append("(") }, "0" to { append("0") }, ")" to { append(")") }, "确定" to { onSubmit() })
+        )
+        rows.forEachIndexed { idx, row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { (label, action) ->
+                    val isPrimary = label == "确定"
+                    val isAction = label in setOf("⌫", "清空", "+", "-", "×", "/")
+                    val isOperator = label in setOf("+", "-", "×", "/", "(", ")")
+                    KeypadCell(
+                        label = label,
+                        onClick = action,
+                        modifier = Modifier.weight(1f),
+                        isPrimary = isPrimary,
+                        isAction = isAction,
+                        isOperator = isOperator
+                    )
+                }
+            }
+            if (idx != rows.lastIndex) Spacer(Modifier.height(6.dp))
         }
         Spacer(Modifier.height(2.dp))
     }
 }
 
 @Composable
-private fun KeyCell(
+private fun KeypadCell(
     label: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isPrimary: Boolean = false,
     isAction: Boolean = false,
-    onClick: () -> Unit
+    isOperator: Boolean = false
 ) {
     val bg = when {
         isPrimary -> Brown500
         isAction -> MaterialTheme.colorScheme.surfaceVariant
+        isOperator -> Brown100
         else -> MaterialTheme.colorScheme.surface
     }
-    val fg = when {
-        isPrimary -> Color.White
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+    val fg = if (isPrimary) Color.White else MaterialTheme.colorScheme.onSurface
     Box(
         modifier = modifier
-            .height(52.dp)
-            .clip(RoundedCornerShape(if (isPrimary) 12.dp else 50.dp))
+            .height(50.dp)
+            .clip(RoundedCornerShape(if (isPrimary) 12.dp else 10.dp))
             .background(bg)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.titleMedium,
-            color = fg,
-            fontWeight = if (isPrimary || isAction) FontWeight.SemiBold else FontWeight.Medium
-        )
+        when (label) {
+            "⌫" -> Icon(Icons.Filled.Backspace, contentDescription = "退格", tint = fg)
+            else -> Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                color = fg,
+                fontWeight = if (isPrimary || isAction || isOperator) FontWeight.SemiBold else FontWeight.Medium
+            )
+        }
     }
 }
 
-/* 金额回填时去掉多余小数：120.00 -> 120，12.50 -> 12.5 */
 internal fun trimAmount(value: Double): String {
     val s = java.math.BigDecimal(value).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
     return s.trimEnd('0').trimEnd('.').ifEmpty { "0" }
+}
+
+/** 将 "2026-08-15 10:16:00" 或 "2026-08-15" 转为 epoch millis（UTC 当天 00:00） */
+internal fun dateToMillis(dateStr: String): Long {
+    return try {
+        val parts = dateStr.trim().split(" ")
+        val datePart = parts[0]
+        val (y, m, d) = datePart.split("-").map { it.toInt() }
+        val cal = Calendar.getInstance()
+        cal.clear()
+        cal.set(y, m - 1, d)
+        cal.timeInMillis
+    } catch (_: Exception) { System.currentTimeMillis() }
+}
+
+/** 将 DatePicker 选中的 millis 转回 "yyyy-MM-dd HH:mm:ss"（保留原时间部分） */
+internal fun millisToDateStr(millis: Long, originalDate: String): String {
+    return try {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = millis
+        val y = cal.get(Calendar.YEAR)
+        val m = cal.get(Calendar.MONTH) + 1
+        val d = cal.get(Calendar.DAY_OF_MONTH)
+        val timePart = originalDate.trim().split(" ").getOrNull(1)?.take(8) ?: "00:00:00"
+        "%04d-%02d-%02d %s".format(y, m, d, timePart)
+    } catch (_: Exception) { originalDate }
 }

@@ -1,0 +1,4 @@
+#!/bin/sh
+# 提交前钩子：防止 package-lock.json 与 package.json 漂移（文档方向④）
+# 启用方式（一次性）：git config core.hooksPath .husky
+node scripts/check-lock.mjs

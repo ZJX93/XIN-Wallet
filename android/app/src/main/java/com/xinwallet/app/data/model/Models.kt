@@ -32,6 +32,15 @@ data class LoginRequest(val username: String, val password: String)
 data class RefreshRequest(@SerializedName("refreshToken") val refreshToken: String)
 data class DemoRequest(val demo: Boolean = true)
 
+/** 修改个人资料（用户名 / 昵称 / 头像 / 改密）。所有字段均可选，服务端仅更新有变更的字段。 */
+data class UpdateProfileRequest(
+    val username: String? = null,
+    val nickname: String? = null,
+    val avatar: String? = null,
+    val oldPassword: String? = null,
+    val newPassword: String? = null
+)
+
 /* ----------------------------- 账户 ----------------------------- */
 
 data class Account(
@@ -92,6 +101,9 @@ data class TransactionItem(
     val amount: Double = 0.0,
     val note: String? = null,
     val date: String = "",
+    val location: String? = null,
+    @SerializedName("link_type") val linkType: String? = null,
+    @SerializedName("link_id") val linkId: Int? = null,
     val category: TxRef? = null,
     val account: TxRef? = null,
     val source: TxRef? = null,
@@ -128,7 +140,10 @@ data class CreateTransactionRequest(
     val type: String,
     val amount: Double,
     val note: String? = null,
-    val date: String
+    val date: String,
+    val location: String? = null,
+    @SerializedName("link_type") val linkType: String? = null,
+    @SerializedName("link_id") val linkId: Int? = null
 )
 
 /** 编辑交易：字段与新增一致，后端会按账本重算受影响账户余额 */
@@ -138,7 +153,10 @@ data class UpdateTransactionRequest(
     val type: String,
     val amount: Double,
     val note: String? = null,
-    val date: String
+    val date: String,
+    val location: String? = null,
+    @SerializedName("link_type") val linkType: String? = null,
+    @SerializedName("link_id") val linkId: Int? = null
 )
 
 /** GET /transactions/summary?month=YYYY-MM */
@@ -475,8 +493,8 @@ data class Debt(
     val method: String = "equal_installment",
     @SerializedName("monthly_payment") val monthlyPayment: Double = 0.0,
     @SerializedName("min_payment") val minPayment: Double = 0.0,
-    @SerializedName("start_date") val startDate: String = "",
-    @SerializedName("due_date") val dueDate: String = "",
+    @SerializedName("start_date") val startDate: String? = null,
+    @SerializedName("due_date") val dueDate: String? = null,
     @SerializedName("billing_day") val billingDay: Int? = null,
     @SerializedName("payment_day") val paymentDay: Int? = null,
     val note: String? = null,
@@ -735,4 +753,65 @@ data class ImportCsvRequest(val type: String, val csv: String)
 data class CsvImportResult(
     val imported: Int = 0,
     val errors: List<String> = emptyList()
+)
+
+/* ----------------------------- 多账本（账套） ----------------------------- */
+
+data class Book(
+    val id: Int = 0,
+    val name: String = "",
+    val icon: String = "📒",
+    val color: String = "#6366f1",
+    @SerializedName("is_default") val isDefault: Boolean = false,
+    @SerializedName("is_current") val isCurrent: Boolean = false,
+    @SerializedName("sort_order") val sortOrder: Int = 0,
+    @SerializedName("created_at") val createdAt: String? = null
+)
+
+/** GET /books 响应：账本列表 + 当前账本 id */
+data class BooksResponse(
+    val books: List<Book> = emptyList(),
+    @SerializedName("current_book_id") val currentBookId: Int = 0
+)
+
+/** POST /books 响应 */
+data class BookIdResponse(
+    val id: Int = 0,
+    @SerializedName("is_default") val isDefault: Boolean = false
+)
+
+/** POST /books/{id}/switch 响应 */
+data class SwitchBookResponse(
+    @SerializedName("current_book_id") val currentBookId: Int = 0
+)
+
+data class CreateBookRequest(
+    val name: String,
+    val icon: String? = null,
+    val color: String? = null,
+    @SerializedName("set_default") val setDefault: Boolean = false
+)
+
+data class UpdateBookRequest(
+    val name: String? = null,
+    val icon: String? = null,
+    val color: String? = null
+)
+
+/* ----------------------------- 首页日历 ----------------------------- */
+
+data class CalendarDay(
+    val date: String = "",         // YYYY-MM-DD
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    @SerializedName("hasRecord") val hasRecord: Boolean = false
+)
+
+data class CalendarSummary(
+    val year: Int = 0,
+    val month: Int = 0,
+    @SerializedName("monthStart") val monthStart: String = "",
+    @SerializedName("monthEnd") val monthEnd: String = "",
+    @SerializedName("monthSummary") val monthSummary: IncomeExpense = IncomeExpense(),
+    @SerializedName("monthDays") val monthDays: List<CalendarDay> = emptyList()
 )

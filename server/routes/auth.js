@@ -211,9 +211,10 @@ router.get('/profile', authMiddleware, async (req, res) => {
     }
 });
 
-// PUT /api/auth/profile — 更新昵称 / 修改密码
+// PUT /api/auth/profile — 更新昵称 / 修改密码 / 修改用户名
 router.put('/profile', authMiddleware, validate({
     body: {
+        username: { type: 'string', min: 3, max: 32, required: false },
         nickname: { type: 'string', min: 1, max: 32, required: false },
         avatar: { type: 'string', min: 1, max: 10, required: false },
         oldPassword: { type: 'string', min: 1, max: 128, required: false },
@@ -221,7 +222,7 @@ router.put('/profile', authMiddleware, validate({
     }
 }), async (req, res) => {
     try {
-        const { nickname, avatar, oldPassword, newPassword } = req.body;
+        const { username, nickname, avatar, oldPassword, newPassword } = req.body;
         const userId = req.userId;
 
         // 获取当前用户完整信息
@@ -238,6 +239,18 @@ router.put('/profile', authMiddleware, validate({
         if (nickname !== undefined && nickname !== user.nickname) {
             updates.push('nickname = ?');
             params.push(nickname);
+        }
+
+        // 更新用户名（需唯一性检查）
+        if (username !== undefined && username !== user.username) {
+            // 用户名格式：字母数字下划线，3-32 位
+            if (!/^[A-Za-z0-9_]{3,32}$/.test(username)) {
+                return res.status(400).json(fail('用户名仅支持字母/数字/下划线，长度 3-32 位'));
+            }
+            const exists = await db.queryOne('SELECT id FROM users WHERE username = ? AND id <> ?', [username, userId]);
+            if (exists) return res.status(400).json(fail('该用户名已被使用'));
+            updates.push('username = ?');
+            params.push(username);
         }
 
         // 更新头像

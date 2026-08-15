@@ -9,13 +9,16 @@
 // 统一唯一权威实现，categories.js / savings.js / utils.js 共用本函数
 // ==========================================
 async function ensureCategory(conn, userId, name, type, icon) {
+    // 匹配：系统预设(user_id IS NULL) 或 用户级共享辅助分类(book_id IS NULL)。
+    // 多账本下，用户自建的「本账本专属」分类不参与兜底，避免跨账本误复用。
     let cat = await conn.query(
-        "SELECT id FROM categories WHERE name = $1 AND type = $2 AND (user_id IS NULL OR user_id = $3) LIMIT 1",
+        "SELECT id FROM categories WHERE name = ? AND type = ? AND (user_id IS NULL OR (user_id = ? AND book_id IS NULL)) LIMIT 1",
         [name, type, userId]
     );
     if (cat.length === 0) {
+        // 自动创建的辅助分类归属「用户级共享」(book_id 默认 NULL)，对所有账本可见
         const result = await conn.query(
-            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES ($1, $2, $3, $4, '#6366f1', TRUE)",
+            "INSERT INTO categories (user_id, name, type, icon, color, is_system) VALUES (?, ?, ?, ?, '#6366f1', TRUE)",
             [userId, name, type, icon]
         );
         return result.insertId;

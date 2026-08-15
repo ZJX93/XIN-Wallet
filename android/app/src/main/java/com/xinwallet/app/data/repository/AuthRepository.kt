@@ -4,6 +4,8 @@ import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.AuthResponse
 import com.xinwallet.app.data.model.LoginRequest
 import com.xinwallet.app.data.model.RefreshRequest
+import com.xinwallet.app.data.model.UpdateProfileRequest
+import com.xinwallet.app.data.model.UserWrapper
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.remote.ApiService
 import com.xinwallet.app.data.remote.safeApiCall
@@ -44,6 +46,35 @@ class AuthRepository(
     suspend fun hasSession(): Boolean = session.accessToken().isNotEmpty()
     suspend fun logout() = session.clearSession()
     suspend fun username(): String = session.username()
+
+    /** 拉取当前用户资料（用户名/昵称/头像），成功后同步回 DataStore。 */
+    suspend fun profile(): ApiResult<UserWrapper> {
+        return when (val r = safeApiCall { apiProvider().profile() }) {
+            is ApiResult.Success -> {
+                r.data?.user?.let { u ->
+                    if (u.username.isNotBlank()) session.saveUsername(u.username)
+                    u.nickname?.takeIf { it.isNotBlank() }?.let { session.saveNickname(it) }
+                }
+                r
+            }
+            else -> r
+        }
+    }
+
+    /**
+     * 修改个人资料（用户名/昵称/头像/改密）。
+     * 成功后将 username 同步写回 DataStore，保证 ProfileScreen 立即更新。
+     */
+    suspend fun updateProfile(req: UpdateProfileRequest): ApiResult<UserWrapper> {
+        return when (val r = safeApiCall { apiProvider().updateProfile(req) }) {
+            is ApiResult.Success -> {
+                r.data?.user?.username?.takeIf { it.isNotBlank() }?.let { session.saveUsername(it) }
+                r.data?.user?.nickname?.takeIf { it.isNotBlank() }?.let { session.saveNickname(it) }
+                r
+            }
+            else -> r
+        }
+    }
 
     /**
      * 冷启动时验证会话有效性：

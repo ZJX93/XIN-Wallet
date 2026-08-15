@@ -7,12 +7,24 @@ const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime } = require('./_helpers');
-const { getActiveProvider, callProvider, chatWithTools, httpsPostRaw } = require('../services/ai');
+const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
 const { syncCreditCardDebt } = require('./utils');
 const { toAmount, toNumber } = require('../validate');
-const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
-const OcrClient = tencentOcr.v20181119.Client;
 const multer = require('multer');
+
+/**
+ * 腾讯云 OCR SDK 惰性加载：该 SDK 依赖 node-fetch（体积大、且仅在 /ocr 路由用到）。
+ * 顶层 require 会在服务启动时即加载整条依赖链，容易导致 node-fetch 缺失/损坏时
+ * 整个服务无法启动。改为首次调用 OCR 时才加载，避免拖垮其它完全无关的接口。
+ */
+let _OcrClient = null;
+function getOcrClient() {
+    if (!_OcrClient) {
+        const { ocr: tencentOcr } = require('tencentcloud-sdk-nodejs-ocr');
+        _OcrClient = tencentOcr.v20181119.Client;
+    }
+    return _OcrClient;
+}
 
 // 仅 OCR 路由需要图片上传：memoryStorage 不落盘、5MB 上限、仅接受图片类型。
 // 在此局部定义并仅挂到 /ocr 路由（见下方 router.post('/ocr', ...)），不再于全局
@@ -150,26 +162,26 @@ router.post('/advice', async (req, res) => {
             db.query(
                 `SELECT c.name AS category, t.type, SUM(t.amount) AS total, COUNT(*) AS cnt
                  FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-                 WHERE t.user_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
+                 WHERE t.user_id = ? AND t.book_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
                  GROUP BY c.name, t.type ORDER BY total DESC`,
-                [req.userId, currentMonth]
+                [req.userId, req.bookId, currentMonth]
             ),
             db.query(
-                'SELECT name, amount FROM budgets WHERE user_id = $1 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
-                [req.userId]
+                'SELECT name, amount FROM budgets WHERE user_id = $1 AND book_id = $2 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE',
+                [req.userId, req.bookId]
             ),
             db.query(
-                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = $1 AND status = 'active'",
-                [req.userId]
+                "SELECT name, target_amount, current_amount, icon FROM savings_goals WHERE user_id = $1 AND book_id = $2 AND status = 'active'",
+                [req.userId, req.bookId]
             ),
             db.query(
-                "SELECT name, balance, type FROM accounts WHERE user_id = $1 AND status = 'active' ORDER BY balance DESC",
-                [req.userId]
+                "SELECT name, balance, type FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = 'active' ORDER BY balance DESC",
+                [req.userId, req.bookId]
             ),
             db.query(
                 `SELECT name, type, remaining, monthly_payment, interest_rate, method, due_date, status
-                 FROM debts WHERE user_id = ? AND status != 'paid_off'`,
-                [req.userId]
+                 FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
+                [req.userId, req.bookId]
             )
         ]);
 
@@ -181,9 +193,9 @@ router.post('/advice', async (req, res) => {
         const prevSummary = await db.query(
             `SELECT c.name AS category, t.type, SUM(t.amount) AS total
              FROM transactions t LEFT JOIN categories c ON t.category_id = c.id
-             WHERE t.user_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
+             WHERE t.user_id = ? AND t.book_id = ? AND TO_CHAR(t.date, 'YYYY-MM') = ?
              GROUP BY c.name, t.type ORDER BY total DESC`,
-            [req.userId, prevMonth]
+            [req.userId, req.bookId, prevMonth]
         );
 
         const curExpense = summary.filter(r => r.type === 'expense').reduce((s, r) => s + parseFloat(r.total), 0);
@@ -255,12 +267,12 @@ router.post('/insight', async (req, res) => {
 
         const month = (req.body && req.body.month) || new Date().toISOString().slice(0, 7);
         const [summary, prevSummary, budgets, goals, accounts, debts] = await Promise.all([
-            db.query(`SELECT c.name, SUM(t.amount) as total, COUNT(*) as cnt FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = ? GROUP BY c.name ORDER BY total DESC`, [req.userId, month]),
-            db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = TO_CHAR(CAST(? AS DATE) - INTERVAL '1 month', 'YYYY-MM')`, [req.userId, month + '-01']),
-            db.query('SELECT name, amount FROM budgets WHERE user_id = $1 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId]),
-            db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = $1 AND status = 'active'", [req.userId]),
-            db.query("SELECT name, balance, type FROM accounts WHERE user_id = $1 AND status = 'active' ORDER BY balance DESC", [req.userId]),
-            db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = $1 AND status != 'paid_off'", [req.userId])
+            db.query(`SELECT c.name, SUM(t.amount) as total, COUNT(*) as cnt FROM transactions t LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = ? GROUP BY c.name ORDER BY total DESC`, [req.userId, req.bookId, month]),
+            db.query(`SELECT SUM(t.amount) as total FROM transactions t WHERE t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND TO_CHAR(t.date, 'YYYY-MM') = TO_CHAR(CAST(? AS DATE) - INTERVAL '1 month', 'YYYY-MM')`, [req.userId, req.bookId, month + '-01']),
+            db.query('SELECT name, amount FROM budgets WHERE user_id = $1 AND book_id = $2 AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE', [req.userId, req.bookId]),
+            db.query("SELECT name, target_amount, current_amount FROM savings_goals WHERE user_id = $1 AND book_id = $2 AND status = 'active'", [req.userId, req.bookId]),
+            db.query("SELECT name, balance, type FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = 'active' ORDER BY balance DESC", [req.userId, req.bookId]),
+            db.query("SELECT name, type, remaining, monthly_payment, status FROM debts WHERE user_id = $1 AND book_id = $2 AND status != 'paid_off'", [req.userId, req.bookId])
         ]);
 
         const curTotal = summary.reduce((s, r) => s + parseFloat(r.total), 0);
@@ -738,7 +750,7 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
             return res.status(400).json(fail('OCR 密钥解密失败，请前往「AI配置」页面重新保存腾讯云 OCR 密钥'));
         }
 
-        const client = new OcrClient({
+        const client = new (getOcrClient())({
             credential: { secretId, secretKey },
             region: cfg.region || 'ap-guangzhou'
         });
@@ -822,12 +834,12 @@ router.post('/chat', async (req, res) => {
 
         // 取用户类目与账户作为工具参考
         const cats = await db.query(
-            `SELECT c.id, c.name, c.type, c.icon FROM categories c WHERE (c.user_id IS NULL OR c.user_id = ?) ORDER BY c.type, c.sort_order`,
-            [req.userId]
+            `SELECT c.id, c.name, c.type, c.icon FROM categories c WHERE (c.user_id IS NULL OR (c.user_id = ? AND (c.book_id IS NULL OR c.book_id = ?))) ORDER BY c.type, c.sort_order`,
+            [req.userId, req.bookId]
         );
         const accounts = await db.query(
-            `SELECT id, name, icon, type FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY sort_order`,
-            [req.userId]
+            `SELECT id, name, icon, type FROM accounts WHERE user_id = ? AND book_id = ? AND status = 'active' ORDER BY sort_order`,
+            [req.userId, req.bookId]
         );
         const transferCat = await db.queryOne("SELECT id FROM categories WHERE name='转账' AND type='transfer' AND (user_id IS NULL OR user_id=?) LIMIT 1", [req.userId]) || { id: 22 };
 
@@ -850,7 +862,7 @@ router.post('/chat', async (req, res) => {
             }
         }
 
-        const system = `你是「鑫钱包」的智能记账助手，帮助用户通过自然语言完成记账、查账、改账。
+        const system = `你是「小鑫」，「鑫钱包」App 的 AI 记账助手，帮助用户通过自然语言完成记账、查账、改账。
 规则：
 1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
 2. 信息不全（金额、收支方向或账户不明）时，用一句中文追问，不要臆造。
@@ -962,16 +974,16 @@ ${accRef}`;
                 const amount = toAmount(args.amount);
                 if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
                 const accountId = parseInt(args.account_id), categoryId = parseInt(args.category_id);
-                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accountId, req.userId]);
+                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accountId, req.userId, req.bookId]);
                 if (!acc) return { ok: false, error: '账户不存在' };
                 const cat = await db.queryOne('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)', [categoryId, req.userId]);
                 if (!cat) return { ok: false, error: '分类不存在' };
                 const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
                 const txId = await db.transaction(async (conn) => {
                     const ins = await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [req.userId, accountId, categoryId, type, amount, args.note || '', date,
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [req.userId, req.bookId, accountId, categoryId, type, amount, args.note || '', date,
                         (type === 'expense' ? accountId : null), (type === 'income' ? accountId : null)]
                     );
                     const newBal = await computeAccountBalance(conn, req.userId, accountId);
@@ -988,24 +1000,24 @@ ${accRef}`;
                 if (!fromId || !toId) return { ok: false, error: '请选择转出和转入账户' };
                 if (fromId === toId) return { ok: false, error: '转出和转入账户不能相同' };
                 if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
-                const fromAcc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [fromId, req.userId]);
+                const fromAcc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [fromId, req.userId, req.bookId]);
                 if (!fromAcc) return { ok: false, error: '转出账户不存在' };
                 const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
                 const txId = await db.transaction(async (conn) => {
                     const ins = await conn.query(
-                        `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, 'completed')`,
-                        [req.userId, fromId, toId, amount, args.note || '', date]
+                        `INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
+                        [req.userId, req.bookId, fromId, toId, amount, args.note || '', date]
                     );
                     await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-                        [req.userId, fromId, transferCat.id, amount, `转账至${fromAcc.name}`, date, ins.insertId, fromId]
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+                        [req.userId, req.bookId, fromId, transferCat.id, amount, `转账至${fromAcc.name}`, date, ins.insertId, fromId]
                     );
                     const toAcc = await db.queryOne('SELECT name FROM accounts WHERE id = ?', [toId]);
                     await conn.query(
-                        `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-                         VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-                        [req.userId, toId, transferCat.id, amount, `来自${toAcc ? toAcc.name : '转账'}`, date, ins.insertId, toId]
+                        `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+                         VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+                        [req.userId, req.bookId, toId, transferCat.id, amount, `来自${toAcc ? toAcc.name : '转账'}`, date, ins.insertId, toId]
                     );
                     const fromBal = await computeAccountBalance(conn, req.userId, fromId);
                     const toBal = await computeAccountBalance(conn, req.userId, toId);
@@ -1021,15 +1033,15 @@ ${accRef}`;
                 const metric = args.metric;
                 const month = args.month || new Date().toISOString().slice(0, 7);
                 if (metric === 'total_balance') {
-                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = $1 AND status='active'", [req.userId]);
+                    const rows = await db.query("SELECT COALESCE(SUM(balance),0) as b FROM accounts WHERE user_id = $1 AND book_id = $2 AND status='active'", [req.userId, req.bookId]);
                     return { ok: true, metric, value: parseFloat(rows[0].b) };
                 }
                 if (metric === 'month_income' || metric === 'month_expense' || metric === 'month_balance') {
                     const rows = await db.query(
                         `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END),0) as inc,
                                 COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) as exp
-                         FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ? AND type IN ('income','expense')`,
-                        [req.userId, month + '%']
+                         FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ? AND type IN ('income','expense')`,
+                        [req.userId, req.bookId, month + '%']
                     );
                     const inc = parseFloat(rows[0].inc), exp = parseFloat(rows[0].exp);
                     const value = metric === 'month_income' ? inc : metric === 'month_expense' ? exp : (inc - exp);
@@ -1039,17 +1051,17 @@ ${accRef}`;
                     const rows = await db.query(
                         `SELECT c.name, COALESCE(SUM(t.amount),0) as amt FROM transactions t
                          LEFT JOIN categories c ON t.category_id = c.id
-                         WHERE t.user_id = ? AND CAST(t.date AS CHAR(10)) LIKE ? AND t.type='expense'
+                         WHERE t.user_id = ? AND t.book_id = ? AND CAST(t.date AS CHAR(10)) LIKE ? AND t.type='expense'
                          GROUP BY c.name ORDER BY amt DESC LIMIT 8`,
-                        [req.userId, month + '%']
+                        [req.userId, req.bookId, month + '%']
                     );
                     return { ok: true, metric, month, rows: rows.map(r => ({ name: r.name, amount: parseFloat(r.amt) })) };
                 }
                 if (metric === 'recent') {
                     const rows = await db.query(
                         `SELECT t.amount, t.type, t.note, t.date, c.name as cat FROM transactions t
-                         LEFT JOIN categories c ON t.category_id=c.id WHERE t.user_id=? ORDER BY t.date DESC, t.id DESC LIMIT 5`,
-                        [req.userId]
+                         LEFT JOIN categories c ON t.category_id=c.id WHERE t.user_id=? AND t.book_id=? ORDER BY t.date DESC, t.id DESC LIMIT 5`,
+                        [req.userId, req.bookId]
                     );
                     return { ok: true, metric, rows: rows.map(r => ({ amount: parseFloat(r.amount), type: r.type, note: r.note, date: r.date, category: r.cat })) };
                 }
@@ -1065,8 +1077,8 @@ ${accRef}`;
                            FROM transactions t
                            LEFT JOIN categories c ON t.category_id=c.id
                            LEFT JOIN accounts a ON t.account_id=a.id
-                           WHERE t.user_id=?`;
-                const params = [req.userId];
+                           WHERE t.user_id=? AND t.book_id = ?`;
+                const params = [req.userId, req.bookId];
                 if (keyword) { sql += ' AND (t.note LIKE ? OR c.name LIKE ? OR a.name LIKE ?)'; params.push(keyword, keyword, keyword); }
                 if (amount !== null && amount > 0) { sql += ' AND t.amount = ?'; params.push(amount); }
                 if (dateFrom) { sql += ' AND t.date >= ?'; params.push(dateFrom); }
@@ -1090,11 +1102,11 @@ ${accRef}`;
                 const amount = toAmount(args.amount);
                 if (amount === null || amount <= 0) return { ok: false, error: '金额无效' };
                 const accountId = parseInt(args.account_id), categoryId = parseInt(args.category_id);
-                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accountId, req.userId]);
+                const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accountId, req.userId, req.bookId]);
                 if (!acc) return { ok: false, error: '账户不存在' };
                 const cat = await db.queryOne('SELECT id FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)', [categoryId, req.userId]);
                 if (!cat) return { ok: false, error: '分类不存在' };
-                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [txId, req.userId]);
+                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [txId, req.userId, req.bookId]);
                 if (!old) return { ok: false, error: '交易不存在' };
                 if (old.type === 'transfer_in' || old.type === 'transfer_out') return { ok: false, error: '转账请删除后重新记账' };
                 const date = args.date || fmtDateTime(old.date);
@@ -1103,8 +1115,8 @@ ${accRef}`;
                 const dst = type === 'income' ? accountId : null;
                 await db.transaction(async (conn) => {
                     await conn.query(
-                        `UPDATE transactions SET account_id=?, category_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=? WHERE id=?`,
-                        [accountId, categoryId, type, amount, note || '', date, src, dst, txId]
+                        `UPDATE transactions SET account_id=?, category_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=? WHERE id=? AND user_id=? AND book_id=?`,
+                        [accountId, categoryId, type, amount, note || '', date, src, dst, txId, req.userId, req.bookId]
                     );
                     const affected = new Set([parseInt(old.account_id), accountId]);
                     const newBalances = {};
@@ -1120,21 +1132,21 @@ ${accRef}`;
             if (name === 'delete_transaction') {
                 const txId = parseInt(args.transaction_id);
                 if (!txId) return { ok: false, error: '缺少交易 id' };
-                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [txId, req.userId]);
+                const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [txId, req.userId, req.bookId]);
                 if (!old) return { ok: false, error: '交易不存在' };
                 let deletedType = old.type;
                 await db.transaction(async (conn) => {
                     const affectedAccounts = new Set([parseInt(old.account_id)]);
                     if (old.transfer_id) {
                         const paired = await conn.query(
-                            'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3',
-                            [old.transfer_id, txId, req.userId]
+                            'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3 AND book_id = $4',
+                            [old.transfer_id, txId, req.userId, req.bookId]
                         );
                         paired.forEach(p => { affectedAccounts.add(parseInt(p.account_id)); });
-                        await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
-                        await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
+                        await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
+                        await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
                     } else {
-                        await conn.query('DELETE FROM transactions WHERE id = $1', [txId]);
+                        await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [txId, req.userId, req.bookId]);
                     }
                     const newBalances = {};
                     for (const aid of affectedAccounts) newBalances[aid] = await computeAccountBalance(conn, req.userId, aid);
@@ -1173,8 +1185,8 @@ ${accRef}`;
                         const t = await db.queryOne(
                             `SELECT t.amount, t.type, t.note, t.date, c.name as cat, a.name as acc
                              FROM transactions t LEFT JOIN categories c ON t.category_id=c.id LEFT JOIN accounts a ON t.account_id=a.id
-                             WHERE t.id=? AND t.user_id=?`,
-                            [result.transaction_id, req.userId]
+                             WHERE t.id=? AND t.user_id=? AND t.book_id = ?`,
+                            [result.transaction_id, req.userId, req.bookId]
                         );
                         if (t) mutations.push({ id: result.transaction_id, action, type: t.type, amount: parseFloat(t.amount), categoryName: t.cat, accountName: t.acc, date: fmtDateTime(t.date) });
                     }
@@ -1188,20 +1200,24 @@ ${accRef}`;
     }
 });
 
-// 语音转文字（云端回退）：仅 OpenAI 兼容且服务商支持 /audio/transcriptions 时可用
+// 语音转文字：自动查找用户配置的 OpenAI 兼容服务商（支持 /audio/transcriptions）
+// MiniMax 不提供公开的独立语音转写 API，需另配 OpenAI 兼容服务商（如 Groq 免费 Whisper）
 router.post('/transcribe', async (req, res) => {
     try {
         const { audio, mime } = req.body;
         if (!audio) return res.status(400).json(fail('缺少音频'));
-        const provider = await getActiveProvider(req.userId);
-        if (!provider) return res.status(400).json(fail('请先配置 AI 服务商'));
-        if (provider.api_type === 'anthropic') return res.status(400).json(fail('当前 Anthropic 服务商不支持语音转写，请使用设备端语音识别或切换 OpenAI 兼容服务商'));
+        const provider = await getTranscriptionProvider(req.userId);
+        if (!provider) return res.status(400).json(fail('语音转写需要一个支持 /audio/transcriptions 的 OpenAI 兼容服务商。请在设置中额外配置一个（如 Groq 免费 Whisper、OpenAI 等），语音转写将自动使用该服务商'));
+
+        // 确定转写模型：Groq 用 whisper-large-v3，OpenAI 用 whisper-1，服务商 model 含 whisper 则直接用
+        let whisperModel = 'whisper-1';
         const baseUrl = (provider.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        if (baseUrl.includes('groq.com')) whisperModel = 'whisper-large-v3';
+        if (provider.model && provider.model.toLowerCase().includes('whisper')) whisperModel = provider.model;
+
         const url = baseUrl + '/audio/transcriptions';
         const boundary = '----xinwallet' + Date.now();
         const fileData = Buffer.from(audio, 'base64');
-        // 文件名后缀必须与实际音频格式一致：多数 whisper 服务端按扩展名判定容器格式，
-        // 硬编码 voice.webm 而实际是 m4a 字节会导致「格式不支持」拒收。
         const extMap = {
             'audio/mp4': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a',
             'audio/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3',
@@ -1212,11 +1228,11 @@ router.post('/transcribe', async (req, res) => {
         const body = Buffer.concat([
             Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.${ext}"\r\nContent-Type: ${ctype}\r\n\r\n`),
             fileData,
-            Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--${boundary}--\r\n`)
+            Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n${whisperModel}\r\n--${boundary}--\r\n`)
         ]);
         const data = await httpsPostRaw(url, { 'Authorization': `Bearer ${provider.api_key}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` }, body);
         const text = (typeof data === 'string') ? data : (data && data.text);
-        if (!text) return res.status(502).json(fail('语音转写失败：服务商未返回文字。请确认该 AI 服务商支持 OpenAI 兼容的音频转写接口（/audio/transcriptions，whisper-1），或改用 OpenAI 官方 Key'));
+        if (!text) return res.status(502).json(fail('语音转写失败：服务商未返回文字'));
         res.json(success({ text }));
     } catch (err) {
         handleServerError(res, err, '语音转写');

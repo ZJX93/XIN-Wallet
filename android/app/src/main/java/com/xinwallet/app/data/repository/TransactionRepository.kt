@@ -13,8 +13,26 @@ class TransactionRepository(private val apiProvider: () -> ApiService) {
         type: String? = null,
         accountId: Int? = null,
         search: String? = null,
+        startDate: String? = null,
+        endDate: String? = null,
+        minAmount: Double? = null,
+        maxAmount: Double? = null,
+        types: String? = null,
         limit: Int = 50
-    ) = safeApiCall { apiProvider().getTransactions(month, type, accountId, search?.takeIf { it.isNotBlank() }, limit) }
+    ) = safeApiCall {
+        apiProvider().getTransactions(
+            month = month,
+            type = type,
+            accountId = accountId,
+            search = search?.takeIf { it.isNotBlank() },
+            startDate = startDate,
+            endDate = endDate,
+            minAmount = minAmount,
+            maxAmount = maxAmount,
+            types = types,
+            limit = limit
+        )
+    }
 
     suspend fun createTransaction(req: CreateTransactionRequest) = safeApiCall { apiProvider().createTransaction(req) }
     suspend fun updateTransaction(id: Int, req: UpdateTransactionRequest) = safeUnitCall { apiProvider().updateTransaction(id, req) }

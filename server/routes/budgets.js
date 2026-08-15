@@ -47,9 +47,9 @@ router.get('/', async (req, res) => {
         const { period, period_type } = req.query; // period 可选 YYYY-MM-DD；period_type 按周期类型筛选
         let sql = `SELECT b.*, COALESCE(SUM(t.amount), 0) as actual
              FROM budgets b
-             LEFT JOIN transactions t ON b.id = t.budget_id AND t.type = 'expense'
-             WHERE b.user_id = ?`;
-        const params = [req.userId];
+             LEFT JOIN transactions t ON b.id = t.budget_id AND t.type = 'expense' AND t.book_id = ?
+             WHERE b.user_id = ? AND b.book_id = ?`;
+        const params = [req.bookId, req.userId, req.bookId];
         // 如果传了 period，筛选时间范围重叠的预算
         if (period) {
             sql += ' AND ? BETWEEN b.start_date AND b.end_date';
@@ -88,11 +88,19 @@ router.post('/', async (req, res) => {
         const baseDate = base_date || new Date().toISOString().split('T')[0];
         const range = calcPeriodRange(pType, baseDate);
         const nameStr = name.trim();
-        await db.query(
-            `INSERT INTO budgets (user_id, name, period_type, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, name, start_date, end_date) DO UPDATE SET amount = EXCLUDED.amount`,
-            [req.userId, nameStr, pType, range.start, range.end, amountNum]
+        // 多账本：预算归属当前账本；同名同期预算按本账本 upsert，避免跨账本误覆盖
+        const existing = await db.queryOne(
+            'SELECT id FROM budgets WHERE user_id = ? AND book_id = ? AND name = ? AND start_date = ? AND end_date = ?',
+            [req.userId, req.bookId, nameStr, range.start, range.end]
         );
+        if (existing) {
+            await db.query('UPDATE budgets SET amount = ? WHERE id = ?', [amountNum, existing.id]);
+        } else {
+            await db.query(
+                `INSERT INTO budgets (user_id, book_id, name, period_type, start_date, end_date, amount) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, nameStr, pType, range.start, range.end, amountNum]
+            );
+        }
         res.json(success(null, '预算已设置'));
     } catch (err) {
         handleServerError(res, err);
@@ -111,8 +119,8 @@ router.put('/:id', async (req, res) => {
         const baseDate = base_date || new Date().toISOString().split('T')[0];
         const range = calcPeriodRange(pType, baseDate);
         await db.query(
-            'UPDATE budgets SET name = $1, period_type = $2, start_date = $3, end_date = $4, amount = $5 WHERE id = $6 AND user_id = $7',
-            [name.trim(), pType, range.start, range.end, amountNum, req.params.id, req.userId]
+            'UPDATE budgets SET name = $1, period_type = $2, start_date = $3, end_date = $4, amount = $5 WHERE id = $6 AND user_id = $7 AND book_id = $8',
+            [name.trim(), pType, range.start, range.end, amountNum, req.params.id, req.userId, req.bookId]
         );
         res.json(success(null, '预算已更新'));
     } catch (err) {
@@ -125,8 +133,8 @@ router.delete('/:id', async (req, res) => {
     try {
         // BUG-2 修复：transactions.budget_id 无外键约束，删除预算前需先置空引用，
         // 否则产生悬空 budget_id（预算列表/统计可能误关联已删除预算）。
-        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = $1 AND user_id = $2', [req.params.id, req.userId]);
-        await db.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2', [req.params.id, req.userId]);
+        await db.query('UPDATE transactions SET budget_id = NULL WHERE budget_id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
+        await db.query('DELETE FROM budgets WHERE id = $1 AND user_id = $2 AND book_id = $3', [req.params.id, req.userId, req.bookId]);
         res.json(success(null, '预算已删除'));
     } catch (err) {
         handleServerError(res, err);

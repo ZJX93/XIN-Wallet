@@ -24,19 +24,19 @@ router.get('/export/csv', async (req, res) => {
         let rows = [], header = [];
         if (type === 'accounts') {
             header = ['id', 'name', 'type', 'balance', 'credit_limit', 'icon'];
-            const data = await db.query('SELECT * FROM accounts WHERE user_id = $1 AND status = \'active\'', [req.userId]);
+            const data = await db.query('SELECT * FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'', [req.userId, req.bookId]);
             rows = data.map(a => [a.id, a.name, a.type, a.balance, a.credit_limit, a.icon]);
         } else if (type === 'investments') {
             header = ['id', 'name', 'code', 'type', 'buy_price', 'current_price', 'quantity', 'total_cost', 'current_value'];
-            const data = await db.query('SELECT i.*, it.name as type FROM investments i JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = $1', [req.userId]);
+            const data = await db.query('SELECT i.*, it.name as type FROM investments i JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = $1 AND i.book_id = $2', [req.userId, req.bookId]);
             rows = data.map(i => [i.id, i.name, i.type, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value]);
         } else {
             header = ['date', 'type', 'amount', 'account', 'category', 'note'];
             const data = await db.query(
                 `SELECT t.date, t.type, t.amount, a.name as acc, c.name as cat, t.note
                  FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id
-                 LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? ORDER BY t.date DESC`,
-                [req.userId]
+                 LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = ? AND t.book_id = ? ORDER BY t.date DESC`,
+                [req.userId, req.bookId]
             );
             rows = data.map(x => [x.date, x.type, x.amount, x.acc, x.cat, x.note]);
         }
@@ -76,7 +76,7 @@ router.post('/import/csv', async (req, res) => {
                 const amount = toAmount(row['amount']);
                 if (amount === null) continue;
                 const typeVal = (row['type'] === '收入' || row['type'] === 'income') ? 'income' : 'expense';
-                const acc = await db.queryOne('SELECT id FROM accounts WHERE user_id = ? AND name = ?', [req.userId, row['account'] || '']);
+                const acc = await db.queryOne('SELECT id FROM accounts WHERE user_id = ? AND book_id = ? AND name = ?', [req.userId, req.bookId, row['account'] || '']);
                 if (!acc) { errors.push(`第 ${i} 行：账户 "${row['account']}" 不存在`); continue; }
                 // 修复（P1）：分类查询添加 user_id 隔离，避免泄露其他用户的私有分类
                 const cat = await db.queryOne(
@@ -86,8 +86,8 @@ router.post('/import/csv', async (req, res) => {
                 const categoryId = cat ? cat.id : (typeVal === 'income' ? 21 : 14);
                 await db.transaction(async (conn) => {
                     const r = await conn.query(
-                        'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                        [req.userId, acc.id, categoryId, typeVal, amount, row['note'] || '', date]
+                        'INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+                        [req.userId, req.bookId, acc.id, categoryId, typeVal, amount, row['note'] || '', date]
                     );
                     // 以账本为准重算账户余额（单一真相，避免直接加减导致漂移）
                     const newBalance = await computeAccountBalance(conn, req.userId, acc.id);
@@ -111,15 +111,16 @@ router.get('/export/full', async (req, res) => {
     try {
         const userId = req.userId;
         const [accounts, cats, transactions, transfers, budgets, goals, investments, tags] = await Promise.all([
-            db.query('SELECT name, type, icon, balance, opening_balance, credit_limit FROM accounts WHERE user_id = $1 AND status = \'active\'', [userId]),
-            // 修复（P1）：分类导出加 user_id 隔离，避免在多用户部署时泄露其他用户的私有分类
-            db.query('SELECT name, type, icon, parent_id FROM categories WHERE user_id IS NULL OR user_id = $1', [userId]),
-            db.query('SELECT CAST(t.date AS CHAR(10)) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = $1', [userId]),
-            db.query('SELECT CAST(t.date AS CHAR(10)) AS date, t.amount, t.note, a1.name AS from_account, a2.name AS to_account FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id WHERE t.user_id = $1', [userId]),
-            db.query('SELECT name, period_type, amount, CAST(start_date AS CHAR(10)) AS start_date, CAST(end_date AS CHAR(10)) AS end_date FROM budgets WHERE user_id = $1', [userId]),
-            db.query('SELECT name, target_amount, current_amount, icon, note, status FROM savings_goals WHERE user_id = $1', [userId]),
-            db.query('SELECT i.name, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee, CAST(i.buy_date AS CHAR(10)) AS buy_date, i.expected_rate, i.note, i.status, a.name AS account, it.name AS type_name FROM investments i LEFT JOIN accounts a ON i.account_id = a.id LEFT JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = $1', [userId]),
-            db.query('SELECT name, color, icon FROM tags WHERE user_id = $1', [userId])
+            db.query('SELECT name, type, icon, balance, opening_balance, credit_limit FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'', [userId, req.bookId]),
+            // 修复（P1）：分类导出加 user_id 隔离，避免在多用户部署时泄露其他用户的私有分类；
+            // 多账本下仅导出「系统预设 / 用户级共享 / 当前账本私有」分类
+            db.query('SELECT name, type, icon, parent_id FROM categories WHERE user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2))', [userId, req.bookId]),
+            db.query('SELECT CAST(t.date AS CHAR(10)) AS date, t.type, t.amount, a.name AS account, c.name AS category, t.note FROM transactions t LEFT JOIN accounts a ON t.account_id = a.id LEFT JOIN categories c ON t.category_id = c.id WHERE t.user_id = $1 AND t.book_id = $2', [userId, req.bookId]),
+            db.query('SELECT CAST(t.date AS CHAR(10)) AS date, t.amount, t.note, a1.name AS from_account, a2.name AS to_account FROM transfers t LEFT JOIN accounts a1 ON t.from_account_id = a1.id LEFT JOIN accounts a2 ON t.to_account_id = a2.id WHERE t.user_id = $1 AND t.book_id = $2', [userId, req.bookId]),
+            db.query('SELECT name, period_type, amount, CAST(start_date AS CHAR(10)) AS start_date, CAST(end_date AS CHAR(10)) AS end_date FROM budgets WHERE user_id = $1 AND book_id = $2', [userId, req.bookId]),
+            db.query('SELECT name, target_amount, current_amount, icon, note, status FROM savings_goals WHERE user_id = $1 AND book_id = $2', [userId, req.bookId]),
+            db.query('SELECT i.name, i.code, i.buy_price, i.current_price, i.quantity, i.total_cost, i.current_value, i.fee, CAST(i.buy_date AS CHAR(10)) AS buy_date, i.expected_rate, i.note, i.status, a.name AS account, it.name AS type_name FROM investments i LEFT JOIN accounts a ON i.account_id = a.id LEFT JOIN investment_types it ON i.investment_type_id = it.id WHERE i.user_id = $1 AND i.book_id = $2', [userId, req.bookId]),
+            db.query('SELECT name, color, icon FROM tags WHERE user_id = $1 AND book_id = $2', [userId, req.bookId])
         ]);
 
         const fmtNum = v => Math.round(parseFloat(v || 0) * 100) / 100;
@@ -154,11 +155,11 @@ router.post('/import/full', async (req, res) => {
         await db.transaction(async (conn) => {
             if (data.tags) for (const tag of data.tags) {
                 if (!tag || typeof tag.name !== 'string' || !tag.name.trim()) continue;
-                const e = await conn.query('SELECT id FROM tags WHERE user_id = $1 AND name = $2', [userId, tag.name]);
+                const e = await conn.query('SELECT id FROM tags WHERE user_id = $1 AND book_id = $2 AND name = $3', [userId, req.bookId, tag.name]);
                 if (!e || e.length === 0) {
                     await conn.query(
-                        'INSERT INTO tags (user_id, name, color, icon) VALUES ($1, $2, $3, $4)',
-                        [userId, tag.name, typeof tag.color === 'string' ? tag.color : '#6366f1', typeof tag.icon === 'string' ? tag.icon : '🏷️']
+                        'INSERT INTO tags (user_id, book_id, name, color, icon) VALUES ($1, $2, $3, $4, $5)',
+                        [userId, req.bookId, tag.name, typeof tag.color === 'string' ? tag.color : '#6366f1', typeof tag.icon === 'string' ? tag.icon : '🏷️']
                     );
                     imported.tags = (imported.tags || 0) + 1;
                 }
@@ -167,15 +168,15 @@ router.post('/import/full', async (req, res) => {
             const acMap = {};
             for (const a of (data.accounts || [])) {
                 if (!a || typeof a.name !== 'string' || !a.name.trim()) continue;
-                const e = await conn.query('SELECT id FROM accounts WHERE user_id = $1 AND name = $2', [userId, a.name]);
+                const e = await conn.query('SELECT id FROM accounts WHERE user_id = $1 AND book_id = $2 AND name = $3', [userId, req.bookId, a.name]);
                 if (e && e.length) { acMap[a.name] = e[0].id; continue; }
                 const balance = Number(a.balance);
                 const opening = Number(a.opening_balance);
                 const limit = Number(a.credit_limit);
                 const r = await conn.query(
-                    'INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                    'INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
                     [
-                        userId, a.name,
+                        userId, req.bookId, a.name,
                         typeof a.type === 'string' ? a.type : 'bank',
                         typeof a.icon === 'string' ? a.icon : '🏦',
                         Number.isFinite(balance) ? balance : 0,
@@ -200,8 +201,8 @@ router.post('/import/full', async (req, res) => {
                 const amount = toAmount(t.amount);
                 if (amount === null) continue;
                 await conn.query(
-                    'INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                    [userId, aid, c && c.length ? c[0].id : 14, typeVal, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
+                    'INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+                    [userId, req.bookId, aid, c && c.length ? c[0].id : 14, typeVal, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
                 );
                 imported.transactions++;
             }
@@ -213,8 +214,8 @@ router.post('/import/full', async (req, res) => {
                 const amount = toAmount(t.amount);
                 if (amount === null) continue;
                 await conn.query(
-                    'INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status) VALUES ($1, $2, $3, $4, $5, $6, \'completed\')',
-                    [userId, fa, ta, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
+                    'INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status) VALUES ($1, $2, $3, $4, $5, $6, $7, \'completed\')',
+                    [userId, req.bookId, fa, ta, amount, String(t.note || ''), t.date || new Date().toISOString().slice(0, 10)]
                 );
                 imported.transfers++;
             }
@@ -222,8 +223,8 @@ router.post('/import/full', async (req, res) => {
             for (const b of (data.budgets || [])) {
                 if (!b || typeof b.name !== 'string' || !b.name.trim()) continue;
                 await conn.query(
-                    'INSERT INTO budgets (user_id, name, period_type, amount, start_date, end_date) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
-                    [userId, b.name, ['month', 'week', 'year'].includes(b.period_type) ? b.period_type : 'month', Number(b.amount) || 0, b.start_date, b.end_date || b.start_date]
+                    'INSERT INTO budgets (user_id, book_id, name, period_type, amount, start_date, end_date) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
+                    [userId, req.bookId, b.name, ['month', 'week', 'year'].includes(b.period_type) ? b.period_type : 'month', Number(b.amount) || 0, b.start_date, b.end_date || b.start_date]
                 );
                 imported.budgets++;
             }
@@ -232,9 +233,9 @@ router.post('/import/full', async (req, res) => {
                 if (!g || typeof g.name !== 'string' || !g.name.trim()) continue;
                 const aid = g.account ? acMap[g.account] : null;
                 await conn.query(
-                    'INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING',
+                    'INSERT INTO savings_goals (user_id, book_id, name, target_amount, current_amount, icon, note, status, account_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING',
                     [
-                        userId, g.name,
+                        userId, req.bookId, g.name,
                         Number(g.target_amount) || 0,
                         Number(g.current_amount) || 0,
                         typeof g.icon === 'string' ? g.icon : '🎯',
@@ -251,9 +252,9 @@ router.post('/import/full', async (req, res) => {
                 const aid = i.account ? acMap[i.account] : null;
                 const it = await conn.query('SELECT id FROM investment_types WHERE name = $1', [String(i.type_name || '其他')]);
                 await conn.query(
-                    'INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT DO NOTHING',
+                    'INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) ON CONFLICT DO NOTHING',
                     [
-                        userId, aid, it && it.length ? it[0].id : 1,
+                        userId, req.bookId, aid, it && it.length ? it[0].id : 1,
                         i.name, String(i.code || ''),
                         Number(i.buy_price) || 0, Number(i.current_price) || 0, Number(i.quantity) || 0,
                         Number(i.total_cost) || 0, Number(i.current_value) || 0,

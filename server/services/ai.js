@@ -50,6 +50,29 @@ async function getActiveProvider(userId) {
     return provider;
 }
 
+// 查找支持语音转写的服务商：优先激活的 OpenAI 兼容服务商，其次查所有服务商
+async function getTranscriptionProvider(userId) {
+    // 1. 先在激活的服务商中找 OpenAI 兼容的
+    let providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? AND is_active = TRUE ORDER BY id', [userId]);
+    for (const p of providers) {
+        const url = p.base_url || '';
+        if (p.api_type === 'openai' && !url.includes('minimaxi.com') && !url.includes('minimax.chat')) {
+            if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
+            return p;
+        }
+    }
+    // 2. 再在所有服务商中找（即使未激活，只要有 Key 就行）
+    providers = await db.query('SELECT * FROM ai_providers WHERE user_id = ? ORDER BY is_active DESC, id', [userId]);
+    for (const p of providers) {
+        const url = p.base_url || '';
+        if (p.api_type === 'openai' && !url.includes('minimaxi.com') && !url.includes('minimax.chat')) {
+            if (p.api_key) { p.api_key = decrypt(p.api_key); if (!p.api_key) continue; }
+            return p;
+        }
+    }
+    return null;
+}
+
 // 调用 OpenAI 兼容接口
 async function callOpenAICompatible(baseUrl, apiKey, model, messages) {
     const url = (baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '') + '/chat/completions';
@@ -77,12 +100,7 @@ async function callAnthropic(baseUrl, apiKey, model, messages) {
         ? { 'Authorization': `Bearer ${apiKey}` }
         : { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
 
-    const body = {
-        model: model || 'claude-3-haiku-20240307',
-        max_tokens: 2048,
-        system,
-        messages: userMessages
-    };
+    const body = { model: model || 'claude-3-haiku-20240307', max_tokens: 8192, system, messages: userMessages };
     const data = await httpsPostJson(url, headers, body);
     return data && data.content && data.content[0] && data.content[0].text;
 }
@@ -196,9 +214,14 @@ async function chatAnthropicTools(provider, messages, tools) {
         }
         translated.push({ role: m.role, content: toAnthropicContent(m.content) });
     }
-    const body = { model: provider.model || 'claude-3-haiku-20240307', max_tokens: 2048, system, messages: translated };
+    const body = { model: provider.model || 'claude-3-haiku-20240307', max_tokens: 8192, system, messages: translated };
     if (tools && tools.length) body.tools = toAnthropicTools(tools);
-    const data = await httpsPostJson(url, { 'x-api-key': provider.api_key, 'anthropic-version': '2023-06-01' }, body);
+    // MiniMax Anthropic 兼容接口使用 Bearer 认证，标准 Anthropic 使用 x-api-key
+    const isMiniMax = url.includes('minimaxi.com');
+    const headers = isMiniMax
+        ? { 'Authorization': `Bearer ${provider.api_key}` }
+        : { 'x-api-key': provider.api_key, 'anthropic-version': '2023-06-01' };
+    const data = await httpsPostJson(url, headers, body);
     const content = data && data.content;
     let text = '';
     const toolCalls = [];
@@ -243,4 +266,4 @@ async function httpsPostRaw(url, headers, bufferBody) {
     });
 }
 
-module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools };
+module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools };

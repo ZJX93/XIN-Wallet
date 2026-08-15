@@ -30,7 +30,9 @@ data class TxUiState(
     val accounts: List<Account> = emptyList(),
     val summary: TxSummary? = null,
     /** 一次性提示（删除成功等） */
-    val toast: String? = null
+    val toast: String? = null,
+    /** 视图模式：list（流水）默认；calendar（日历）需用户切换 */
+    val viewMode: String = "list"
 )
 
 class TransactionsViewModel(
@@ -67,6 +69,12 @@ class TransactionsViewModel(
         if (month == _state.value.month) return
         _state.value = _state.value.copy(month = month)
         refresh()
+    }
+
+    /** 切换 流水/日历 视图模式（每次进入页面默认 list） */
+    fun setViewMode(mode: String) {
+        if (mode == _state.value.viewMode) return
+        _state.value = _state.value.copy(viewMode = mode)
     }
 
     fun selectType(type: String?) {

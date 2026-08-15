@@ -9,9 +9,9 @@ const { ensureCategory } = require('./utils');
 router.get('/', async (req, res) => {
     try {
         const { type, flat } = req.query;
-        // 多用户隔离：返回「系统预设 + 当前用户私有」分类
-        const params = [req.userId];
-        let where = 'WHERE (c.user_id IS NULL OR c.user_id = ?)';
+        // 多账本隔离：返回「系统预设(全局) + 用户级共享(book_id IS NULL) + 当前账本专属」分类
+        const params = [req.userId, req.bookId];
+        let where = 'WHERE (c.user_id IS NULL OR (c.user_id = ? AND (c.book_id IS NULL OR c.book_id = ?)))';
         if (type) { where += ' AND c.type = ?'; params.push(type); }
 
         // 排序规则（顶级位置必须由 sort_order 决定，而非自增 id）：
@@ -62,12 +62,12 @@ router.post('/', async (req, res) => {
         const TYPE_COLOR = { expense: '#22c55e', income: '#ef4444', transfer: '#3b82f6' };
         const defaultColor = TYPE_COLOR[type] || '#6366f1';
         const maxSort = await db.queryOne(
-            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NOT DISTINCT FROM ? AND (user_id IS NULL OR user_id = ?)',
-            [type, parent_id || null, req.userId]
+            'SELECT COALESCE(MAX(sort_order),0)+1 as n FROM categories WHERE type = ? AND parent_id IS NOT DISTINCT FROM ? AND (user_id IS NULL OR (user_id = ? AND (book_id IS NULL OR book_id = ?)))',
+            [type, parent_id || null, req.userId, req.bookId]
         );
         const result = await db.query(
-            'INSERT INTO categories (parent_id, user_id, name, icon, type, color, sort_order, is_system) VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)',
-            [parent_id || null, req.userId, name, icon || '📌', type, color || defaultColor, maxSort.n]
+            'INSERT INTO categories (parent_id, user_id, book_id, name, icon, type, color, sort_order, is_system) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)',
+            [parent_id || null, req.userId, req.bookId, name, icon || '📌', type, color || defaultColor, maxSort.n]
         );
         res.json(success({ id: result.insertId }, '分类已创建'));
     } catch (err) { handleServerError(res, err); }

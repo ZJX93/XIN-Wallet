@@ -22,6 +22,9 @@ interface ApiService {
     @GET("auth/profile")
     suspend fun profile(): Response<ApiResponse<UserWrapper>>
 
+    @PUT("auth/profile")
+    suspend fun updateProfile(@Body req: UpdateProfileRequest): Response<ApiResponse<UserWrapper>>
+
     /* 账户 */
     @GET("accounts")
     suspend fun getAccounts(): Response<ApiResponse<AccountsResponse>>
@@ -45,6 +48,11 @@ interface ApiService {
         @Query("type") type: String? = null,
         @Query("account_id") accountId: Int? = null,
         @Query("search") search: String? = null,
+        @Query("start_date") startDate: String? = null,
+        @Query("end_date") endDate: String? = null,
+        @Query("min_amount") minAmount: Double? = null,
+        @Query("max_amount") maxAmount: Double? = null,
+        @Query("types") types: String? = null,
         @Query("limit") limit: Int = 50
     ): Response<ApiResponse<List<TransactionItem>>>
 
@@ -107,6 +115,13 @@ interface ApiService {
     /* 仪表盘 */
     @GET("stats/dashboard")
     suspend fun getDashboard(): Response<ApiResponse<Dashboard>>
+
+    /** 首页日历视图：返回某月每日 {date, income, expense, hasRecord} + monthSummary */
+    @GET("stats/calendar")
+    suspend fun getStatsCalendar(
+        @Query("year") year: Int,
+        @Query("month") month: Int
+    ): Response<ApiResponse<CalendarSummary>>
 
     /* AI 智能记账 */
     /** 上传账单图片做 OCR + 交易项提取，multipart 字段名必须是 image（后端 multer 约定） */
@@ -216,6 +231,22 @@ interface ApiService {
     /** 导出 CSV：后端直接返回 text/csv 文本（非 JSON 包装），故用 ResponseBody 接收 */
     @GET("csv/export/csv")
     suspend fun exportCsv(@Query("type") type: String): Response<ResponseBody>
+
+    /* 多账本（账套） */
+    @GET("books")
+    suspend fun getBooks(): Response<ApiResponse<BooksResponse>>
+
+    @POST("books")
+    suspend fun createBook(@Body req: CreateBookRequest): Response<ApiResponse<BookIdResponse>>
+
+    @PUT("books/{id}")
+    suspend fun updateBook(@Path("id") id: Int, @Body req: UpdateBookRequest): Response<ApiResponse<Unit>>
+
+    @POST("books/{id}/switch")
+    suspend fun switchBook(@Path("id") id: Int): Response<ApiResponse<SwitchBookResponse>>
+
+    @DELETE("books/{id}")
+    suspend fun deleteBook(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
     /** 导出完整账本（JSON）：同样直接返回文件内容 */
     @GET("csv/export/full")

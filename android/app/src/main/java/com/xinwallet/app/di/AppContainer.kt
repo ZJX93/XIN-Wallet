@@ -3,7 +3,12 @@ package com.xinwallet.app.di
 import android.content.Context
 import com.google.gson.GsonBuilder
 import com.xinwallet.app.data.local.SessionManager
+import com.xinwallet.app.data.model.Book
+import com.xinwallet.app.data.model.BookIdResponse
+import com.xinwallet.app.data.model.BooksResponse
+import com.xinwallet.app.data.model.CreateBookRequest
 import com.xinwallet.app.data.remote.ApiService
+import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.remote.AuthInterceptor
 import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.AiRepository
@@ -18,7 +23,9 @@ import com.xinwallet.app.data.repository.DashboardRepository
 import com.xinwallet.app.data.repository.InvestmentRepository
 import com.xinwallet.app.data.repository.SavingsGoalRepository
 import com.xinwallet.app.data.repository.TransactionRepository
+import com.xinwallet.app.data.repository.BookRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -63,6 +70,15 @@ object AppContainer {
         private set
     lateinit var csvRepository: CsvRepository
         private set
+    lateinit var bookRepository: BookRepository
+        private set
+
+    /**
+     * 多账本共享状态：currentBookId 变化时，各屏 LaunchedEffect 重新拉取数据；
+     * AuthInterceptor 同时把该 id 注入 X-Book-Id，后端据此隔离数据。
+     */
+    val currentBookId = MutableStateFlow(0)
+    val books = MutableStateFlow<List<Book>>(emptyList())
 
     /** 全局认证过期事件：AuthInterceptor 在 401 且刷新失败时发射，AppRoot 收集后回到登录页 */
     val authExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -70,8 +86,7 @@ object AppContainer {
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
 
-    fun init(context: Context, session: SessionManager) {
-        sessionManager = session
+    fun init(context: Context, session: SessionManager) {        sessionManager = session
 
         val gson = GsonBuilder().setLenient().create()
         val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
@@ -105,6 +120,48 @@ object AppContainer {
         reportRepository = ReportRepository { api }
         tagRepository = TagRepository { api }
         csvRepository = CsvRepository { api }
+        bookRepository = BookRepository { api }
+    }
+
+    /**
+     * 拉取账本列表并写入当前账本 id（登录后 / 启动校验通过后调用）。
+     * 后端 GET /books 会自动为该用户确保默认账本，因此首次调用即可得到 current_book_id。
+     */
+    suspend fun loadBooks() {
+        val resp = bookRepository.getBooks()
+        if (resp is ApiResult.Success) {
+            val data: BooksResponse? = resp.data
+            if (data != null) {
+                books.value = data.books
+                val cur = data.currentBookId
+                currentBookId.value = cur
+                sessionManager.saveCurrentBookId(cur)
+            }
+        }
+    }
+
+    /** 切换当前账本：调后端 /books/{id}/switch 并持久化，更新列表 current 标记 */
+    suspend fun switchBook(id: Int) {
+        val resp = bookRepository.switch(id)
+        if (resp is ApiResult.Success) {
+            currentBookId.value = id
+            sessionManager.saveCurrentBookId(id)
+            books.value = books.value.map { it.copy(isCurrent = it.id == id) }
+        }
+    }
+
+    /** 新建账本后刷新列表 */
+    suspend fun createBook(name: String, icon: String? = null, color: String? = null, setDefault: Boolean = false): ApiResult<BookIdResponse> {
+        val resp = bookRepository.create(CreateBookRequest(name, icon, color, setDefault))
+        if (resp is ApiResult.Success) loadBooks()
+        return resp
+    }
+
+    /** 删除账本后刷新列表（后端会把数据并入默认账本） */
+    suspend fun deleteBook(id: Int): ApiResult<Unit> {
+        val resp = bookRepository.delete(id)
+        if (resp is ApiResult.Success) loadBooks()
+        return resp
     }
 
     private fun buildRetrofit(baseUrl: String, gson: com.google.gson.Gson): Retrofit {

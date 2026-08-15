@@ -20,6 +20,20 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- 多账本（账套）表
+CREATE TABLE IF NOT EXISTS books (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  name VARCHAR(50) NOT NULL,
+  icon VARCHAR(10) DEFAULT '📒',
+  color VARCHAR(10) DEFAULT '#6366f1',
+  is_default BOOLEAN DEFAULT FALSE,
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_books_user ON books (user_id);
+
 -- 账户表
 -- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
 --   如 A0201=银行卡-工商银行，A0100=现金类（虚拟分组）
@@ -43,6 +57,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE INDEX idx_accounts_user ON accounts (user_id);
 
 CREATE UNIQUE INDEX idx_accounts_code ON accounts (code);
+
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_accounts_user_book ON accounts (user_id, book_id);
 
 -- 交易类别表
 -- code: 结构化编码（5位），E=支出 I=收入 T=转账 + 2位一级 + 2位二级
@@ -565,3 +582,35 @@ ALTER TABLE categories AUTO_INCREMENT = 1;
 ALTER TABLE investment_types AUTO_INCREMENT = 1;
 
 ALTER TABLE tags AUTO_INCREMENT = 1;
+
+-- ============================================
+-- 多账本（账套）支持：为历史表追加 book_id 列 + 复合索引（幂等；MySQL 8.0.29+ 支持 ADD COLUMN IF NOT EXISTS）
+-- 每位用户的财务数据归属某个 book_id；book_id IS NULL 表示「用户级共享」（如系统辅助分类、遗留未归属数据）。
+-- 具体归属与回填由 server/db.js 的 healBooks() 在启动时自愈完成。
+-- books 表与 accounts.book_id 已在上方建表/ALTER 处处理，此处不再重复。
+-- ============================================
+ALTER TABLE categories               ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE transactions             ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE transfers                ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE budgets                 ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE tags                    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE savings_goals           ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE debts                   ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE debt_repayments         ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investments              ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE savings_transactions    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investment_snapshots    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_book    ON transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_user_book       ON transfers (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_user_book         ON budgets (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_tags_user_book           ON tags (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_savings_user_book         ON savings_goals (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_debts_user_book           ON debts (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_repay_user_book           ON debt_repayments (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_investments_user_book     ON investments (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);

@@ -49,69 +49,69 @@ router.get('/dashboard', async (req, res) => {
             // 今日支出
             db.queryOne(
                 `SELECT COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date = ?`,
-                [req.userId, today]
+       FROM transactions WHERE user_id = ? AND book_id = ? AND date = ?`,
+                [req.userId, req.bookId, today]
             ),
             // 本周收支（周一~今天）
             db.queryOne(
                 `SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
                     COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND date >= ? AND date <= ?`,
-                [req.userId, weekStart, weekEnd]
+       FROM transactions WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?`,
+                [req.userId, req.bookId, weekStart, weekEnd]
             ),
             // 本月收支
             db.queryOne(
                 `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
-                [req.userId, currentMonth + '%']
+       FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+                [req.userId, req.bookId, currentMonth + '%']
             ),
             // 本年收支
             db.queryOne(
                 `SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
-       FROM transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
-                [req.userId, currentYear + '%']
+       FROM transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+                [req.userId, req.bookId, currentYear + '%']
             ),
             // 最近6月趋势
             db.query(
                 `SELECT TO_CHAR(date, 'YYYY-MM') as month,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
-       FROM transactions WHERE user_id = ?
+       FROM transactions WHERE user_id = ? AND book_id = ?
        GROUP BY month ORDER BY month DESC LIMIT 6`,
-                [req.userId]
+                [req.userId, req.bookId]
             ),
             // 账户总览
             db.query(
-                'SELECT * FROM accounts WHERE user_id = $1 AND status = \'active\' ORDER BY sort_order',
-                [req.userId]
+                'SELECT * FROM accounts WHERE user_id = $1 AND book_id = $2 AND status = \'active\' ORDER BY sort_order',
+                [req.userId, req.bookId]
             ),
             // 理财总资产
             db.queryOne(
                 `SELECT COALESCE(SUM(total_cost), 0) as total_cost, COALESCE(SUM(current_value), 0) as total_value
-       FROM investments WHERE user_id = ? AND status = 'holding'`,
-                [req.userId]
+       FROM investments WHERE user_id = ? AND book_id = ? AND status = 'holding'`,
+                [req.userId, req.bookId]
             ),
             // 预算执行
             db.query(
                 `SELECT b.*,
                     (SELECT COALESCE(SUM(amount), 0) FROM transactions
-                      WHERE user_id = b.user_id AND type = 'expense'
+                      WHERE user_id = b.user_id AND book_id = b.book_id AND type = 'expense'
                         AND date BETWEEN b.start_date AND b.end_date) as actual
              FROM budgets b
-             WHERE b.user_id = ? AND b.start_date <= ? AND b.end_date >= ?
+             WHERE b.user_id = ? AND b.book_id = ? AND b.start_date <= ? AND b.end_date >= ?
              ORDER BY b.start_date`,
-                [req.userId, monthEnd, monthStart]
+                [req.userId, req.bookId, monthEnd, monthStart]
             ),
             // 储蓄目标（active）
             db.query(
                 `SELECT id, name, icon, target_amount, current_amount, status
-             FROM savings_goals WHERE user_id = ? AND status = 'active'
+             FROM savings_goals WHERE user_id = ? AND book_id = ? AND status = 'active'
              ORDER BY (current_amount / NULLIF(target_amount, 0)) DESC`,
-                [req.userId]
+                [req.userId, req.bookId]
             ),
             // 理财持仓（holding）
             db.query(
@@ -120,9 +120,9 @@ router.get('/dashboard', async (req, res) => {
                     it.icon as type_icon, it.name as type_name
              FROM investments i
              JOIN investment_types it ON i.investment_type_id = it.id
-             WHERE i.user_id = ? AND i.status = 'holding'
+             WHERE i.user_id = ? AND i.book_id = ? AND i.status = 'holding'
              ORDER BY i.current_value DESC`,
-                [req.userId]
+                [req.userId, req.bookId]
             ),
             // 最近交易
             db.query(
@@ -131,45 +131,45 @@ router.get('/dashboard', async (req, res) => {
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
        LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE t.user_id = ? AND t.type IN ('expense','income','transfer_in','transfer_out')
+       WHERE t.user_id = ? AND t.book_id = ? AND t.type IN ('expense','income','transfer_in','transfer_out')
        ORDER BY t.date DESC, t.id DESC LIMIT 8`,
-                [req.userId]
+                [req.userId, req.bookId]
             ),
             // 债务汇总
             db.queryOne(
                 `SELECT COALESCE(SUM(remaining), 0) as total_remaining,
                     COALESCE(SUM(CASE WHEN status != 'paid_off' THEN monthly_payment ELSE 0 END), 0) as total_monthly
-             FROM debts WHERE user_id = ? AND status != 'paid_off'`,
-                [req.userId]
+             FROM debts WHERE user_id = ? AND book_id = ? AND status != 'paid_off'`,
+                [req.userId, req.bookId]
             ),
             // 全部历史累计收入/支出
             db.queryOne(
                 `SELECT
               COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
               COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense
-             FROM transactions WHERE user_id = ?`,
-                [req.userId]
+             FROM transactions WHERE user_id = ? AND book_id = ?`,
+                [req.userId, req.bookId]
             ),
             // 活跃债务
             db.query(
-                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = $1 AND status = \'active\'',
-                [req.userId]
+                'SELECT id, monthly_payment, remaining, payment_day, billing_day, min_payment, start_date, type FROM debts WHERE user_id = $1 AND book_id = $2 AND status = \'active\'',
+                [req.userId, req.bookId]
             ),
             // 全部还款记录
             db.query(
-                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1',
-                [req.userId]
+                'SELECT debt_id, amount, paid_at FROM debt_repayments WHERE user_id = $1 AND book_id = $2',
+                [req.userId, req.bookId]
             ),
             // 债务计数
             db.queryOne(
-                `SELECT COUNT(*) as cnt, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) as active_cnt FROM debts WHERE user_id = ?`,
-                [req.userId]
+                `SELECT COUNT(*) as cnt, SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) as active_cnt FROM debts WHERE user_id = ? AND book_id = ?`,
+                [req.userId, req.bookId]
             ),
             // 本月储蓄净额（savings_transactions 表可能还未创建，单独兜底不拖垮整批）
             db.queryOne(
                 `SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount ELSE -amount END), 0) as net_savings
-                 FROM savings_transactions WHERE user_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
-                [req.userId, currentMonth + '%']
+                 FROM savings_transactions WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) LIKE ?`,
+                [req.userId, req.bookId, currentMonth + '%']
             ).catch(err => {
                 console.warn('⚠️ 仪表盘储蓄净额查询失败（savings_transactions 可能未创建）:', err.message);
                 return null;
@@ -365,10 +365,10 @@ router.get('/dashboard/detail', async (req, res) => {
                 const accounts = await db.query(
                     `SELECT a.*, COALESCE(SUM(i.current_value), 0) as inv_value
            FROM accounts a
-           LEFT JOIN investments i ON i.account_id = a.id AND i.user_id = a.user_id AND i.status = 'holding'
-           WHERE a.user_id = ? AND a.status = 'active'
+           LEFT JOIN investments i ON i.account_id = a.id AND i.user_id = a.user_id AND i.book_id = a.book_id AND i.status = 'holding'
+           WHERE a.user_id = ? AND a.book_id = ? AND a.status = 'active'
            GROUP BY a.id ORDER BY a.sort_order`,
-                    [req.userId]
+                    [req.userId, req.bookId]
                 );
                 // 金额精度（M3）：资产明细求和与占比走整数分域
                 // 总资产 = 账户余额 + 投资市值；单账户占比按「余额 + 关联投资市值」计算
@@ -393,9 +393,9 @@ router.get('/dashboard/detail', async (req, res) => {
        FROM transactions t
        JOIN categories c ON t.category_id = c.id
        LEFT JOIN accounts a ON t.account_id = a.id
-       WHERE t.user_id = ? AND ${dateCondition}
+       WHERE t.user_id = ? AND t.book_id = ? AND ${dateCondition}
        ORDER BY t.date DESC, t.id DESC`,
-            [req.userId, ...dateParams]
+            [req.userId, req.bookId, ...dateParams]
         );
 
         // 金额精度（M3）：交易明细汇总用整数分累加。
@@ -437,9 +437,9 @@ router.get('/investments', async (req, res) => {
         const investments = await db.query(
             `SELECT i.*, it.name as type_name, it.icon as type_icon
              FROM investments i JOIN investment_types it ON i.investment_type_id = it.id
-             WHERE i.user_id = ? AND i.status = 'holding'
+             WHERE i.user_id = ? AND i.book_id = ? AND i.status = 'holding'
              ORDER BY i.current_value DESC`,
-            [req.userId]
+            [req.userId, req.bookId]
         );
 
         await ensureWeeklySnapshots(req.userId, investments);
@@ -451,9 +451,9 @@ router.get('/investments', async (req, res) => {
             const allSnaps = await db.query(
                 `SELECT investment_id, nav_date, total_value, total_cost
                    FROM investment_snapshots
-                  WHERE user_id = ? AND investment_id = ANY(?)
+                  WHERE user_id = ? AND book_id = ? AND investment_id = ANY(?)
                   ORDER BY nav_date ASC`,
-                [req.userId, investments.map(i => i.id)]
+                [req.userId, req.bookId, investments.map(i => i.id)]
             );
             const snapsByInv = new Map();
             for (const s of allSnaps) {
@@ -492,6 +492,55 @@ router.get('/investments', async (req, res) => {
             trendSeries,
             byType: Object.values(byType).sort((a, b) => b.total_value - a.total_value),
             summary: calcPortfolioMetrics(investments)
+        }));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
+// 日历月汇总：首页日历视图用
+// 入参：year(必填)，month(必填，1-12)。返回 monthDays[ {date, expense, income, hasRecord} ] + monthSummary {income, expense}。
+// 日期为字符串 YYYY-MM-DD（按服务端时区切分，避开 PG tz 误差）。
+router.get('/calendar', async (req, res) => {
+    try {
+        const y = parseInt(req.query.year);
+        const m = parseInt(req.query.month);
+        if (!y || !m || m < 1 || m > 12) return res.status(400).json(fail('year/month 必填且 month 范围 1-12'));
+
+        const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
+        const monthEnd = `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+
+        const rows = await db.query(
+            `SELECT CAST(date AS CHAR(10)) as date,
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
+             FROM transactions
+             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?
+             GROUP BY date`,
+            [req.userId, req.bookId, monthStart, monthEnd]
+        );
+
+        const monthDays = rows.map(r => {
+            const income = parseFloat(r.income);
+            const expense = parseFloat(r.expense);
+            return {
+                date: r.date,
+                income,
+                expense,
+                hasRecord: income > 0 || expense > 0
+            };
+        });
+
+        const totalIncome = monthDays.reduce((s, d) => s + d.income, 0);
+        const totalExpense = monthDays.reduce((s, d) => s + d.expense, 0);
+
+        res.json(success({
+            year: y,
+            month: m,
+            monthStart,
+            monthEnd,
+            monthSummary: { income: totalIncome, expense: totalExpense },
+            monthDays
         }));
     } catch (err) {
         handleServerError(res, err);

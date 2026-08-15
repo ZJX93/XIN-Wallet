@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,6 +20,7 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -31,18 +33,21 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,8 +74,11 @@ import com.xinwallet.app.ui.theme.Brown100
 import com.xinwallet.app.ui.theme.Brown300
 import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.ui.theme.Brown50
+import com.xinwallet.app.ui.theme.Brown500
 import com.xinwallet.app.util.formatMoney
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.Brush
 
 @Composable
@@ -617,14 +625,17 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null, onLogin: (() -> U
 }
 
 /**
- * 顶部账本标题（截图统一样式）：居中"默认账本 ⇄"，右侧搜索图标。
- * 首页 / 账单 / 统计 三页共用。
+ * 顶部账本标题（截图统一样式）：居中"当前账本名 ⇄"，右侧搜索图标。
+ * 首页 / 账单 / 统计 三页共用。账本名由 AppContainer 的当前账本状态驱动，自动随切换刷新。
  */
 @Composable
 fun BookHeader(
     onSwapBook: () -> Unit = {},
     onSearch: () -> Unit = {}
 ) {
+    val books = AppContainer.books.collectAsState().value
+    val curId = AppContainer.currentBookId.collectAsState().value
+    val bookName = books.find { it.id == curId }?.name?.takeIf { it.isNotBlank() } ?: "默认账本"
     Row(
         Modifier
             .fillMaxWidth()
@@ -637,13 +648,88 @@ fun BookHeader(
             Modifier.clickable(onClick = onSwapBook),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("默认账本", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(bookName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(4.dp))
-            Text("⇄", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 账本切换箭头用暖棕主色强化锚点（与全局暖棕主题统一）
+            Text("⇄", style = MaterialTheme.typography.titleMedium, color = Brown500)
         }
         Spacer(Modifier.weight(1f))
         IconButton(onClick = onSearch) {
             Icon(Icons.Filled.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/**
+ * 账本切换底部弹窗：列出全部账本（当前项打勾）、支持新建账本。
+ * 选择/新建均通过回调上抛，由调用方调用 AppContainer.switchBook / createBook 并刷新数据。
+ */
+@Composable
+fun BookSwitcherSheet(
+    show: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (Int) -> Unit,
+    onCreate: (String) -> Unit
+) {
+    if (!show) return
+    val books = AppContainer.books.collectAsState().value
+    val curId = AppContainer.currentBookId.collectAsState().value
+    var newName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        title = { Text("切换账本") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                LazyColumn(Modifier.fillMaxHeight(0.45f)) {
+                    items(books, key = { it.id }) { b ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(b.id) }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(b.icon.takeIf { !it.isNullOrBlank() } ?: "📒", Modifier.width(28.dp))
+                            Text(
+                                b.name,
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (b.id == curId) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (b.id == curId) Icon(Icons.Filled.Check, "当前", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(8.dp))
+                Text("新建账本", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    placeholder = { Text("如：旅行账本") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDismiss) { Text("取消") }
+                Button(
+                    onClick = {
+                        val name = newName.trim()
+                        if (name.isNotBlank()) {
+                            onCreate(name)
+                            newName = ""
+                        }
+                    },
+                    enabled = newName.trim().isNotBlank()
+                ) { Text("创建") }
+            }
+        }
+    )
 }

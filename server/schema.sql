@@ -29,6 +29,29 @@ CREATE TABLE IF NOT EXISTS users (
 DROP TRIGGER IF EXISTS trg_users_updated ON users;
 CREATE TRIGGER trg_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- ==========================================
+-- 多账本（账套）表
+-- 每个用户可拥有多个账本（如：个人 / 家庭 / 生意），彼此数据完全隔离。
+-- 每条用户财务数据（账户/交易/分类/预算/标签/债务/理财…）都归属某个 book_id。
+-- 系统预设分类（user_id IS NULL）为全局共享，对所有账本可见；
+-- 自动创建的辅助分类（一般转账/借入/借出/投资买入…）以 book_id IS NULL 标记为「用户级共享」，
+-- 仅用户自建分类才按 book_id 强隔离。
+-- ==========================================
+CREATE TABLE IF NOT EXISTS books (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL,
+  name VARCHAR(50) NOT NULL,                           -- 账本名称
+  icon VARCHAR(10) DEFAULT '📒',                       -- 账本图标
+  color VARCHAR(10) DEFAULT '#6366f1',                 -- 账本主题色
+  is_default BOOLEAN DEFAULT FALSE,                    -- 是否为默认账本
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_books_user ON books (user_id);
+DROP TRIGGER IF EXISTS trg_books_updated ON books;
+CREATE TRIGGER trg_books_updated BEFORE UPDATE ON books FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- 账户表
 -- code: 结构化编码（5位），A=账户 + 2位类型 + 2位序号
 --   如 A0201=银行卡-工商银行，A0100=现金类（虚拟分组）
@@ -36,6 +59,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   id SERIAL PRIMARY KEY,
   code VARCHAR(5) DEFAULT NULL,                        -- 结构化编码（如 A0201）
   user_id INT NOT NULL DEFAULT 1,
+  book_id INT DEFAULT NULL,                            -- 所属账本（多账本隔离）
   name VARCHAR(50) NOT NULL,                          -- 账户名称
   type VARCHAR(30) NOT NULL CHECK (type IN ('cash','bank_card','credit_card','electronic_payment','financial_account','digital','other')),
   icon VARCHAR(10) DEFAULT '💰',                      -- 图标
@@ -49,6 +73,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts (user_id);
+-- 注意：accounts 的 (user_id, book_id) 复合索引不在此处创建——旧库 accounts 尚无 book_id 列，
+-- 创建阶段建该索引会抛错并中断后续 schema 执行。统一放到末尾「多账本迁移」块（ADD COLUMN 之后）幂等创建。
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_code ON accounts (code) WHERE code IS NOT NULL;
 DROP TRIGGER IF EXISTS trg_accounts_updated ON accounts;
 CREATE TRIGGER trg_accounts_updated BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -110,6 +136,9 @@ CREATE INDEX IF NOT EXISTS idx_tx_source ON transactions (source_account_id);
 CREATE INDEX IF NOT EXISTS idx_tx_dest ON transactions (destination_account_id);
 -- 兼容已部署库：新增列与索引（幂等，列已存在则无操作）
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS investment_txn_id INT DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS location VARCHAR(100) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS link_type VARCHAR(20) DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS link_id INT DEFAULT NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_inv_txn ON transactions (investment_txn_id);
 DROP TRIGGER IF EXISTS trg_transactions_updated ON transactions;
 CREATE TRIGGER trg_transactions_updated BEFORE UPDATE ON transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -576,3 +605,35 @@ SELECT setval(pg_get_serial_sequence('accounts', 'id'), COALESCE((SELECT MAX(id)
 SELECT setval(pg_get_serial_sequence('categories', 'id'), COALESCE((SELECT MAX(id) FROM categories), 0) + 1, false);
 SELECT setval(pg_get_serial_sequence('investment_types', 'id'), COALESCE((SELECT MAX(id) FROM investment_types), 0) + 1, false);
 SELECT setval(pg_get_serial_sequence('tags', 'id'), COALESCE((SELECT MAX(id) FROM tags), 0) + 1, false);
+
+-- ============================================
+-- 多账本（账套）支持：为历史表追加 book_id 列 + 复合索引（幂等，新增库亦执行，结果一致）
+-- 每条用户财务数据归属某个 book_id；book_id IS NULL 表示「用户级共享」（如系统辅助分类、遗留未归属数据）。
+-- 具体归属与回填由 server/db.js 的 healBooks() 在启动时自愈完成（为每位用户建默认账本并回填 NULL 行）。
+-- accounts / books 已在上方建表时包含 book_id，此处不再处理。
+-- ============================================
+ALTER TABLE categories               ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE transactions             ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE transfers                ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE budgets                 ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE tags                    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE savings_goals           ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE debts                   ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE debt_repayments         ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investments              ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE savings_transactions    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+ALTER TABLE investment_snapshots    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_book    ON transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_user_book       ON transfers (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_budgets_user_book         ON budgets (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_tags_user_book            ON tags (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_savings_user_book         ON savings_goals (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_debts_user_book           ON debts (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_repay_user_book           ON debt_repayments (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_investments_user_book     ON investments (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_inv_tx_user_book          ON investment_transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_sav_tx_user_book          ON savings_transactions (user_id, book_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_user_book       ON investment_snapshots (user_id, book_id);

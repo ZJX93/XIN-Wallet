@@ -62,9 +62,10 @@ class AddTransactionViewModel(
         }
     }
 
-    fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String) {
+    fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
+                      location: String? = null, linkType: String? = null, linkId: Int? = null) {
         val dt = normalizeDateTime(date)
-        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, dt)).toUnit() }
+        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId)).toUnit() }
     }
 
     fun submitTransfer(fromId: Int, toId: Int, amount: Double, note: String, date: String) {
@@ -73,9 +74,10 @@ class AddTransactionViewModel(
     }
 
     /** 编辑保存：date 已带时间（到秒），直接透传，不再回填原始时间 */
-    fun submitEdit(id: Int, accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String) {
+    fun submitEdit(id: Int, accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
+                   location: String? = null, linkType: String? = null, linkId: Int? = null) {
         val dt = normalizeDateTime(date)
-        submit { txRepo.updateTransaction(id, UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt)) }
+        submit { txRepo.updateTransaction(id, UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId)) }
     }
 
     /**

@@ -31,6 +31,7 @@
             <span class="logo-sub">Personal Finance</span>
         </a>
         <div class="app-header-actions">
+            <div class="book-switcher" id="bookSwitcher"></div>
             <div class="theme-switcher">
                 <button class="theme-btn" data-theme="light" title="亮色">☀️</button>
                 <button class="theme-btn active" data-theme="dark" title="暗色">🌙</button>
@@ -480,9 +481,16 @@
                     <div class="ai-config-header">
                         <div>
                             <h3 class="card-title">🤖 AI 服务商配置</h3>
-                            <p class="card-desc">配置一个或多个第三方大模型服务商，指定当前启用后即可使用 AI 财务建议与消费洞察。API Key 仅保存在服务端。</p>
+                            <p class="card-desc">配置大模型服务商后即可使用 AI 记账、消费洞察和语音转写。建议搭配两个服务商：<b>一个用于对话</b>（如 MiniMax），<b>一个用于语音转写</b>（如 Groq 免费 Whisper）。API Key 仅保存在服务端。</p>
                         </div>
                         <button class="btn btn-primary" id="aiAddProviderBtn">＋ 添加服务商</button>
+                    </div>
+                    <!-- 新手引导 -->
+                    <div class="ai-guide-hint" style="margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--surface-hover);font-size:var(--text-caption);color:var(--text-secondary);line-height:1.6">
+                        <b>📋 快速上手</b><br>
+                        ① 点击「添加服务商」→ 选择快捷预设（如 MiniMax）→ 填入 API Key → 保存<br>
+                        ② 如需语音记账，再添加一个 Groq（免费）用于语音转写<br>
+                        ③ 点击「启用」切换对话服务商，语音转写会自动选择支持的服务商
                     </div>
                     <div class="provider-list" id="aiProviderList"></div>
                     <div id="aiProviderEmpty" class="empty-hint" style="display:none;margin-top:24px">
@@ -501,17 +509,18 @@
                         <form class="trans-form" id="aiProviderForm">
                             <input type="hidden" id="aiProviderId">
                             <div class="form-group full-width" style="margin-bottom:0">
-                                <label>快捷选择</label>
+                                <label>快捷选择（点击自动填充下方所有字段）</label>
                                 <div class="provider-presets" id="aiProviderPresets">
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="minimax">MiniMax</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="deepseek">DeepSeek</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="groq">Groq</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="kimi">Kimi</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="zhipu">智谱 AI</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="openai">OpenAI</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="anthropic">Anthropic</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="deepseek">DeepSeek</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="kimi">Kimi</button>
                                     <button type="button" class="btn btn-ghost btn-sm" data-preset="ollama">Ollama 本地</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="zhipu">智谱 AI</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="moonshot">Moonshot</button>
-                                    <button type="button" class="btn btn-ghost btn-sm" data-preset="minimax">MiniMax</button>
                                 </div>
+                                <div id="aiPresetDesc" class="form-hint" style="margin-top:8px;font-size:var(--text-caption);color:var(--text-secondary)"></div>
                             </div>
 
                             <div class="form-group full-width">
@@ -525,20 +534,23 @@
                                         <option value="openai">OpenAI 兼容</option>
                                         <option value="anthropic">Anthropic Messages</option>
                                     </select>
+                                    <small class="form-hint">绝大多数服务商选 OpenAI 兼容；MiniMax/Anthropic 选 Anthropic</small>
                                 </div>
                                 <div class="form-group">
                                     <label>模型名</label>
-                                    <input type="text" id="aiProviderModel" required>
+                                    <input type="text" id="aiProviderModel" list="aiModelList" required>
+                                    <datalist id="aiModelList"></datalist>
                                 </div>
                             </div>
                             <div class="form-group full-width">
                                 <label>接口地址</label>
                                 <input type="text" id="aiProviderBaseUrl" placeholder="https://api.openai.com/v1" required>
+                                <small class="form-hint" id="aiBaseUrlHint">通常以 /v1 结尾，无需尾部斜杠</small>
                             </div>
                             <div class="form-group full-width">
                                 <label>API Key</label>
                                 <input type="password" id="aiProviderKey" placeholder="sk-..." autocomplete="off">
-                                <small class="form-hint">编辑时留空表示保留已保存的 Key</small>
+                                <small class="form-hint" id="aiKeyHint">编辑时留空表示保留已保存的 Key</small>
                             </div>
 
                             <div class="form-actions">

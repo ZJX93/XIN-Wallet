@@ -79,3 +79,8 @@ val Brown50  = Color(0xFFFCEFE5)   // accent-50
 /* FAB 专用：黑色大圆 + 白色 + 号（与暖棕品牌色解耦，强调"加号"动作） */
 val FabBackground = Color(0xFF111827)      // gray-900
 val FabForeground = Color(0xFFFFFFFF)
+
+/* ====== 筛选条/选中态专用：清爽薄荷青（与暖棕主色解耦，用于搜索筛选 chip 与小竖条） ====== */
+val Teal400 = Color(0xFF4DD0C4)            // 主填充
+val Teal600 = Color(0xFF26A69A)            // 文本/按压
+val Teal200 = Color(0xFFB2EBE6)            // 浅高亮底

@@ -229,6 +229,12 @@ async function transaction(fn) {
       const res = await origQuery(autoReturning(toPgPlaceholders(sql)), params);
       return attachInsertId(res.rows);
     };
+    // 事务连接对齐顶层 db 的能力：补齐 queryOne，供 ensureDefaultBook 等
+    // 在事务内调用（否则报 conn.queryOne is not a function）
+    client.queryOne = async (sql, params = []) => {
+      const rows = await client.query(sql, params);
+      return rows[0] || null;
+    };
     try {
       await origQuery('BEGIN');
       const result = await fn(client);
@@ -239,6 +245,7 @@ async function transaction(fn) {
       throw err;
     } finally {
       client.query = origQuery; // 还原原生 query，避免污染连接池
+      delete client.queryOne;
       client.release();
     }
   } else {
@@ -247,6 +254,10 @@ async function transaction(fn) {
     conn.query = async (sql, params = []) => {
       const [rows] = await origQuery(translateConflict(toMysqlPlaceholders(translatePgFunctionsToMysql(sql))), params);
       return rows;
+    };
+    conn.queryOne = async (sql, params = []) => {
+      const rows = await conn.query(sql, params);
+      return rows[0] || null;
     };
     try {
       await origQuery('BEGIN');
@@ -257,6 +268,7 @@ async function transaction(fn) {
       await origQuery('ROLLBACK');
       throw err;
     } finally {
+      delete conn.queryOne;
       conn.release();
     }
   }
@@ -323,6 +335,49 @@ async function healCategoryData() {
     const maxRow = await query('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM categories');
     const next = maxRow[0] && maxRow[0].next != null ? maxRow[0].next : 1;
     await query('ALTER TABLE categories AUTO_INCREMENT = ?', [next]);
+  }
+}
+
+/**
+ * 多账本自愈：
+ * 1) 为每位用户确保存在「默认账本」（无默认则取最早一个标记为默认，否则新建）。
+ * 2) 将该用户 `book_id IS NULL` 的遗留财务数据回填到其默认账本，
+ *    使升级前的旧数据全部归属默认账本，避免多账本上线后数据"消失"。
+ * 注意：系统预设分类（user_id IS NULL）不回填，保持全局共享。
+ * 幂等、双方言兼容（占位符统一用 ?，prepare 会自动转换为 $N 或保持 ?）。
+ */
+async function ensureDefaultBookId(userId) {
+  const existing = await query('SELECT id FROM books WHERE user_id = ? AND is_default = TRUE', [userId]);
+  if (existing.length) return existing[0].id;
+  const any = await query('SELECT id FROM books WHERE user_id = ? ORDER BY id ASC LIMIT 1', [userId]);
+  if (any.length) {
+    await query('UPDATE books SET is_default = TRUE WHERE id = ?', [any[0].id]);
+    return any[0].id;
+  }
+  const r = await query(
+    'INSERT INTO books (user_id, name, icon, color, is_default) VALUES (?, ?, ?, ?, TRUE)',
+    [userId, '默认账本', '📒', '#6366f1']
+  );
+  return r.insertId;
+}
+
+async function healBooks() {
+  const users = await query('SELECT id FROM users');
+  const tables = [
+    'accounts', 'categories', 'transactions', 'transfers', 'budgets', 'tags',
+    'savings_goals', 'debts', 'debt_repayments', 'investments',
+    'investment_transactions', 'savings_transactions', 'investment_snapshots'
+  ];
+  for (const u of users) {
+    const defaultId = await ensureDefaultBookId(u.id);
+    for (const t of tables) {
+      // categories 仅回填「用户私有」(user_id 非空) 的遗留分类；系统分类(user_id IS NULL)保持全局共享
+      if (t === 'categories') {
+        await query('UPDATE categories SET book_id = ? WHERE user_id = ? AND book_id IS NULL', [defaultId, u.id]);
+      } else {
+        await query(`UPDATE ${t} SET book_id = ? WHERE user_id = ? AND book_id IS NULL`, [defaultId, u.id]);
+      }
+    }
   }
 }
 
@@ -407,6 +462,14 @@ async function initDatabase() {
       console.warn('⚠️ 分类种子自愈警告（不影响启动，下次启动会重试）:', err.message);
     }
 
+    // 多账本自愈：为每位用户建立默认账本并回填遗留数据（幂等）
+    try {
+      await healBooks();
+      console.log('✅ 多账本数据自愈完成（无需修复时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ 多账本数据自愈警告（不影响启动，下次启动会重试）:', err.message);
+    }
+
     // 注：本项目视为全新项目，schema 文件已包含完整表结构、列、索引、约束与种子数据，
     // 不再保留针对旧部署的「幂等迁移」步骤（ALTER TABLE ADD COLUMN / 数据回填等）。
 
@@ -418,4 +481,4 @@ async function initDatabase() {
   }
 }
 
-module.exports = { pool, query, queryOne, transaction, initDatabase, prepare, IS_PG, DB_DIALECT };
+module.exports = { pool, query, queryOne, transaction, initDatabase, prepare, IS_PG, DB_DIALECT, healBooks, ensureDefaultBookId };

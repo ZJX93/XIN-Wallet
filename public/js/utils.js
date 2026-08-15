@@ -35,6 +35,9 @@ async function api(path, method = 'GET', body = null, opts = {}) {
     const headers = { 'Content-Type': 'application/json' };
     const token = (typeof localStorage !== 'undefined') ? localStorage.getItem('xin_token') : null;
     if (token) headers['Authorization'] = 'Bearer ' + token;
+    // 多账本：携带当前账本 ID（后端据此做数据隔离）
+    const bid = (typeof localStorage !== 'undefined') ? localStorage.getItem('xin_book_id') : null;
+    if (bid) headers['X-Book-Id'] = bid;
 
     const reqOpts = { method, headers };
     if (body) reqOpts.body = JSON.stringify(body);

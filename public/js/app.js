@@ -350,6 +350,12 @@ async function refreshPage(page) {
 window.refreshCurrentPage = () => refreshPage(currentPage);
 window.getCurrentPage = () => currentPage;
 
+// 多账本切换：重拉缓存（账户/分类等随账本隔离）+ 刷新当前页数据
+window.addEventListener('book:changed', async () => {
+    try { await initCache(); } catch (e) { console.warn('book:changed initCache 失败:', e.message); }
+    if (typeof window.refreshCurrentPage === 'function') window.refreshCurrentPage();
+});
+
 function quickAddFromAI(catId, note) {
     document.getElementById('quickAddModal').classList.add('show');
     document.querySelectorAll('#quickAddForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === 'expense') { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });

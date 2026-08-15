@@ -4,6 +4,7 @@
    ============================================ */
 
 const db = require('./db');
+const { ensureDefaultBook } = require('./routes/books');
 
 // 复式记账账户余额计算
 async function sumLedgerEffects(conn, userId, accountId) {
@@ -47,6 +48,9 @@ async function seedUserData(userId, conn) {
         return `${yy}-${String(mm + 1).padStart(2, '0')}`;
     })();
 
+    // 多账本：先为当前用户建立默认账本，所有演示数据归属该账本
+    const bookId = await ensureDefaultBook(conn, userId);
+
     // ===========================================
     // 1. 账户（6个，覆盖各种类型）
     // ===========================================
@@ -80,9 +84,9 @@ async function seedUserData(userId, conn) {
     } else {
         for (const a of accountData) {
             const r = await conn.query(
-                `INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit, is_default, sort_order, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-                [userId, a.name, a.type, a.icon, a.balance, a.balance, a.credit_limit,
+                `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit, is_default, sort_order, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+                [userId, bookId, a.name, a.type, a.icon, a.balance, a.balance, a.credit_limit,
                  a.name === '工商银行' ? 1 : 0, Object.keys(accountIds).length + 1]
             );
             accountIds[a.name] = Number(r.insertId);
@@ -196,9 +200,9 @@ async function seedUserData(userId, conn) {
             const catId = codeToId[tx.cat];
             if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
-                [userId, acctId, catId, 'income', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+                [userId, bookId, acctId, catId, 'income', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
             dayCounter += 3 + Math.floor(Math.random() * 4);
             if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
@@ -214,9 +218,9 @@ async function seedUserData(userId, conn) {
             const catId = codeToId[tx.cat];
             if (!catId) { console.warn(`⚠️ 未知分类 code: ${tx.cat}`); continue; }
             await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-                [userId, acctId, catId, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+                [userId, bookId, acctId, catId, 'expense', Math.round(tx.amount * variance), tx.name, dateStr, acctId]
             );
             dayCounter += 1 + Math.floor(Math.random() * 3);
             if (dayCounter > lastDay) dayCounter = dayCounter % lastDay + 1;
@@ -238,20 +242,20 @@ async function seedUserData(userId, conn) {
         const d = new Date(y, m, Math.max(1, now.getDate() - t.daysAgo));
         const dateStr = d.toISOString().split('T')[0];
         const tr = await conn.query(
-            `INSERT INTO transfers (user_id, from_account_id, to_account_id, amount, note, date, status)
-             VALUES (?, ?, ?, ?, ?, ?, 'completed')`,
-            [userId, accountIds[t.from], accountIds[t.to], t.amount, t.note, dateStr]
+            `INSERT INTO transfers (user_id, book_id, from_account_id, to_account_id, amount, note, date, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
+            [userId, bookId, accountIds[t.from], accountIds[t.to], t.amount, t.note, dateStr]
         );
         const tid = Number(tr.insertId);
         await conn.query(
-            `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-             VALUES (?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
-            [userId, accountIds[t.from], t.cat, t.amount, `转账至${t.to}`, dateStr, tid, accountIds[t.from]]
+            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+             VALUES (?, ?, ?, ?, 'transfer_out', ?, ?, ?, ?, ?, NULL)`,
+            [userId, bookId, accountIds[t.from], t.cat, t.amount, `转账至${t.to}`, dateStr, tid, accountIds[t.from]]
         );
         await conn.query(
-            `INSERT INTO transactions (user_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
-             VALUES (?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
-            [userId, accountIds[t.to], t.cat, t.amount, `来自${t.from}`, dateStr, tid, accountIds[t.to]]
+            `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, transfer_id, source_account_id, destination_account_id)
+             VALUES (?, ?, ?, ?, 'transfer_in', ?, ?, ?, ?, NULL, ?)`,
+            [userId, bookId, accountIds[t.to], t.cat, t.amount, `来自${t.from}`, dateStr, tid, accountIds[t.to]]
         );
     }
 
@@ -274,9 +278,9 @@ async function seedUserData(userId, conn) {
         const lastDay = new Date(y, m + 1, 0).getDate();
         const endDate = `${currentMonth}-${String(lastDay).padStart(2, '0')}`;
         await conn.query(
-            `INSERT INTO budgets (user_id, name, period_type, start_date, end_date, amount)
-             VALUES (?, ?, 'month', ?, ?, ?)`,
-            [userId, b.name, startDate, endDate, b.amount]
+            `INSERT INTO budgets (user_id, book_id, name, period_type, start_date, end_date, amount)
+             VALUES (?, ?, ?, 'month', ?, ?, ?)`,
+            [userId, bookId, b.name, startDate, endDate, b.amount]
         );
     }
 
@@ -310,10 +314,10 @@ async function seedUserData(userId, conn) {
         const typeId = investTypeCodeToId[inv.typeCode];
         if (!typeId) { console.warn(`⚠️ 未知投资类型 code: ${inv.typeCode}`); continue; }
         await conn.query(
-            `INSERT INTO investments (user_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity,
+            `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity,
              total_cost, current_value, buy_date, expected_rate, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')`,
-            [userId, accountIds['工商银行'], typeId, inv.name, inv.code || '',
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'holding')`,
+            [userId, bookId, accountIds['工商银行'], typeId, inv.name, inv.code || '',
              inv.buy_price, inv.current_price, inv.quantity,
              totalCost, currentValue, inv.buy_date, inv.expected_rate]
         );
@@ -331,9 +335,9 @@ async function seedUserData(userId, conn) {
     ];
     for (const g of savingsGoals) {
         await conn.query(
-            `INSERT INTO savings_goals (user_id, name, target_amount, current_amount, icon, status)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [userId, g.name, g.target, g.current, g.icon, g.status]
+            `INSERT INTO savings_goals (user_id, book_id, name, target_amount, current_amount, icon, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [userId, bookId, g.name, g.target, g.current, g.icon, g.status]
         );
     }
 
@@ -348,10 +352,10 @@ async function seedUserData(userId, conn) {
     ];
     for (const d of debts) {
         await conn.query(
-            `INSERT INTO debts (user_id, name, type, creditor, principal, remaining, interest_rate, term_months, method,
+            `INSERT INTO debts (user_id, book_id, name, type, creditor, principal, remaining, interest_rate, term_months, method,
              monthly_payment, start_date, due_date, billing_day, payment_day, min_payment, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [userId, d.name, d.type, d.creditor, d.principal, d.remaining, d.interest_rate,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [userId, bookId, d.name, d.type, d.creditor, d.principal, d.remaining, d.interest_rate,
              d.term_months || 0, d.method, d.monthly_payment || 0,
              d.start_date || null, d.due_date || null, d.billing_day || null,
              d.payment_day || null, d.min_payment || 0, d.status]
@@ -375,8 +379,8 @@ async function seedUserData(userId, conn) {
     if (parseInt(existingTags[0].cnt) === 0) {
         for (const t of tags) {
             await conn.query(
-                `INSERT INTO tags (user_id, name, color, icon) VALUES (?, ?, ?, ?)`,
-                [userId, t.name, t.color, t.icon]
+                `INSERT INTO tags (user_id, book_id, name, color, icon) VALUES (?, ?, ?, ?, ?)`,
+                [userId, bookId, t.name, t.color, t.icon]
             );
         }
     }
@@ -398,9 +402,9 @@ async function seedUserData(userId, conn) {
             const snapValue = Math.round(baseValue * randomFactor * 100) / 100;
             const snapCost = Math.round(cost * (0.95 + Math.random() * 0.1) * 100) / 100;
             await conn.query(
-                `INSERT INTO investment_snapshots (user_id, investment_id, total_value, total_cost, nav_date)
-                 VALUES (?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING`,
-                [userId, inv.id, snapValue, snapCost, snapDate]
+                `INSERT INTO investment_snapshots (user_id, book_id, investment_id, total_value, total_cost, nav_date)
+                 VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (investment_id, nav_date) DO NOTHING`,
+                [userId, bookId, inv.id, snapValue, snapCost, snapDate]
             );
         }
     }

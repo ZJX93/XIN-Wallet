@@ -72,10 +72,35 @@ async function reverseLinkedInvestmentTxn(conn, userId, investmentTxnId) {
 // 交易管理 API
 // ==========================================
 
+// 获取当前用户用过的全部地点（去重，按最近使用排序），便于记账 chip 自动提示
+router.get('/locations', async (req, res) => {
+    try {
+        const rows = await db.query(
+            `SELECT location, MAX(date) as last_used, COUNT(*) as cnt
+             FROM transactions
+             WHERE user_id = ? AND book_id = ? AND location IS NOT NULL AND location <> ''
+             GROUP BY location
+             ORDER BY last_used DESC
+             LIMIT 50`,
+            [req.userId, req.bookId]
+        );
+        const locations = rows.map(r => ({
+            name: r.location,
+            last_used: r.last_used,
+            count: r.cnt
+        }));
+        res.json(success(locations));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
 // 获取交易列表
 router.get('/', async (req, res) => {
     try {
-        const { month, type, category_id, account_id, search, limit, offset, tag_id, amount_op, amount_val, amount_val2 } = req.query;
+        const { month, type, types, search, location, limit, offset, tag_id, amount_op, amount_val, amount_val2,
+                start_date, end_date, min_amount, max_amount,
+                category_id, account_id } = req.query;
         let sql = `SELECT t.*, c.name as cat_name, c.icon as cat_icon, c.type as cat_type,
       a.name as acc_name, a.icon as acc_icon,
       sa.name as src_name, sa.icon as src_icon,
@@ -93,22 +118,36 @@ router.get('/', async (req, res) => {
       LEFT JOIN accounts fa ON tr.from_account_id = fa.id
       LEFT JOIN accounts ta ON tr.to_account_id = ta.id
       LEFT JOIN budgets b ON t.budget_id = b.id
-      WHERE t.user_id = ?`;
-        const params = [req.userId];
+      WHERE t.user_id = ? AND t.book_id = ?`;
+        const params = [req.userId, req.bookId];
 
         if (month && month !== 'all') {
             sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
         }
-        if (type && type !== 'all') {
-            if (type === 'transfer') {
-                // 前端类型筛选中的"转账"需要同时匹配复式记账的转出/转入记录
-                sql += " AND t.type IN ('transfer_in', 'transfer_out')";
-            } else {
-                sql += ' AND t.type = ?';
-                params.push(type);
-            }
+
+        // 类型筛选：types（多选，逗号分隔）优先；缺省回退单值 type。
+        // 'transfer' 展开为 transfer_in/transfer_out；其他值需在 TRANSACTION_TYPES 白名单内。
+        let typeSet = [];
+        if (types && types !== 'all') {
+            typeSet = String(types).split(',').map(s => s.trim()).filter(Boolean);
+        } else if (type && type !== 'all') {
+            typeSet = [type];
         }
+        if (typeSet.length) {
+            const conds = [];
+            for (const t of typeSet) {
+                if (t === 'transfer') {
+                    conds.push("t.type IN ('transfer_in', 'transfer_out')");
+                } else if (TRANSACTION_TYPES.includes(t)) {
+                    conds.push('t.type = ?');
+                    params.push(t);
+                }
+                // 未识别的 token (例如 'debt' 预留) 直接忽略，避免单选时误返回空
+            }
+            if (conds.length) sql += ' AND (' + conds.join(' OR ') + ')';
+        }
+
         if (category_id && category_id !== 'all') {
             sql += ' AND t.category_id = ?';
             params.push(parseInt(category_id));
@@ -118,12 +157,35 @@ router.get('/', async (req, res) => {
             params.push(parseInt(account_id));
         }
         if (search) {
-            sql += ' AND (t.note LIKE ? OR c.name LIKE ?)';
-            params.push('%' + search + '%', '%' + search + '%');
+            sql += ' AND (t.note LIKE ? OR c.name LIKE ? OR t.location LIKE ?)';
+            params.push('%' + search + '%', '%' + search + '%', '%' + search + '%');
+        }
+        // 地点精确筛选
+        if (location && location !== 'all') {
+            sql += ' AND t.location = ?';
+            params.push(location);
         }
         if (tag_id && tag_id !== 'all') {
             sql += ' AND t.id IN (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?)';
             params.push(parseInt(tag_id));
+        }
+        // 日期范围：与 CAST(t.date AS CHAR(10)) 比较，按 YYYY-MM-DD 字符串序即可
+        if (start_date) {
+            sql += ' AND CAST(t.date AS CHAR(10)) >= ?';
+            params.push(start_date);
+        }
+        if (end_date) {
+            sql += ' AND CAST(t.date AS CHAR(10)) <= ?';
+            params.push(end_date);
+        }
+        // 金额范围（独立于旧的 amount_op/amount_val/amount_val2，UI 用 amount range 时走这里）
+        if (min_amount !== undefined && min_amount !== '' && !isNaN(parseFloat(min_amount))) {
+            sql += ' AND t.amount >= ?';
+            params.push(parseFloat(min_amount));
+        }
+        if (max_amount !== undefined && max_amount !== '' && !isNaN(parseFloat(max_amount))) {
+            sql += ' AND t.amount <= ?';
+            params.push(parseFloat(max_amount));
         }
         if (amount_op && amount_op !== 'all') {
             const v1 = parseFloat(amount_val);
@@ -193,6 +255,9 @@ router.get('/', async (req, res) => {
             amount: parseFloat(t.amount),
             date: fmtDateTime(t.date),
             note: t.note || '',
+            location: t.location || null,
+            link_type: t.link_type || null,
+            link_id: t.link_id || null,
             category: { id: t.category_id, name: t.cat_name, icon: t.cat_icon },
             account: { id: t.account_id, name: t.acc_name, icon: t.acc_icon },
             source: t.source_account_id ? { id: t.source_account_id, name: t.src_name, icon: t.src_icon } : null,
@@ -229,8 +294,8 @@ router.get('/ledger', async (req, res) => {
             LEFT JOIN accounts sa ON t.source_account_id = sa.id
             LEFT JOIN accounts da ON t.destination_account_id = da.id
             LEFT JOIN categories c ON t.category_id = c.id
-            WHERE t.user_id = ?`;
-        const params = [req.userId];
+            WHERE t.user_id = ? AND t.book_id = ?`;
+        const params = [req.userId, req.bookId];
         if (month && month !== 'all') {
             sql += ' AND CAST(t.date AS CHAR(10)) LIKE ?';
             params.push(month + '%');
@@ -257,7 +322,7 @@ router.get('/ledger', async (req, res) => {
 // 新增交易
 router.post('/', async (req, res) => {
     try {
-        const { account_id, category_id, budget_id, type, amount, date, note } = req.body;
+        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id } = req.body;
 
         const amountNum = toAmount(amount);
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
@@ -269,13 +334,16 @@ router.post('/', async (req, res) => {
         const src = (type === 'expense' || type === 'transfer_out') ? parseInt(account_id) : null;
         const dst = (type === 'income' || type === 'transfer_in') ? parseInt(account_id) : null;
         const bId = budget_id ? parseInt(budget_id) : null;
+        const loc = location || null;
+        const lt = link_type || null;
+        const li = link_id ? parseInt(link_id) : null;
 
         // 使用事务确保余额一致
         const result = await db.transaction(async (conn) => {
             const insertResult = await conn.query(
-                `INSERT INTO transactions (user_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', transDate, src, dst]
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id, location, link_type, link_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', transDate, src, dst, loc, lt, li]
             );
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
@@ -304,7 +372,7 @@ router.post('/', async (req, res) => {
 // 更新交易
 router.put('/:id', async (req, res) => {
     try {
-        const { account_id, category_id, budget_id, type, amount, date, note } = req.body;
+        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id } = req.body;
         const id = parseInt(req.params.id);
 
         const amountNum = toAmount(amount);
@@ -312,18 +380,21 @@ router.put('/:id', async (req, res) => {
         if (!TRANSACTION_TYPES.includes(type)) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('交易类型不合法'));
 
         // 先获取原交易信息用于回滚余额
-        const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [id, req.userId]);
+        const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!old) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
 
         const src = (type === 'expense' || type === 'transfer_out') ? parseInt(account_id) : null;
         const dst = (type === 'income' || type === 'transfer_in') ? parseInt(account_id) : null;
         const bId = budget_id ? parseInt(budget_id) : null;
+        const loc = location || null;
+        const lt = link_type || null;
+        const li = link_id ? parseInt(link_id) : null;
 
         await db.transaction(async (conn) => {
-            // 更新交易记录（含复式记账借贷双方字段）
+            // 更新交易记录（含复式记账借贷双方字段 + location/link）
             await conn.query(
-                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=? WHERE id=?`,
-                [parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', date, src, dst, id]
+                `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
+                [parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', date, src, dst, loc, lt, li, id, req.userId, req.bookId]
             );
 
             // 重置交易标签
@@ -359,7 +430,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [id, req.userId]);
+        const old = await db.queryOne('SELECT * FROM transactions WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!old) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
 
         await db.transaction(async (conn) => {
@@ -368,15 +439,15 @@ router.delete('/:id', async (req, res) => {
             if (old.transfer_id) {
                 // 删除同一 transfer_id 的所有关联交易
                 const paired = await conn.query(
-                    'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3',
-                    [old.transfer_id, id, req.userId]
+                    'SELECT id, account_id FROM transactions WHERE transfer_id = $1 AND id != $2 AND user_id = $3 AND book_id = $4',
+                    [old.transfer_id, id, req.userId, req.bookId]
                 );
                 paired.forEach(p => affectedAccounts.add(parseInt(p.account_id)));
-                await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
+                await conn.query('DELETE FROM transactions WHERE transfer_id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
                 // 同时删除 transfers 表记录
-                await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2', [old.transfer_id, req.userId]);
+                await conn.query('DELETE FROM transfers WHERE id = $1 AND user_id = $2 AND book_id = $3', [old.transfer_id, req.userId, req.bookId]);
             } else {
-                await conn.query('DELETE FROM transactions WHERE id = $1', [id]);
+                await conn.query('DELETE FROM transactions WHERE id = $1 AND user_id = $2 AND book_id = $3', [id, req.userId, req.bookId]);
             }
             // 若该台账交易由理财操作生成，回滚对应持仓（删除理财流水 + 按剩余流水重算）
             await reverseLinkedInvestmentTxn(conn, req.userId, old.investment_txn_id);
@@ -406,8 +477,8 @@ router.get('/months', async (req, res) => {
     try {
         const months = await db.query(
             `SELECT DISTINCT TO_CHAR(date, 'YYYY-MM') as month
-       FROM transactions WHERE user_id = ? ORDER BY month DESC`,
-            [req.userId]
+       FROM transactions WHERE user_id = ? AND book_id = ? ORDER BY month DESC`,
+            [req.userId, req.bookId]
         );
         res.json(success(months.map(m => m.month)));
     } catch (err) {
@@ -423,13 +494,13 @@ router.get('/summary', async (req, res) => {
 
         const incomeRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'income' AND CAST(date AS CHAR(10)) LIKE ?`,
-            [req.userId, month + '%']
+       WHERE user_id = ? AND book_id = ? AND type = 'income' AND CAST(date AS CHAR(10)) LIKE ?`,
+            [req.userId, req.bookId, month + '%']
         );
         const expenseRow = await db.queryOne(
             `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-       WHERE user_id = ? AND type = 'expense' AND CAST(date AS CHAR(10)) LIKE ?`,
-            [req.userId, month + '%']
+       WHERE user_id = ? AND book_id = ? AND type = 'expense' AND CAST(date AS CHAR(10)) LIKE ?`,
+            [req.userId, req.bookId, month + '%']
         );
 
         // 类别汇总（子级向父级汇总，数据库层递归 CTE，语义同报表 /reports）：
@@ -446,13 +517,13 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'expense' AND CAST(t.date AS CHAR(10)) LIKE ?
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'expense' AND CAST(t.date AS CHAR(10)) LIKE ?
                GROUP BY a.ancestor_id
              )
              SELECT c.id, c.name, c.icon, c.parent_id, agg.total
              FROM agg JOIN categories c ON c.id = agg.cat_id
              ORDER BY agg.total DESC`,
-            [req.userId, month + '%']
+            [req.userId, req.bookId, month + '%']
         );
 
         const incByCat = await db.query(
@@ -467,13 +538,13 @@ router.get('/summary', async (req, res) => {
                SELECT a.ancestor_id AS cat_id, COALESCE(SUM(t.amount), 0) AS total
                FROM anc a
                JOIN transactions t ON t.category_id = a.node
-                AND t.user_id = ? AND t.type = 'income' AND CAST(t.date AS CHAR(10)) LIKE ?
+                AND t.user_id = ? AND t.book_id = ? AND t.type = 'income' AND CAST(t.date AS CHAR(10)) LIKE ?
                GROUP BY a.ancestor_id
              )
              SELECT c.id, c.name, c.icon, c.parent_id, agg.total
              FROM agg JOIN categories c ON c.id = agg.cat_id
              ORDER BY agg.total DESC`,
-            [req.userId, month + '%']
+            [req.userId, req.bookId, month + '%']
         );
 
         const income = parseFloat(incomeRow.total);
@@ -501,8 +572,8 @@ router.get('/:id', async (req, res) => {
              LEFT JOIN categories c ON t.category_id = c.id
              LEFT JOIN accounts a ON t.account_id = a.id
              LEFT JOIN budgets b ON t.budget_id = b.id
-             WHERE t.id = ? AND t.user_id = ?`,
-            [id, req.userId]
+             WHERE t.id = ? AND t.user_id = ? AND t.book_id = ?`,
+            [id, req.userId, req.bookId]
         );
         if (!rows[0]) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('交易不存在'));
         const t = rows[0];

@@ -21,9 +21,12 @@ class AuthInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val token = runBlocking { session.accessToken() }
-        val authed = if (token.isNotEmpty()) {
-            original.newBuilder().header("Authorization", "Bearer $token").build()
-        } else original
+        val bookId = runBlocking { session.currentBookId() }
+        val authed = original.newBuilder().apply {
+            if (token.isNotEmpty()) header("Authorization", "Bearer $token")
+            // 多账本：携带当前账本 id，后端据此隔离数据；0 表示未设置（后端退化为默认账本）
+            if (bookId > 0) header("X-Book-Id", bookId.toString())
+        }.build()
 
         val response = chain.proceed(authed)
         if (response.code == 401 && original.header("Authorization") != null) {

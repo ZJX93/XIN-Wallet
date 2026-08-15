@@ -7,6 +7,7 @@
 const TOKEN_KEY = 'xin_token';
 const REFRESH_TOKEN_KEY = 'zhicai_refresh_token';
 const USER_KEY = 'zhicai_user';
+const BOOK_ID_KEY = 'xin_book_id';
 
 export function getToken() { return localStorage.getItem(TOKEN_KEY); }
 export function getRefreshToken() { return localStorage.getItem(REFRESH_TOKEN_KEY); }
@@ -19,9 +20,18 @@ export function clearSession() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(BOOK_ID_KEY);
 }
 export function getStoredUser() {
     try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); } catch { return null; }
+}
+export function getBookId() {
+    const v = localStorage.getItem(BOOK_ID_KEY);
+    return v ? parseInt(v, 10) : null;
+}
+export function setBookId(id) {
+    if (id) localStorage.setItem(BOOK_ID_KEY, String(id));
+    else localStorage.removeItem(BOOK_ID_KEY);
 }
 
 // 拦截全局 fetch，自动附加 Authorization 头；业务接口 401 时尝试 refresh token 自动续期
@@ -71,6 +81,11 @@ if (_origFetch) {
         // 兼容反向代理/子路径：API 路径可能带前缀（如 /xin/api/...）
         if (token && isApi && !isAuth) {
             requestInit.headers.Authorization = 'Bearer ' + token;
+        }
+        // 多账本：所有 API 请求携带当前账本 ID（后端 resolveBookContext 据此隔离数据；鉴权接口忽略该头）
+        const bid = getBookId();
+        if (bid && isApi) {
+            requestInit.headers['X-Book-Id'] = String(bid);
         }
         let res = await _origFetch(input, requestInit);
         if (res.status === 401 && isApi && !isAuth) {
@@ -252,4 +267,119 @@ function showProfileMsg(msg, type) {
     if (!el) return;
     el.textContent = msg;
     el.className = 'profile-msg ' + type;
+}
+
+// ============================================
+// 多账本切换器（顶部栏）
+// ============================================
+
+export function renderBookSwitcher() {
+    const mount = document.getElementById('bookSwitcher');
+    if (!mount) return;
+
+    // 首次渲染：注入结构
+    if (!mount.dataset.bound) {
+        mount.innerHTML = `
+            <button class="book-switcher-trigger" id="bookSwitcherTrigger" type="button" aria-haspopup="true" aria-expanded="false">
+                <span class="book-icon">📒</span>
+                <span class="book-name" id="bookSwitcherName">加载中…</span>
+                <span class="book-caret">▾</span>
+            </button>
+            <div class="book-switcher-panel" id="bookSwitcherPanel" style="display:none">
+                <div class="book-switcher-list" id="bookSwitcherList"></div>
+                <div class="book-switcher-create">
+                    <input type="text" id="bookSwitcherNewName" placeholder="新账本名称" maxlength="20" autocomplete="off">
+                    <button class="btn btn-primary btn-sm" id="bookSwitcherCreateBtn" type="button">＋ 新建</button>
+                </div>
+            </div>`;
+        mount.dataset.bound = '1';
+
+        const trigger = document.getElementById('bookSwitcherTrigger');
+        const panel = document.getElementById('bookSwitcherPanel');
+
+        trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = panel.style.display === 'none';
+            panel.style.display = open ? 'block' : 'none';
+            trigger.setAttribute('aria-expanded', String(open));
+        });
+        // 点击外部关闭
+        document.addEventListener('click', (e) => {
+            if (!mount.contains(e.target)) {
+                panel.style.display = 'none';
+                trigger.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        document.getElementById('bookSwitcherCreateBtn').addEventListener('click', async () => {
+            const input = document.getElementById('bookSwitcherNewName');
+            const name = (input.value || '').trim();
+            if (!name) { input.focus(); return; }
+            try {
+                const res = await window.api('/books', 'POST', { name });
+                if (res && res.id) {
+                    input.value = '';
+                    await loadBooks();
+                    selectBook(res.id, name);
+                    if (typeof showToast === 'function') showToast('账本已创建', 'success');
+                }
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message || '创建账本失败', 'error');
+            }
+        });
+        document.getElementById('bookSwitcherNewName').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('bookSwitcherCreateBtn').click();
+        });
+    }
+
+    loadBooks();
+}
+
+async function loadBooks() {
+    const list = document.getElementById('bookSwitcherList');
+    const nameEl = document.getElementById('bookSwitcherName');
+    if (!list) return;
+    try {
+        const data = await window.api('/books');
+        const books = (data && data.books) || [];
+        const currentBookId = getBookId() || (data && data.current_book_id);
+        if (currentBookId) setBookId(currentBookId);
+
+        list.innerHTML = books.map(b => `
+            <button class="book-switcher-item${b.id === currentBookId ? ' active' : ''}" type="button" data-book-id="${b.id}">
+                <span class="book-dot" style="background:${escapeHtml(b.color || '#6366f1')}">${escapeHtml(b.icon || '📒')}</span>
+                <span class="book-label">${escapeHtml(b.name)}</span>
+                ${b.is_default ? '<span class="book-tag">默认</span>' : ''}
+            </button>`).join('') || '<div class="book-switcher-empty">暂无账本</div>';
+
+        const cur = books.find(b => b.id === currentBookId);
+        if (nameEl) nameEl.textContent = cur ? cur.name : '默认账本';
+
+        list.querySelectorAll('.book-switcher-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = parseInt(btn.dataset.bookId, 10);
+                const label = btn.querySelector('.book-label').textContent;
+                selectBook(id, label);
+            });
+        });
+    } catch (err) {
+        if (nameEl) nameEl.textContent = '账本加载失败';
+        console.error('加载账本失败:', err);
+    }
+}
+
+function selectBook(id, name) {
+    setBookId(id);
+    const nameEl = document.getElementById('bookSwitcherName');
+    if (nameEl) nameEl.textContent = name || '账本';
+    const panel = document.getElementById('bookSwitcherPanel');
+    const trigger = document.getElementById('bookSwitcherTrigger');
+    if (panel) panel.style.display = 'none';
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    // 高亮当前项
+    const list = document.getElementById('bookSwitcherList');
+    if (list) list.querySelectorAll('.book-switcher-item').forEach(b =>
+        b.classList.toggle('active', parseInt(b.dataset.bookId, 10) === id));
+    // 通知各页面刷新（app.js 监听后重初始化缓存 + 刷新当前页）
+    window.dispatchEvent(new CustomEvent('book:changed', { detail: { bookId: id } }));
 }

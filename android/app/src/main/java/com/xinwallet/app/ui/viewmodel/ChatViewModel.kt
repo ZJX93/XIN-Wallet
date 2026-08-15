@@ -1,30 +1,29 @@
 package com.xinwallet.app.ui.viewmodel
 
 import android.app.Application
-import android.media.AudioFormat
-import android.media.AudioRecord
+import android.content.Intent
 import android.media.MediaRecorder
+import android.os.Build
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import org.vosk.Model
-import org.vosk.Recognizer
 import com.xinwallet.app.data.model.ChatMessage
 import com.xinwallet.app.data.model.ChatRequest
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AiRepository
+import com.xinwallet.app.data.repository.TransactionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import org.json.JSONObject
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-import java.util.zip.ZipInputStream
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -32,25 +31,37 @@ data class ChatUiState(
     val sending: Boolean = false,
     val thinking: Boolean = false,
     val recording: Boolean = false,
-    val recordingStart: Long? = null, // 录音起始时间戳（毫秒），用于显示时长
+    val recordingStart: Long? = null,
+    val transcribing: Boolean = false,
     val error: String? = null,
-    val toast: String? = null,
-    val voiceModelDownloading: Boolean = false, // 首次使用语音时正在下载离线模型
-    val voiceModelProgress: Int = 0,            // 下载进度 0-100
-    val voiceModelError: String? = null         // 模型下载/加载失败信息
+    val toast: String? = null
 )
 
 class ChatViewModel(
     private val app: Application,
-    private val aiRepo: AiRepository
+    private val aiRepo: AiRepository,
+    private val txnRepo: TransactionRepository
 ) : AndroidViewModel(app) {
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
 
+    private var inputBeforeVoice: String = ""
+
     fun onInputChange(text: String) { _state.value = _state.value.copy(input = text) }
     fun clearError() { _state.value = _state.value.copy(error = null) }
     fun clearToast() { _state.value = _state.value.copy(toast = null) }
+    fun clearMessages() { _state.value = _state.value.copy(messages = emptyList(), input = "") }
+
+    fun deleteTransaction(txnId: Int) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(toast = "正在删除…")
+            when (val r = txnRepo.deleteTransaction(txnId)) {
+                is ApiResult.Success -> _state.value = _state.value.copy(toast = "已删除交易 #$txnId")
+                is ApiResult.Error -> _state.value = _state.value.copy(error = "删除失败：${r.message}")
+            }
+        }
+    }
 
     private fun appendUser(msg: ChatMessage): List<ChatMessage> {
         val next = _state.value.messages + msg
@@ -92,200 +103,189 @@ class ChatViewModel(
         }
     }
 
-    // ---- 离线语音识别（Vosk）：手机本地把语音转成文字填入输入框 ----
-    //      不依赖系统语音助手（华为小艺不暴露标准接口）也不依赖云端 AI（Anthropic 不支持转写），华为等国产 ROM 上可用 ----
-    private var voskModel: Model? = null
-    private var recognizer: Recognizer? = null
-    private var audioRecord: AudioRecord? = null
+    // ---- 语音识别：优先端上 SpeechRecognizer，不支持时回退 MediaRecorder + 后端转写 ----
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var usingBackendVoice = false       // 是否在用后端转写模式
+    private var mediaRecorder: MediaRecorder? = null
+    private var audioFile: File? = null
     private var recordingJob: Job? = null
-    private val modelZipUrl = "https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip" // 离线模型托管地址；可替换为自有 CDN / 对象存储
-    private val modelDirName = "vosk-model-small-cn-0.22" // 解压 / 加载到 files 后的目录名
 
-    /**
-     * 确保 Vosk 模型就绪（运行时下载，不打包进 APK）：
-     * 1) 已解压过则直接加载；2) 否则从 modelZipUrl 下载 zip 并解压到 files，再加载 Model。
-     * 须在 IO 调度下挂起调用。
-     */
-    private suspend fun ensureModelLoaded(): Boolean {
-        if (voskModel != null) return true
-        val dest = File(app.filesDir, modelDirName)
-        if (File(dest, "am/final.mdl").exists()) return tryLoadModel(dest)
-        return try {
-            _state.value = _state.value.copy(voiceModelDownloading = true, voiceModelProgress = 0, voiceModelError = null)
-            downloadModelZip(modelZipUrl, dest)
-            tryLoadModel(dest)
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelError = "语音模型下载失败：${e.message}")
-            false
-        }
-    }
+    private fun ensureSpeechRecognizer(): SpeechRecognizer? {
+        if (speechRecognizer != null) return speechRecognizer
+        if (!SpeechRecognizer.isRecognitionAvailable(app)) return null
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(app)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
 
-    private fun tryLoadModel(dest: File): Boolean = try {
-        voskModel = Model(dest.absolutePath)
-        _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelProgress = 100)
-        true
-    } catch (e: Exception) {
-        _state.value = _state.value.copy(voiceModelDownloading = false, voiceModelError = "语音模型加载失败：${e.message}")
-        false
-    }
+            override fun onError(error: Int) {
+                val msg = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "未识别到语音内容"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没有检测到语音，请重试"
+                    SpeechRecognizer.ERROR_AUDIO -> "录音错误"
+                    SpeechRecognizer.ERROR_NETWORK -> "网络错误"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时"
+                    SpeechRecognizer.ERROR_SERVER -> "语音服务异常"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别忙，请重试"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少录音权限"
+                    else -> "语音识别错误($error)"
+                }
+                _state.value = _state.value.copy(
+                    recording = false, recordingStart = null, transcribing = false,
+                    input = inputBeforeVoice, error = msg
+                )
+            }
 
-    /** 下载 zip 到 cache，解压到 filesDir（zip 顶层含 modelDirName/，正好落到 files/modelDirName） */
-    private suspend fun downloadModelZip(url: String, dest: File) = withContext(Dispatchers.IO) {
-        val client = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .build()
-        val resp = client.newCall(Request.Builder().url(url).build()).execute()
-        if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
-        val tmp = File(app.cacheDir, "$modelDirName.zip")
-        val total = resp.body?.contentLength() ?: -1L
-        var downloaded = 0L
-        var lastPct = 0
-        resp.body?.byteStream()?.use { input ->
-            tmp.outputStream().buffered().use { out ->
-                val buf = ByteArray(8192)
-                var r: Int
-                while (input.read(buf).also { r = it } != -1) {
-                    out.write(buf, 0, r)
-                    downloaded += r
-                    if (total > 0) {
-                        val pct = (downloaded * 100 / total).toInt()
-                        if (pct - lastPct >= 2) {
-                            lastPct = pct
-                            _state.value = _state.value.copy(voiceModelProgress = pct)
-                        }
-                    }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val text = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                if (!text.isNullOrBlank()) {
+                    _state.value = _state.value.copy(
+                        input = if (inputBeforeVoice.isBlank()) text else "$inputBeforeVoice $text"
+                    )
                 }
             }
-        } ?: throw IOException("空响应体")
-        unzip(tmp, dest.parentFile ?: app.filesDir)
-        tmp.delete()
-    }
 
-    /** 解压 zip（含子目录）到 outDir */
-    private fun unzip(zip: File, outDir: File) {
-        outDir.mkdirs()
-        val destDir = outDir.canonicalFile
-        ZipInputStream(zip.inputStream().buffered()).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                // Zip Slip 防护：校验解压目标始终落在 outDir 内，拒绝 ../ 或绝对路径逃逸
-                val target = File(outDir, entry.name).canonicalFile
-                if (!target.path.startsWith(destDir.path + File.separator) && target != destDir) {
-                    throw SecurityException("非法的 zip 条目，疑似路径穿越: ${entry.name}")
-                }
-                if (entry.isDirectory) target.mkdirs()
-                else {
-                    target.parentFile?.mkdirs()
-                    target.outputStream().buffered().use { fos -> zis.copyTo(fos) }
-                }
-                zis.closeEntry()
-                entry = zis.nextEntry
+            override fun onResults(results: Bundle?) {
+                val text = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                _state.value = _state.value.copy(
+                    recording = false, recordingStart = null, transcribing = false,
+                    input = if (text.isNullOrBlank()) inputBeforeVoice
+                            else if (inputBeforeVoice.isBlank()) text
+                            else "$inputBeforeVoice $text",
+                    error = if (text.isNullOrBlank()) "未识别到语音内容" else null
+                )
             }
-        }
+        })
+        return speechRecognizer
     }
 
-    /** 开始离线语音识别：录音并通过 Vosk 流式识别，实时把文字填入输入框 */
+    /** 开始语音识别 */
     fun startVoice() {
         if (_state.value.recording) return
-        viewModelScope.launch(Dispatchers.IO) {
-            if (!ensureModelLoaded()) return@launch
-            val model = voskModel ?: return@launch
+        inputBeforeVoice = _state.value.input
+
+        // 方案1：尝试端上 SpeechRecognizer
+        val recognizer = ensureSpeechRecognizer()
+        if (recognizer != null) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
             try {
-                val sampleRate = 16000
-                val minBuf = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-                val bufSize = if (minBuf > 8192) minBuf else 8192
-                val rec = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
-                val recognizer = Recognizer(model, sampleRate.toFloat())
-                audioRecord = rec
-                this@ChatViewModel.recognizer = recognizer
-                rec.startRecording()
+                recognizer.startListening(intent)
+                usingBackendVoice = false
                 _state.value = _state.value.copy(recording = true, recordingStart = System.currentTimeMillis(), error = null)
-                var committed = _state.value.input.trim()
-                var curSeg = ""                       // 当前句：跨 partial 稳定累积，避免一两个字跳动
-                var lastInput = _state.value.input    // 仅在文本真正变化时更新，减少重组抖动
-                val buffer = ByteArray(bufSize)
-                recordingJob = launch(Dispatchers.IO) {
-                    try {
-                        while (_state.value.recording) {
-                            val read = rec.read(buffer, 0, buffer.size)
-                            if (read <= 0) continue
-                            if (recognizer.acceptWaveForm(buffer, read)) {
-                                val seg = parseVoskText(recognizer.result).trim()
-                                if (seg.isNotBlank()) {
-                                    // 极短片段（<=2字）先留在 curSeg 继续累积，避免一句话被切成多个碎块
-                                    if (seg.length <= 2 && committed.isNotEmpty()) {
-                                        curSeg = if (curSeg.isEmpty()) seg else mergePartial(curSeg, seg)
-                                    } else {
-                                        committed = if (committed.isEmpty()) seg else committed + seg
-                                        curSeg = ""
-                                    }
-                                    val next = if (committed.isEmpty()) curSeg else committed + curSeg
-                                    if (next != lastInput) { lastInput = next; _state.value = _state.value.copy(input = next) }
-                                }
-                            } else {
-                                val p = parseVoskText(recognizer.partialResult).trim()
-                                if (p.isNotEmpty()) {
-                                    curSeg = mergePartial(curSeg, p)   // 平滑合并：延长时采用新文本、回退/修正时保持前缀
-                                    val next = if (committed.isEmpty()) curSeg else committed + curSeg
-                                    if (next != lastInput) { lastInput = next; _state.value = _state.value.copy(input = next) }
-                                }
-                            }
+                return
+            } catch (e: SecurityException) {
+                // 华为等设备禁止绑定语音服务，销毁后回退
+                try { speechRecognizer?.destroy() } catch (_: Exception) {}
+                speechRecognizer = null
+            }
+        }
+
+        // 方案2：回退到 MediaRecorder + 后端转写
+        try {
+            val dir = File(app.cacheDir, "voice").apply { mkdirs() }
+            val file = File(dir, "voice_${System.currentTimeMillis()}.m4a")
+            audioFile = file
+
+            @Suppress("DEPRECATION")
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(app)
+            } else {
+                MediaRecorder()
+            }
+            recorder.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(16000)
+                setAudioEncodingBitRate(32000)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+            mediaRecorder = recorder
+            usingBackendVoice = true
+            _state.value = _state.value.copy(recording = true, recordingStart = System.currentTimeMillis(), error = null)
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(error = "无法启动录音：${e.message}")
+        }
+    }
+
+    /** 停止语音 → 端上模式等待 onResults；后端模式上传文件转写 */
+    fun stopVoice() {
+        if (!_state.value.recording) return
+        _state.value = _state.value.copy(recording = false, recordingStart = null, transcribing = true)
+
+        if (!usingBackendVoice) {
+            // 端上模式：stopListening 等 onResults 回调
+            speechRecognizer?.stopListening()
+            viewModelScope.launch {
+                delay(5000)
+                if (_state.value.transcribing) {
+                    _state.value = _state.value.copy(transcribing = false, error = "语音识别超时")
+                }
+            }
+            return
+        }
+
+        // 后端模式：停止录音 → base64 → 上传后端转写
+        val recorder = mediaRecorder
+        val file = audioFile
+        mediaRecorder = null
+        audioFile = null
+
+        recordingJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                recorder?.apply {
+                    try { stop() } catch (_: Exception) {}
+                    release()
+                }
+                if (file == null || !file.exists() || file.length() < 200) {
+                    _state.value = _state.value.copy(transcribing = false, error = "录音太短，请重试")
+                    return@launch
+                }
+                val audioBase64 = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+                file.delete()
+
+                when (val r = aiRepo.transcribe(audioBase64, "audio/mp4")) {
+                    is ApiResult.Success -> {
+                        val text = r.data.text.trim()
+                        if (text.isNotBlank()) {
+                            val newInput = if (inputBeforeVoice.isBlank()) text else "$inputBeforeVoice $text"
+                            _state.value = _state.value.copy(input = newInput, transcribing = false)
+                        } else {
+                            _state.value = _state.value.copy(transcribing = false, error = "未识别到语音内容")
                         }
-                        // 录音结束：把当前句剩余文本固化（finalResult 通常已空，用 curSeg 兜底）
-                        val fin = parseVoskText(recognizer.finalResult).trim()
-                        if (fin.isNotBlank()) curSeg = mergePartial(curSeg, fin)
-                        if (curSeg.isNotBlank()) {
-                            committed = if (committed.isEmpty()) curSeg else committed + curSeg
-                            curSeg = ""
-                        }
-                        if (committed != lastInput) _state.value = _state.value.copy(input = committed)
-                    } catch (e: Exception) {
-                        // 仅在仍在录音状态下报错；主动停止导致的协程取消不提示
-                        if (_state.value.recording) _state.value = _state.value.copy(error = "语音识别中断：${e.message}")
-                    } finally {
-                        try { rec.stop() } catch (_: Exception) {}
-                        try { rec.release() } catch (_: Exception) {}
-                        audioRecord = null
+                    }
+                    is ApiResult.Error -> {
+                        _state.value = _state.value.copy(transcribing = false, error = "语音转写失败：${r.message}")
                     }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(recording = false, recordingStart = null, error = "无法启动录音：${e.message}")
+                _state.value = _state.value.copy(transcribing = false, error = "语音处理出错：${e.message}")
             }
         }
-    }
-
-    /** 停止录音与识别，保留已识别的文字；音频资源由录音协程的 finally 释放 */
-    fun stopVoice() {
-        if (!_state.value.recording) return
-        _state.value = _state.value.copy(recording = false, recordingStart = null)
-        recordingJob = null
-    }
-
-    /** partial 结果平滑合并：延长时采用更完整的 new；回退/修正时保留两者公共前缀；避免文字反复改写、两个字两个字地跳 */
-    private fun mergePartial(old: String, new: String): String {
-        if (new.isEmpty()) return old
-        if (old.isEmpty()) return new
-        if (new.startsWith(old)) return new        // 当前句正在变长，直接用最新假设
-        if (old.startsWith(new)) return old        // Vosk 回退，保留较长者保持稳定
-        val n = minOf(old.length, new.length)      // 出现分歧（修正了前面的字）：取最长公共前缀
-        var i = 0
-        while (i < n && old[i] == new[i]) i++
-        return old.substring(0, i)
-    }
-
-    private fun parseVoskText(json: String): String {
-        return try {
-            val obj = JSONObject(json)
-            obj.optString("text", obj.optString("partial", "")).trim()
-        } catch (_: Exception) { "" }
     }
 
     override fun onCleared() {
         super.onCleared()
         recordingJob?.cancel()
-        try { audioRecord?.release() } catch (_: Exception) {}
-        try { recognizer?.close() } catch (_: Exception) {}
-        try { voskModel?.close() } catch (_: Exception) {}
+        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+        try { speechRecognizer?.destroy() } catch (_: Exception) {}
+        speechRecognizer = null
+        try { mediaRecorder?.apply { try { stop() } catch (_: Exception) {}; release() } } catch (_: Exception) {}
+        try { audioFile?.delete() } catch (_: Exception) {}
     }
 }

@@ -11,8 +11,8 @@ const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalanc
 router.get('/', async (req, res) => {
     try {
         const accounts = await db.query(
-            'SELECT * FROM accounts WHERE user_id = $1 AND status = \'active\' ORDER BY sort_order',
-            [req.userId]
+            'SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? AND status = \'active\' ORDER BY sort_order',
+            [req.userId, req.bookId]
         );
         // 金额精度（M3）：整数分累加，避免多账户浮点求和产生分位漂移
         const total = sumAmounts(accounts, a => a.balance || 0);
@@ -51,8 +51,8 @@ router.post('/', async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO accounts (user_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, name, type, icon || '💰', initialOpening, initialOpening, limitRes.limit]
+            `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, req.bookId, name, type, icon || '💰', initialOpening, initialOpening, limitRes.limit]
         );
         res.json(success({ id: result.insertId, balance: initialOpening, opening_balance: initialOpening, credit_limit: limitRes.limit }, '账户已创建'));
     } catch (err) {
@@ -66,7 +66,7 @@ router.put('/:id', async (req, res) => {
         const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
         const id = parseInt(req.params.id);
 
-        const existing = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ?', [id, req.userId]);
+        const existing = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!existing) return res.status(ErrorCodes.NOT_FOUND).json(failNotFound('账户不存在'));
 
         const limitRes = resolveCreditLimit(type, credit_limit, parseFloat(existing.credit_limit) || 0);
@@ -82,8 +82,8 @@ router.put('/:id', async (req, res) => {
         }
 
         await db.query(
-            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=?`,
-            [name, type, icon, newBalance, newOpening, limitRes.limit, id, req.userId]
+            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=? AND book_id=?`,
+            [name, type, icon, newBalance, newOpening, limitRes.limit, id, req.userId, req.bookId]
         );
         res.json(success({ balance: newBalance, opening_balance: newOpening, credit_limit: limitRes.limit }, '账户已更新'));
     } catch (err) {
@@ -96,6 +96,8 @@ router.get('/:id/usage', async (req, res) => {
     try {
         const accId = parseInt(req.params.id);
         if (!accId) return res.status(400).json(fail('账户ID无效'));
+        const accExists = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        if (!accExists) return res.status(404).json(fail('账户不存在'));
         const row = await db.queryOne(
             `SELECT
                 (SELECT COUNT(*) FROM transactions WHERE user_id = ? AND (account_id = ? OR source_account_id = ? OR destination_account_id = ?)) AS transactions,
@@ -118,8 +120,8 @@ router.get('/:id/usage', async (req, res) => {
 router.post('/:id/close', async (req, res) => {
     try {
         await db.query(
-            'UPDATE accounts SET status = \'closed\' WHERE id = $1 AND user_id = $2',
-            [req.params.id, req.userId]
+            'UPDATE accounts SET status = \'closed\' WHERE id = $1 AND user_id = $2 AND book_id = $3',
+            [req.params.id, req.userId, req.bookId]
         );
         res.json(success(null, '账户已关闭'));
     } catch (err) {
@@ -132,7 +134,7 @@ router.delete('/:id', async (req, res) => {
     try {
         const accId = parseInt(req.params.id);
         if (!accId) return res.status(400).json(fail('账户ID无效'));
-        const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
+        const acc = await db.queryOne('SELECT id FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(404).json(fail('账户不存在'));
 
         // 关联检查：任一表有记录即拒绝彻底删除
@@ -158,7 +160,7 @@ router.delete('/:id', async (req, res) => {
             return res.status(409).json(fail(`该账户存在关联数据（${detail}），无法彻底删除。请先清理相关记录，或使用「关闭账户」保留历史。`));
         }
 
-        await db.query('DELETE FROM accounts WHERE id = $1 AND user_id = $2', [accId, req.userId]);
+        await db.query('DELETE FROM accounts WHERE id = $1 AND user_id = $2 AND book_id = $3', [accId, req.userId, req.bookId]);
         res.json(success(null, '账户已彻底删除'));
     } catch (err) {
         handleServerError(res, err);
@@ -169,8 +171,8 @@ router.delete('/:id', async (req, res) => {
 router.post('/reconcile', async (req, res) => {
     try {
         const accounts = await db.query(
-            "SELECT id, name, balance FROM accounts WHERE user_id = $1 AND status = 'active'",
-            [req.userId]
+            "SELECT id, name, balance FROM accounts WHERE user_id = $1 AND book_id = ? AND status = 'active'",
+            [req.userId, req.bookId]
         );
         let fixed = 0;
         const diffs = [];
@@ -178,7 +180,7 @@ router.post('/reconcile', async (req, res) => {
             const computed = await computeAccountBalance(db, req.userId, acc.id);
             const stored = parseFloat(acc.balance);
             if (Math.abs(computed - stored) > 0.005) {
-                await db.query('UPDATE accounts SET balance = $1 WHERE id = $2 AND user_id = $3', [computed, acc.id, req.userId]);
+                await db.query('UPDATE accounts SET balance = $1 WHERE id = $2 AND user_id = $3 AND book_id = $4', [computed, acc.id, req.userId, req.bookId]);
                 fixed++;
                 // 金额精度（M3）：差额先收集，最后整数分求和，避免逐次浮点累加
                 diffs.push(subtractAmounts(computed, stored));
@@ -198,7 +200,7 @@ router.get('/:id/transactions', async (req, res) => {
     try {
         const accId = parseInt(req.params.id);
         if (!accId) return res.status(400).json(fail('账户ID无效'));
-        const acc = await db.queryOne('SELECT id, name, icon, type FROM accounts WHERE id = ? AND user_id = ?', [accId, req.userId]);
+        const acc = await db.queryOne('SELECT id, name, icon, type FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
         if (!acc) return res.status(404).json(fail('账户不存在'));
         const lim = Math.min(parseInt(req.query.limit) || 200, 1000);
         const off = parseInt(req.query.offset) || 0;
@@ -215,10 +217,10 @@ router.get('/:id/transactions', async (req, res) => {
              LEFT JOIN transfers tr ON t.transfer_id = tr.id
              LEFT JOIN accounts fa ON tr.from_account_id = fa.id
              LEFT JOIN accounts ta ON tr.to_account_id = ta.id
-             WHERE t.user_id = ? AND t.account_id = ?
+             WHERE t.user_id = ? AND t.book_id = ? AND t.account_id = ?
              ORDER BY t.date DESC, t.id DESC
              LIMIT ? OFFSET ?`,
-            [req.userId, accId, lim, off]
+            [req.userId, req.bookId, accId, lim, off]
         );
 
         // 2) 该账户作为还款来源的还款流水
@@ -227,10 +229,10 @@ router.get('/:id/transactions', async (req, res) => {
                     d.name as debt_name, ('💳') as debt_icon
              FROM debt_repayments r
              LEFT JOIN debts d ON r.debt_id = d.id
-             WHERE r.user_id = ? AND r.account_id = ?
+             WHERE r.user_id = ? AND r.book_id = ? AND r.account_id = ?
              ORDER BY r.paid_at DESC, r.id DESC
              LIMIT ? OFFSET ?`,
-            [req.userId, accId, lim, off]
+            [req.userId, req.bookId, accId, lim, off]
         );
 
         const items = [

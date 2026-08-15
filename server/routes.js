@@ -18,6 +18,8 @@ const router = express.Router();
 const authRoutes = require('./routes/auth');
 router.use('/auth', authRoutes);
 
+const { resolveBookContext, router: booksRouter } = require('./routes/books');
+
 // ==========================================
 // 受保护路由统一鉴权
 // ==========================================
@@ -25,6 +27,10 @@ router.use((req, res, next) => {
     if (req.path.startsWith('/auth/')) return next();
     return authMiddleware(req, res, next);
 });
+
+// 多账本：解析当前账本（X-Book-Id / 默认账本 / 自动创建），写入 req.bookId。
+// 必须置于 authMiddleware 之后，确保 req.userId 已就绪再按用户隔离账本。
+router.use(resolveBookContext);
 
 // ==========================================
 // M5 · 用户级速率限制（按 userId 限速，防刷接口 / 防 AI 成本失控）
@@ -70,6 +76,7 @@ router.use('/categories', require('./routes/categories'));
 router.use('/tags', require('./routes/tags'));
 router.use('/savings-goals', require('./routes/savings'));
 router.use('/debts', require('./routes/debts'));
+router.use('/books', booksRouter);
 router.use('/', require('./routes/csv'));   // /export/csv, /import/csv, /export/full, /import/full
 
 // ==========================================
