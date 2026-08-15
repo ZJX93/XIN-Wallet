@@ -610,8 +610,10 @@ SELECT setval(pg_get_serial_sequence('tags', 'id'), COALESCE((SELECT MAX(id) FRO
 -- 多账本（账套）支持：为历史表追加 book_id 列 + 复合索引（幂等，新增库亦执行，结果一致）
 -- 每条用户财务数据归属某个 book_id；book_id IS NULL 表示「用户级共享」（如系统辅助分类、遗留未归属数据）。
 -- 具体归属与回填由 server/db.js 的 healBooks() 在启动时自愈完成（为每位用户建默认账本并回填 NULL 行）。
--- accounts / books 已在上方建表时包含 book_id，此处不再处理。
+-- books 已在上方建表时包含 book_id；accounts 旧库可能无 book_id 列，需在此幂等补齐
+-- （否则旧库 CREATE TABLE IF NOT EXISTS 跳过重建，accounts 永远缺 book_id，接口 500）。
 -- ============================================
+ALTER TABLE accounts                 ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE categories               ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE transactions             ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE transfers                ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
@@ -625,6 +627,7 @@ ALTER TABLE investment_transactions ADD COLUMN IF NOT EXISTS book_id INT DEFAULT
 ALTER TABLE savings_transactions    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 ALTER TABLE investment_snapshots    ADD COLUMN IF NOT EXISTS book_id INT DEFAULT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_accounts_user_book        ON accounts (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user_book      ON categories (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_book    ON transactions (user_id, book_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_user_book       ON transfers (user_id, book_id);
