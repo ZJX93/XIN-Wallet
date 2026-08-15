@@ -30,6 +30,13 @@ function extractMountedRoutes(filePath) {
         vars.set(m[1], `server/routes/${m[2]}.js`);
     }
 
+    // 解构赋值形式：const { ..., router: booksRouter, ... } = require('./routes/books')
+    // （books.js 导出 { router, resolveBookContext, ensureDefaultBook }，router 经别名挂载）
+    const destructureRe = /const\s*\{[^}]*\brouter\s*:\s*(\w+)[^}]*\}\s*=\s*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)/g;
+    while ((m = destructureRe.exec(code)) !== null) {
+        vars.set(m[1], `server/routes/${m[2]}.js`);
+    }
+
     const inlineRe = /router\.use\(\s*['"]([^'"]+)['"]\s*,\s*(?:[^,)]+,\s*)*require\(\s*['"]\.\/routes\/([^'"]+)['"]\s*\)\s*\)/g;
     while ((m = inlineRe.exec(code)) !== null) {
         mounts.push({ prefix: m[1], file: `server/routes/${m[2]}.js` });
