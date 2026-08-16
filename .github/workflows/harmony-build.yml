@@ -93,6 +93,7 @@ jobs:
           # 华为 hvigor 不在公共 npm registry，CI 使用 Command Line Tools 自带的 hvigorw（已在 PATH）。
           if command -v hvigorw >/dev/null 2>&1; then
             echo "hvigorw: $(command -v hvigorw)"
+            hvigorw -v 2>&1 | head -3 || true
           else
             echo "::error::hvigorw 不在 PATH（Command Line Tools 的 bin 应已加入 PATH）"
             exit 1
@@ -164,9 +165,10 @@ jobs:
           if [ -n "$HAP" ]; then
             echo "::notice::HAP 产出成功 ✅ -> $HAP"
           else
-            echo "::warning::未产出 HAP。若 build.log 中仅报 signingConfig/profile 相关错误，说明源码已通过 hvigor 编译，仅缺华为签发的签名证书（HarmonyOS NEXT 必需）。"
+            echo "::error::未产出 HAP（harmony/entry/build 下无任何 .hap）。以下是 build.log 尾部，用于定位真实编译错误："
             echo "---- build.log 尾部 ----"
-            tail -n 40 build.log 2>/dev/null || true
+            tail -n 50 build.log 2>/dev/null || echo "(无 build.log)"
+            exit 1
           fi
 
       - name: 'Upload HAP artifact'
