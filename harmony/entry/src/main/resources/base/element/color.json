@@ -1,0 +1,21 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#F5F6F8" },
+    { "name": "primary", "value": "#995F2C" },
+    { "name": "brand", "value": "#995F2C" },
+    { "name": "brand_light", "value": "#D39562" },
+    { "name": "brand_bg", "value": "#F8D7BE" },
+    { "name": "brand_bg_light", "value": "#FCEFE5" },
+    { "name": "income", "value": "#C11435" },
+    { "name": "expense", "value": "#009558" },
+    { "name": "teal", "value": "#4DD0C4" },
+    { "name": "fab_bg", "value": "#111827" },
+    { "name": "bg", "value": "#F5F6F8" },
+    { "name": "card", "value": "#FFFFFF" },
+    { "name": "text_primary", "value": "#1A1A1A" },
+    { "name": "text_secondary", "value": "#8A8A8A" },
+    { "name": "divider", "value": "#EEEEEE" },
+    { "name": "danger", "value": "#E54D42" },
+    { "name": "placeholder", "value": "#BDBDBD" }
+  ]
+}

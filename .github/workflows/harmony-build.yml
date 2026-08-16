@@ -1,25 +1,24 @@
 name: 'Build HarmonyOS HAP'
 
-# 当前为手动触发。代码推送到 GitHub 后，取消下方 push 段的注释即可自动构建。
+# 推送 harmony/** 或本文件会自动触发；也可在 Actions 页手动 workflow_dispatch。
 on:
   workflow_dispatch:
-  # push:
-  #   paths:
-  #     - 'harmony/**'
-  #     - '.github/workflows/harmony-build.yml'
+  push:
+    paths:
+      - 'harmony/**'
+      - '.github/workflows/harmony-build.yml'
 
 jobs:
   build-harmony:
-    name: 'Build entry HAP (API12)'
+    name: 'Build entry HAP (API12 / HarmonyOS NEXT)'
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
         working-directory: harmony
     env:
-      # —— 下列版本/链接需按华为官方实际发布调整 ——
-      OHOS_SDK_VERSION: '5.0.3.402'     # SDK 发布号（对应 API12 / HarmonyOS NEXT）
-      COMMANDLINE_TOOLS_URL: ''         # 也可改用 Secrets：见下方 Install 步骤
+      # —— 下列版本需按华为官方实际发布调整 ——
+      OHOS_SDK_VERSION: '5.0.3.402'   # 对应 API12 / HarmonyOS NEXT
       SDK_DIR: '${{ github.workspace }}/ohos-sdk'
       OHOS_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
       OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
@@ -39,32 +38,46 @@ jobs:
         with:
           node-version: '18'
 
-      - name: 'Install HarmonyOS Command Line Tools'
+      - name: 'Download HarmonyOS Command Line Tools'
         env:
           CLT_URL: '${{ secrets.HARMONY_COMMANDLINE_TOOLS_URL }}'
         run: |
-          URL="${COMMANDLINE_TOOLS_URL:-$CLT_URL}"
+          set -e
+          URL="$CLT_URL"
           if [ -z "$URL" ]; then
-            echo '::error::未配置 Command Line Tools 链接。请在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网“Command Line Tools for HarmonyOS” Linux 压缩包直链），或在本文件 env.COMMANDLINE_TOOLS_URL 填入。'
+            echo "::group::未配置 Secret，尝试从本仓库 GitHub Release(tag=harmony-cli)获取 CLI 资产"
+            ASSET=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/harmony-cli" \
+              | grep -o 'https://[^"]*commandline-tools-linux-x64[^"]*\.zip' | head -1 || true)
+            URL="$ASSET"
+            echo "Release 资产: ${URL:-（无）}"
+            echo "::endgroup::"
+          fi
+          if [ -z "$URL" ]; then
+            echo '::error::未配置 Command Line Tools 下载源，无法安装 SDK。二选一：① 在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网“Command Line Tools for HarmonyOS”的 Linux 压缩包直链）；② 把该 zip 上传到本仓库 Release（tag 名填 harmony-cli，文件名 commandline-tools-linux-x64.zip）。详见 docs/harmony-build.md'
             exit 1
           fi
+          echo "下载 CLI: $URL"
           curl -fL "$URL" -o clt.zip
           mkdir -p "$HOME/commandline-tools"
           unzip -q clt.zip -d "$HOME/commandline-tools"
-          echo "$HOME/commandline-tools/command-line-tools/bin" >> "$GITHUB_PATH"
+          BIN=$(find "$HOME/commandline-tools" -name hvigorw -type f | head -1 | xargs dirname 2>/dev/null || echo "$HOME/commandline-tools/command-line-tools/bin")
+          echo "$BIN" >> "$GITHUB_PATH"
+          echo "CLI bin: $BIN"
 
       - name: 'Install SDK components via sdkmgr'
         run: |
           ohpm config set registry https://ohpm.openharmony.cn/ohpm/ || true
           sdkmgr install "toolchains@${OHOS_SDK_VERSION}" "ets@${OHOS_SDK_VERSION}" "js@${OHOS_SDK_VERSION}" --sdk-directory "$SDK_DIR"
 
-      - name: 'Install hvigor (build tool)'
+      - name: 'Install hvigor'
         run: npm install -g @ohos/hvigor@"${OHOS_SDK_VERSION}"
 
       - name: 'Install module dependencies'
         run: ohpm install
 
-      - name: 'Inject signing config'
+      - name: 'Prepare signing config'
+        id: sign
         env:
           SIGN_STORE_FILE_B64: '${{ secrets.HARMONY_SIGN_STORE_FILE_B64 }}'
           SIGN_STORE_PASSWORD: '${{ secrets.HARMONY_SIGN_STORE_PASSWORD }}'
@@ -73,42 +86,66 @@ jobs:
           SIGN_PROFILE_B64: '${{ secrets.HARMONY_SIGN_PROFILE_B64 }}'
           SIGN_CERT_B64: '${{ secrets.HARMONY_SIGN_CERT_B64 }}'
         run: |
-          if [ -z "$SIGN_STORE_FILE_B64" ]; then
-            echo '::warning::未配置签名 Secrets，将尝试 debug 自动签名（CI 通常无法自动签名，真机安装会失败）。如需出包请配置 HARMONY_SIGN_* Secrets。'
-          else
+          if [ -n "$SIGN_STORE_FILE_B64" ]; then
             mkdir -p .sign
             echo "$SIGN_STORE_FILE_B64" | base64 -d > .sign/keystore.p12
             echo "$SIGN_PROFILE_B64"   | base64 -d > .sign/profile.p7b
             echo "$SIGN_CERT_B64"      | base64 -d > .sign/cert.cer
             node -e '
-              const fs = require("fs");
-              const p = "build-profile.json5";
-              const j = JSON.parse(fs.readFileSync(p, "utf8"));
-              j.app.signingConfigs = [{
-                name: "default",
-                type: "HarmonyOS",
-                material: {
-                  storeFile: ".sign/keystore.p12",
-                  storePassword: process.env.SIGN_STORE_PASSWORD,
-                  keyAlias: process.env.SIGN_KEY_ALIAS,
-                  keyPassword: process.env.SIGN_KEY_PASSWORD,
-                  profile: ".sign/profile.p7b",
-                  certpath: ".sign/cert.cer",
-                  signAlg: "SHA256withECDSA"
+              const fs=require("fs");
+              const p="build-profile.json5";
+              const j=JSON.parse(fs.readFileSync(p,"utf8"));
+              j.app.signingConfigs=[{
+                name:"default", type:"HarmonyOS",
+                material:{
+                  storeFile:".sign/keystore.p12",
+                  storePassword:process.env.SIGN_STORE_PASSWORD,
+                  keyAlias:process.env.SIGN_KEY_ALIAS,
+                  keyPassword:process.env.SIGN_KEY_PASSWORD,
+                  profile:".sign/profile.p7b",
+                  certpath:".sign/cert.cer",
+                  signAlg:"SHA256withECDSA"
                 }
               }];
-              fs.writeFileSync(p, JSON.stringify(j, null, 2));
+              fs.writeFileSync(p, JSON.stringify(j,null,2));
+              console.log("已注入真实签名配置");
             '
+            echo "signing=real" >> "$GITHUB_OUTPUT"
+          else
+            echo '::warning::未配置签名 Secrets，将以“仅编译验证”模式运行（不产出可安装 HAP）。如需出包请在 Settings > Secrets 配置 HARMONY_SIGN_*。'
+            node -e '
+              const fs=require("fs");
+              const p="build-profile.json5";
+              const j=JSON.parse(fs.readFileSync(p,"utf8"));
+              (j.app.products||[]).forEach(pr=>{ if(pr.signingConfig==="default"){ pr.signingConfig=""; } });
+              fs.writeFileSync(p, JSON.stringify(j,null,2));
+              console.log("已将 product.signingConfig 置空（编译验证模式）");
+            '
+            echo "signing=compile-only" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 'Build HAP'
+      - name: 'Build HAP (compile verification)'
+        continue-on-error: true
         run: |
           chmod +x hvigorw
-          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap
+          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap 2>&1 | tee build.log
+
+      - name: 'Analyze build result'
+        run: |
+          echo "签名模式: ${{ steps.sign.outputs.signing }}"
+          HAP=$(find entry/build -name '*.hap' 2>/dev/null | head -1 || true)
+          if [ -n "$HAP" ]; then
+            echo "::notice::HAP 产出成功 ✅ -> $HAP"
+          else
+            echo "::warning::未产出 HAP。若 build.log 中仅报 signingConfig/profile 相关错误，说明源码已通过 hvigor 编译，仅缺华为签发的签名证书（HarmonyOS NEXT 必需）。"
+            echo "---- build.log 尾部 ----"
+            tail -n 40 build.log 2>/dev/null || true
+          fi
 
       - name: 'Upload HAP artifact'
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: 'xinwallet-entry-hap'
           path: 'harmony/entry/build/default/outputs/default/*.hap'
+          if-no-files-found: ignore

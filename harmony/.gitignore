@@ -1,0 +1,12 @@
+# 鸿蒙构建产物与依赖（不入库）
+oh_modules/
+node_modules/
+build/
+.hvigor/
+/build/
+*.hap
+*.app
+*.ipa
+# 本地签名配置（每台机器不同，证书绝不入库）
+local.properties
+signing-configs.json

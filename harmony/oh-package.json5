@@ -1,0 +1,12 @@
+{
+  "name": "xinwallet",
+  "version": "1.0.0",
+  "description": "XinWallet HarmonyOS NEXT client",
+  "main": "",
+  "author": "xinwallet",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.19"
+  }
+}

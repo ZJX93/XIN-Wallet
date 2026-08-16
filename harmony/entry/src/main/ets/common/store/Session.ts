@@ -1,0 +1,107 @@
+/**
+ * 会话持久化：用 @ohos.data.preferences 保存 token / refreshToken / 当前账本 id / 服务器地址。
+ * 在 EntryAbility.onCreate 调用 Session.init(context) 初始化。
+ */
+import dataPreferences from '@ohos.data.preferences';
+import common from '@ohos.app.ability.common';
+
+const PREF_NAME = 'xinwallet_session';
+
+class SessionStore {
+  private prefs: dataPreferences.Preferences | null = null;
+  private context: common.Context | null = null;
+
+  init(context: common.Context): void {
+    this.context = context;
+    // 异步加载，不阻塞
+    dataPreferences.getPreferences(context, PREF_NAME)
+      .then((prefs) => {
+        this.prefs = prefs;
+      })
+      .catch((e) => {
+        console.error('Session init failed: ' + JSON.stringify(e));
+      });
+  }
+
+  private async getPrefs(): Promise<dataPreferences.Preferences | null> {
+    if (this.prefs) {
+      return this.prefs;
+    }
+    if (!this.context) {
+      return null;
+    }
+    try {
+      this.prefs = await dataPreferences.getPreferences(this.context, PREF_NAME);
+      return this.prefs;
+    } catch (e) {
+      console.error('getPreferences failed: ' + JSON.stringify(e));
+      return null;
+    }
+  }
+
+  async getAccessToken(): Promise<string> {
+    const prefs = await this.getPrefs();
+    return prefs ? (prefs.get('accessToken', '') as string) : '';
+  }
+
+  async getRefreshToken(): Promise<string> {
+    const prefs = await this.getPrefs();
+    return prefs ? (prefs.get('refreshToken', '') as string) : '';
+  }
+
+  async getCurrentBookId(): Promise<number> {
+    const prefs = await this.getPrefs();
+    return prefs ? (prefs.get('bookId', 0) as number) : 0;
+  }
+
+  async getBaseUrl(): Promise<string> {
+    const prefs = await this.getPrefs();
+    return prefs ? (prefs.get('baseUrl', '') as string) : '';
+  }
+
+  async saveTokens(accessToken: string, refreshToken: string): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('accessToken', accessToken);
+    prefs.put('refreshToken', refreshToken);
+    await prefs.flush();
+  }
+
+  async setCurrentBookId(bookId: number): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('bookId', bookId);
+    await prefs.flush();
+  }
+
+  async setBaseUrl(baseUrl: string): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('baseUrl', baseUrl);
+    await prefs.flush();
+  }
+
+  async isLoggedIn(): Promise<boolean> {
+    const token = await this.getAccessToken();
+    return token.length > 0;
+  }
+
+  async clear(): Promise<void> {
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('accessToken', '');
+    prefs.put('refreshToken', '');
+    prefs.put('bookId', 0);
+    await prefs.flush();
+  }
+}
+
+export const Session = new SessionStore();

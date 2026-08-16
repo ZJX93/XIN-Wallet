@@ -1,0 +1,32 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "XinWallet"
+    },
+    {
+      "name": "module_desc",
+      "value": "XinWallet entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "XinWallet main ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "XinWallet"
+    },
+    {
+      "name": "loc_reason",
+      "value": "用于记账时获取所在城市"
+    },
+    {
+      "name": "mic_reason",
+      "value": "用于语音记账输入"
+    },
+    {
+      "name": "read_media_reason",
+      "value": "用于读取账单截图做 OCR"
+    }
+  ]
+}

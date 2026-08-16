@@ -1,0 +1,26 @@
+{
+  "src": [
+    "pages/Login",
+    "pages/Main",
+    "pages/Transactions",
+    "pages/Reports",
+    "pages/Profile",
+    "pages/Accounts",
+    "pages/AccountDetail",
+    "pages/Category",
+    "pages/Tags",
+    "pages/Chat",
+    "pages/Budgets",
+    "pages/SavingsGoals",
+    "pages/Debts",
+    "pages/Investments",
+    "pages/InvestmentDetail",
+    "pages/Planning",
+    "pages/Search",
+    "pages/AiScan",
+    "pages/DataManagement",
+    "pages/AppLock",
+    "pages/Settings",
+    "pages/AddTransaction"
+  ]
+}

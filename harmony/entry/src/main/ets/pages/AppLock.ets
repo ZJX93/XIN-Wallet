@@ -1,0 +1,139 @@
+/**
+ * 应用锁（对齐安卓 AppLockScreen.kt 设置视图）：启用开关 + 设置/修改 4 位 PIN（SHA256 存储）。
+ * PIN 持久化在 Session 同名的 preferences 文件中（key: appLockEnabled / appLockPinHash）。
+ * 注：全屏解锁覆盖层（mode=Unlock）可在 Main 外层叠加，本文件先提供设置能力。
+ */
+import router from '@ohos.router';
+import { common } from '@ohos.app.ability.common';
+import dataPreferences from '@ohos.data.preferences';
+import cryptoFramework from '@ohos.cryptoFramework';
+import util from '@ohos.util';
+import { COLORS } from '../common/theme';
+import { TopBar, LoadingBox } from '../common/components/Components';
+
+async function sha256(s: string): Promise<string> {
+  const encoder = new util.TextEncoder();
+  const md = cryptoFramework.createMd('SHA256');
+  await md.update({ data: encoder.encode(s) });
+  const dg = await md.digest();
+  return Array.from(dg.data).map((b: number) => b.toString(16).padStart(2, '0')).join('');
+}
+
+@Entry
+@Component
+struct AppLock {
+  @State enabled: boolean = false;
+  @State hasPin: boolean = false;
+  @State showSet: boolean = false;
+  @State step: number = 1;        // 1 输入 / 2 确认
+  @State cur: string = '';
+  @State tmp: string = '';
+  @State err: string = '';
+  private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+
+  aboutToAppear(): void { this.load(); }
+
+  async load(): Promise<void> {
+    const prefs = await dataPreferences.getPreferences(this.ctx, 'xinwallet_session');
+    this.enabled = (prefs.get('appLockEnabled', false) as boolean);
+    const h = (prefs.get('appLockPinHash', '') as string);
+    this.hasPin = !!h;
+  }
+
+  async put(key: string, val: Object): Promise<void> {
+    const prefs = await dataPreferences.getPreferences(this.ctx, 'xinwallet_session');
+    prefs.put(key, val);
+    await prefs.flush();
+  }
+
+  async toggleEnable(v: boolean): Promise<void> {
+    this.enabled = v;
+    await this.put('appLockEnabled', v);
+    if (v && !this.hasPin) this.openSet();
+  }
+
+  openSet(): void {
+    this.step = 1; this.cur = ''; this.tmp = ''; this.err = ''; this.showSet = true;
+  }
+
+  onDigit(d: string): void {
+    if (this.cur.length < 4) this.cur += d;
+    if (this.cur.length === 4) {
+      if (this.step === 1) {
+        this.tmp = this.cur; this.cur = ''; this.step = 2;
+      } else {
+        if (this.tmp === this.cur) {
+          sha256(this.cur).then(h => {
+            this.put('appLockPinHash', h).then(() => {
+              this.hasPin = true; this.showSet = false;
+            });
+          });
+        } else {
+          this.err = '两次输入不一致';
+          this.cur = ''; this.tmp = ''; this.step = 1;
+        }
+      }
+    }
+  }
+
+  onDel(): void { this.cur = this.cur.slice(0, -1); }
+  onClear(): void { this.cur = ''; }
+
+  @Builder PinDots() {
+    Row({ space: 16 }) {
+      ForEach([0, 1, 2, 3], (i: number) => {
+        Column().width(14).height(14)
+          .borderRadius(7)
+          .backgroundColor(this.cur.length > i ? COLORS.brand : COLORS.divider)
+      })
+    }.margin({ top: 12, bottom: 12 })
+  }
+
+  @Builder KeyPad() {
+    Grid() {
+      ForEach(['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '删除'], (k: string) => {
+        GridItem() {
+          Text(k).fontSize(22).fontColor(COLORS.textPrimary)
+            .width('100%').height('100%').textAlign(TextAlign.Center)
+            .onClick(() => {
+              if (k === '清空') this.onClear();
+              else if (k === '删除') this.onDel();
+              else this.onDigit(k);
+            })
+        }
+      }, (k: string) => k)
+    }.columnsTemplate('1fr 1fr 1fr').rowsGap(8).columnsGap(8)
+      .width('80%').height(220).margin({ top: 12 })
+  }
+
+  build() {
+    Column() {
+      TopBar({ title: '应用锁', onBack: () => router.back() })
+      if (this.showSet) {
+        Column({ space: 8 }) {
+          Text(this.step === 1 ? '设置 4 位 PIN' : '再次输入确认').fontSize(16).fontWeight(FontWeight.Bold)
+          if (this.err) { Text(this.err).fontSize(13).fontColor(COLORS.danger) }
+          this.PinDots()
+          this.KeyPad()
+        }.width('100%').padding(20).alignItems(HorizontalAlign.Center)
+      } else {
+        Column({ space: 0 }) {
+          Row({ space: 12 }) {
+            Text('启用应用锁').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
+            Toggle({ type: ToggleType.Switch, isOn: this.enabled })
+              .onChange((v: boolean) => this.toggleEnable(v))
+          }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
+            .backgroundColor(COLORS.card)
+          if (this.hasPin) {
+            Row({ space: 12 }) {
+              Text('修改 PIN').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
+              Text('›').fontSize(20).fontColor(COLORS.placeholder)
+            }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
+              .backgroundColor(COLORS.card).margin({ top: 8 })
+              .onClick(() => this.openSet())
+          }
+        }.width('100%').padding(12)
+      }
+    }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+  }
+}

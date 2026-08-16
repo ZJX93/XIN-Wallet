@@ -1,0 +1,156 @@
+/**
+ * HTTP 封装：
+ *  - 自动注入 Bearer token 与 X-Book-Id（多账本隔离）
+ *  - 401 自动用 refreshToken 刷新并重试一次；刷新失败清会话并抛 ApiError(401)
+ *  - 统一解析 { success, data, message } 包装；非 success 抛 ApiError
+ *  - raw=true 时直接返回文本（CSV 导出）
+ * 依赖：config.normalizeBaseUrl / store.Session
+ */
+import http from '@ohos.net.http';
+import { Session } from '../store/Session';
+import { ApiResponse } from '../models';
+
+let baseUrl: string = '';
+
+export function setBaseUrl(raw: string): void {
+  // normalizeBaseUrl 在调用方（登录保存时）已处理；这里直接赋值规整结果
+  baseUrl = raw;
+}
+
+export function getBaseUrl(): string {
+  return baseUrl;
+}
+
+export class ApiError extends Error {
+  code: number;
+  constructor(message: string, code: number = -1) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+  }
+}
+
+interface RequestOptions {
+  method?: http.RequestMethod;
+  params?: Record<string, Object>;
+  body?: Object;
+  extraHeaders?: Record<string, string>;
+  raw?: boolean;
+}
+
+async function buildHeaders(tokenOverride?: string): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  const token = tokenOverride ?? (await Session.getAccessToken());
+  if (token && token.length > 0) {
+    headers['Authorization'] = 'Bearer ' + token;
+  }
+  const bookId = await Session.getCurrentBookId();
+  if (bookId > 0) {
+    headers['X-Book-Id'] = bookId.toString();
+  }
+  return headers;
+}
+
+async function tryRefresh(): Promise<string | null> {
+  const rt = await Session.getRefreshToken();
+  if (!rt) {
+    return null;
+  }
+  const url = baseUrl + 'auth/refresh';
+  const req = http.createHttp();
+  try {
+    const resp = await req.request(url, {
+      method: http.RequestMethod.POST,
+      headers: { 'Content-Type': 'application/json' },
+      extraData: JSON.stringify({ refreshToken: rt }),
+      connectTimeout: 10000,
+      readTimeout: 10000
+    });
+    if (resp.responseCode === 200) {
+      const str = typeof resp.result === 'string' ? resp.result : JSON.stringify(resp.result);
+      const parsed = JSON.parse(str) as ApiResponse<{ token: string; refreshToken: string }>;
+      if (parsed.success && parsed.data && parsed.data.token) {
+        await Session.saveTokens(parsed.data.token, parsed.data.refreshToken);
+        return parsed.data.token;
+      }
+    }
+  } catch (e) {
+    console.error('refresh failed: ' + JSON.stringify(e));
+  } finally {
+    req.destroy();
+  }
+  return null;
+}
+
+async function doRequest<T>(path: string, options: RequestOptions, tokenOverride?: string): Promise<ApiResponse<T>> {
+  const method = options.method ?? http.RequestMethod.GET;
+  let url = baseUrl + path;
+  const headers = await buildHeaders(tokenOverride);
+  if (options.extraHeaders) {
+    Object.assign(headers, options.extraHeaders);
+  }
+  if (options.params) {
+    const qs: string[] = [];
+    for (const k in options.params) {
+      const v = options.params[k];
+      if (v !== undefined && v !== null && v !== '') {
+        qs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+      }
+    }
+    if (qs.length > 0) {
+      url += (url.includes('?') ? '&' : '?') + qs.join('&');
+    }
+  }
+  const req = http.createHttp();
+  try {
+    const resp = await req.request(url, {
+      method,
+      headers,
+      extraData: options.body ? JSON.stringify(options.body) : undefined,
+      connectTimeout: 15000,
+      readTimeout: 60000
+    });
+    if (options.raw) {
+      const text = typeof resp.result === 'string' ? resp.result : '';
+      return { success: resp.responseCode === 200, data: text as unknown as T, message: '' };
+    }
+    const resultStr = typeof resp.result === 'string' ? resp.result : JSON.stringify(resp.result);
+    const parsed = JSON.parse(resultStr) as ApiResponse<T>;
+    if (resp.responseCode === 401 && !tokenOverride) {
+      const newToken = await tryRefresh();
+      if (newToken) {
+        return await doRequest<T>(path, options, newToken);
+      }
+      await Session.clear();
+      throw new ApiError('登录已过期，请重新登录', 401);
+    }
+    if (!parsed.success) {
+      throw new ApiError(parsed.message ?? '请求失败', resp.responseCode);
+    }
+    return parsed;
+  } finally {
+    req.destroy();
+  }
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, options);
+}
+
+export async function get<T>(path: string, params?: Record<string, Object>): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, { method: http.RequestMethod.GET, params });
+}
+
+export async function post<T>(path: string, body?: Object, params?: Record<string, Object>): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, { method: http.RequestMethod.POST, body, params });
+}
+
+export async function put<T>(path: string, body?: Object): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, { method: http.RequestMethod.PUT, body });
+}
+
+export async function del<T>(path: string): Promise<ApiResponse<T>> {
+  return doRequest<T>(path, { method: http.RequestMethod.DELETE });
+}
