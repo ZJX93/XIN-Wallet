@@ -17,8 +17,8 @@ jobs:
         shell: bash
         working-directory: harmony
     env:
-      # —— 下列版本需按华为官方实际发布调整 ——
-      OHOS_SDK_VERSION: '5.0.3.402'   # 对应 API12 / HarmonyOS NEXT
+      # sdkmgr 用「组件:APIVersion」格式，APIVersion 取工程的 compatibleSdkVersion(=12)
+      OHOS_API_VERSION: '12'
       SDK_DIR: '${{ github.workspace }}/ohos-sdk'
       OHOS_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
       OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
@@ -54,7 +54,7 @@ jobs:
             echo "::endgroup::"
           fi
           if [ -z "$URL" ]; then
-            echo '::error::未配置 Command Line Tools 下载源，无法安装 SDK。二选一：① 在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网“Command Line Tools for HarmonyOS”的 Linux 压缩包直链）；② 把该 zip 上传到本仓库 Release（tag 名填 harmony-cli，文件名 commandline-tools-linux-x64.zip）。详见 docs/harmony-build.md'
+            echo '::error::未配置 Command Line Tools 下载源，无法安装 SDK。二选一：① 在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网"Command Line Tools for HarmonyOS"的 Linux 压缩包直链）；② 把该 zip 上传到本仓库 Release（tag 名填 harmony-cli，文件名 commandline-tools-linux-x64.zip）。详见 docs/harmony-build.md'
             exit 1
           fi
           echo "下载 CLI: $URL"
@@ -62,20 +62,39 @@ jobs:
           curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.zip
           mkdir -p "$HOME/commandline-tools"
           unzip -q clt.zip -d "$HOME/commandline-tools"
-          BIN=$(find "$HOME/commandline-tools" -name hvigorw -type f | head -1 | xargs dirname 2>/dev/null || echo "$HOME/commandline-tools/command-line-tools/bin")
-          echo "$BIN" >> "$GITHUB_PATH"
-          echo "CLI bin: $BIN"
+          # 把 CLI 内所有关键可执行文件所在目录加入 PATH（解决 sdkmgr/ohpm/hvigorw command not found）
+          for exe in sdkmgr ohsdkmgr sdkmanager ohpm hvigorw; do
+            p=$(find "$HOME/commandline-tools" -type f -name "$exe" 2>/dev/null | head -1)
+            if [ -n "$p" ]; then
+              d=$(dirname "$p")
+              echo "$d" >> "$GITHUB_PATH"
+              echo "PATH+ $d ($exe)"
+            fi
+          done
+          echo "::group::CLI 工具位置"
+          find "$HOME/commandline-tools" -maxdepth 4 -type f \( -name 'sdkmgr*' -o -name 'ohpm*' -o -name 'hvigorw*' -o -name 'sdkmanager*' \) 2>/dev/null | head -20
+          echo "::endgroup::"
 
       - name: 'Install SDK components via sdkmgr'
         run: |
-          ohpm config set registry https://ohpm.openharmony.cn/ohpm/ || true
-          sdkmgr install "toolchains@${OHOS_SDK_VERSION}" "ets@${OHOS_SDK_VERSION}" "js@${OHOS_SDK_VERSION}" --sdk-directory "$SDK_DIR"
+          SDKMGR=$(command -v sdkmgr || command -v ohsdkmgr || find "$HOME/commandline-tools" -type f \( -name sdkmgr -o -name ohsdkmgr \) 2>/dev/null | head -1)
+          echo "SDK 管理器: ${SDKMGR:-未找到}"
+          echo "::group::可用 SDK 组件（用于确认组件名/API Version）"
+          "$SDKMGR" list || true
+          echo "::endgroup::"
+          # HarmonyOS NEXT (API12)：ArkTS 运行时 + JS + 工具链。组件名以 list 输出为准，逐候选尝试。
+          "$SDKMGR" install --accept-license ets:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
+            || "$SDKMGR" install --accept-license arkts:${OHOS_API_VERSION} js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
+            || "$SDKMGR" install --accept-license js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
+            || true
 
       - name: 'Install hvigor'
-        run: npm install -g @ohos/hvigor@"${OHOS_SDK_VERSION}"
+        run: npm install -g @ohos/hvigor @ohos/hvigorw
 
       - name: 'Install module dependencies'
-        run: ohpm install
+        run: |
+          command -v ohpm >/dev/null 2>&1 || npm install -g @ohos/ohpm-cli
+          ohpm install
 
       - name: 'Prepare signing config'
         id: sign
