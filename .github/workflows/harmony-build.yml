@@ -58,7 +58,8 @@ jobs:
             exit 1
           fi
           echo "下载 CLI: $URL"
-          curl -fL "$URL" -o clt.zip
+          # 私有仓库 Release 资产经 302 跳转到 objects.githubusercontent.com，需 --location-trusted 转发 token
+          curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.zip
           mkdir -p "$HOME/commandline-tools"
           unzip -q clt.zip -d "$HOME/commandline-tools"
           BIN=$(find "$HOME/commandline-tools" -name hvigorw -type f | head -1 | xargs dirname 2>/dev/null || echo "$HOME/commandline-tools/command-line-tools/bin")
