@@ -1,12 +1,26 @@
 {
   "app": {
-    "signingConfigs": [],
-    "compatibleSdkVersion": 12,
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "key.cer",
+          "storePassword": "",
+          "keyAlias": "",
+          "keyPassword": "",
+          "profile": "key.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "key.p12"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
         "signingConfig": "default",
         "compatibleSdkVersion": 12,
+        "targetSdkVersion": 12,
         "runtimeOS": "HarmonyOS",
         "buildOption": {
           "strictMode": {
