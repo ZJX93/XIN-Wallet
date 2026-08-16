@@ -1,0 +1,114 @@
+name: 'Build HarmonyOS HAP'
+
+# 当前为手动触发。代码推送到 GitHub 后，取消下方 push 段的注释即可自动构建。
+on:
+  workflow_dispatch:
+  # push:
+  #   paths:
+  #     - 'harmony/**'
+  #     - '.github/workflows/harmony-build.yml'
+
+jobs:
+  build-harmony:
+    name: 'Build entry HAP (API12)'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: harmony
+    env:
+      # —— 下列版本/链接需按华为官方实际发布调整 ——
+      OHOS_SDK_VERSION: '5.0.3.402'     # SDK 发布号（对应 API12 / HarmonyOS NEXT）
+      COMMANDLINE_TOOLS_URL: ''         # 也可改用 Secrets：见下方 Install 步骤
+      SDK_DIR: '${{ github.workspace }}/ohos-sdk'
+      OHOS_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
+      OHOS_BASE_SDK_HOME: '${{ github.workspace }}/ohos-sdk'
+
+    steps:
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+
+      - name: 'Set up JDK 17'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 'Set up Node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 'Install HarmonyOS Command Line Tools'
+        env:
+          CLT_URL: '${{ secrets.HARMONY_COMMANDLINE_TOOLS_URL }}'
+        run: |
+          URL="${COMMANDLINE_TOOLS_URL:-$CLT_URL}"
+          if [ -z "$URL" ]; then
+            echo '::error::未配置 Command Line Tools 链接。请在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网“Command Line Tools for HarmonyOS” Linux 压缩包直链），或在本文件 env.COMMANDLINE_TOOLS_URL 填入。'
+            exit 1
+          fi
+          curl -fL "$URL" -o clt.zip
+          mkdir -p "$HOME/commandline-tools"
+          unzip -q clt.zip -d "$HOME/commandline-tools"
+          echo "$HOME/commandline-tools/command-line-tools/bin" >> "$GITHUB_PATH"
+
+      - name: 'Install SDK components via sdkmgr'
+        run: |
+          ohpm config set registry https://ohpm.openharmony.cn/ohpm/ || true
+          sdkmgr install "toolchains@${OHOS_SDK_VERSION}" "ets@${OHOS_SDK_VERSION}" "js@${OHOS_SDK_VERSION}" --sdk-directory "$SDK_DIR"
+
+      - name: 'Install hvigor (build tool)'
+        run: npm install -g @ohos/hvigor@"${OHOS_SDK_VERSION}"
+
+      - name: 'Install module dependencies'
+        run: ohpm install
+
+      - name: 'Inject signing config'
+        env:
+          SIGN_STORE_FILE_B64: '${{ secrets.HARMONY_SIGN_STORE_FILE_B64 }}'
+          SIGN_STORE_PASSWORD: '${{ secrets.HARMONY_SIGN_STORE_PASSWORD }}'
+          SIGN_KEY_ALIAS: '${{ secrets.HARMONY_SIGN_KEY_ALIAS }}'
+          SIGN_KEY_PASSWORD: '${{ secrets.HARMONY_SIGN_KEY_PASSWORD }}'
+          SIGN_PROFILE_B64: '${{ secrets.HARMONY_SIGN_PROFILE_B64 }}'
+          SIGN_CERT_B64: '${{ secrets.HARMONY_SIGN_CERT_B64 }}'
+        run: |
+          if [ -z "$SIGN_STORE_FILE_B64" ]; then
+            echo '::warning::未配置签名 Secrets，将尝试 debug 自动签名（CI 通常无法自动签名，真机安装会失败）。如需出包请配置 HARMONY_SIGN_* Secrets。'
+          else
+            mkdir -p .sign
+            echo "$SIGN_STORE_FILE_B64" | base64 -d > .sign/keystore.p12
+            echo "$SIGN_PROFILE_B64"   | base64 -d > .sign/profile.p7b
+            echo "$SIGN_CERT_B64"      | base64 -d > .sign/cert.cer
+            node -e '
+              const fs = require("fs");
+              const p = "build-profile.json5";
+              const j = JSON.parse(fs.readFileSync(p, "utf8"));
+              j.app.signingConfigs = [{
+                name: "default",
+                type: "HarmonyOS",
+                material: {
+                  storeFile: ".sign/keystore.p12",
+                  storePassword: process.env.SIGN_STORE_PASSWORD,
+                  keyAlias: process.env.SIGN_KEY_ALIAS,
+                  keyPassword: process.env.SIGN_KEY_PASSWORD,
+                  profile: ".sign/profile.p7b",
+                  certpath: ".sign/cert.cer",
+                  signAlg: "SHA256withECDSA"
+                }
+              }];
+              fs.writeFileSync(p, JSON.stringify(j, null, 2));
+            '
+          fi
+
+      - name: 'Build HAP'
+        run: |
+          chmod +x hvigorw
+          ./hvigorw --mode module -p module=entry@default -p product=default assembleHap
+
+      - name: 'Upload HAP artifact'
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'xinwallet-entry-hap'
+          path: 'harmony/entry/build/default/outputs/default/*.hap'

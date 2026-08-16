@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# HarmonyOS 构建包装脚本：优先调用全局 @ohos/hvigor，其次调用本地 node_modules 中的 hvigor。
+# 用法：./hvigorw <hvigor 参数>，例如 ./hvigorw assembleHap
+BASE_DIR=$(cd "$(dirname "$0")" && pwd)
+GLOBAL=$(npm root -g 2>/dev/null)/@ohos/hvigor/bin/hvigorw.js
+if [ -f "$GLOBAL" ]; then
+  node "$GLOBAL" "$@"
+elif [ -f "$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js" ]; then
+  node "$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js" "$@"
+else
+  echo "hvigor not found. Install with: npm install -g @ohos/hvigor" >&2
+  exit 1
+fi
