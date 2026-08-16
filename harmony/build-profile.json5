@@ -46,7 +46,7 @@
       "targets": [
         {
           "name": "default",
-          "applyTo": "phone"
+          "applyToProducts": ["default"]
         }
       ]
     }
