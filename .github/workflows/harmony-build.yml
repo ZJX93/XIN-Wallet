@@ -88,8 +88,15 @@ jobs:
             || "$SDKMGR" install --accept-license js:${OHOS_API_VERSION} toolchains --sdk-directory "$SDK_DIR" \
             || true
 
-      - name: 'Install hvigor'
-        run: npm install -g @ohos/hvigor @ohos/hvigorw
+      - name: 'Verify hvigor (use CLI-bundled)'
+        run: |
+          # 华为 hvigor 不在公共 npm registry，CI 使用 Command Line Tools 自带的 hvigorw（已在 PATH）。
+          if command -v hvigorw >/dev/null 2>&1; then
+            echo "hvigorw: $(command -v hvigorw)"
+          else
+            echo "::error::hvigorw 不在 PATH（Command Line Tools 的 bin 应已加入 PATH）"
+            exit 1
+          fi
 
       - name: 'Install module dependencies'
         run: |

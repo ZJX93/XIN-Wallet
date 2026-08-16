@@ -1,13 +1,41 @@
 #!/usr/bin/env sh
-# HarmonyOS 构建包装脚本：优先调用全局 @ohos/hvigor，其次调用本地 node_modules 中的 hvigor。
-# 用法：./hvigorw <hvigor 参数>，例如 ./hvigorw assembleHap
+# HarmonyOS 构建包装脚本：按优先级查找可用的 hvigor 实现并转发参数。
+# 1) 全局 npm 安装 (@ohos/hvigor)
+# 2) 本地 node_modules (@ohos/hvigor)
+# 3) DevEco Command Line Tools 自带的 hvigor（已加入 PATH，CI 环境即此路径）
+# 4) 常见 CLI 安装路径兜底
 BASE_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# 1) 全局 npm 安装
 GLOBAL=$(npm root -g 2>/dev/null)/@ohos/hvigor/bin/hvigorw.js
 if [ -f "$GLOBAL" ]; then
   node "$GLOBAL" "$@"
-elif [ -f "$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js" ]; then
-  node "$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js" "$@"
-else
-  echo "hvigor not found. Install with: npm install -g @ohos/hvigor" >&2
-  exit 1
+  exit $?
 fi
+
+# 2) 本地 node_modules
+LOCAL="$BASE_DIR/node_modules/@ohos/hvigor/bin/hvigorw.js"
+if [ -f "$LOCAL" ]; then
+  node "$LOCAL" "$@"
+  exit $?
+fi
+
+# 3) CLI 自带（已在 PATH 中）
+if command -v hvigorw >/dev/null 2>&1; then
+  hvigorw "$@"
+  exit $?
+fi
+
+# 4) 常见 CLI 安装路径兜底
+for p in \
+  "$HOME/commandline-tools/command-line-tools/hvigor/bin/hvigorw.js" \
+  "$OHOS_SDK_HOME/../command-line-tools/hvigor/bin/hvigorw.js" \
+  "/opt/commandline-tools/command-line-tools/hvigor/bin/hvigorw.js"; do
+  if [ -f "$p" ]; then
+    node "$p" "$@"
+    exit $?
+  fi
+done
+
+echo "hvigor not found. Install with: npm install -g @ohos/hvigor  (or use DevEco Command Line Tools)" >&2
+exit 1
