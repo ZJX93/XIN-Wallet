@@ -14,7 +14,6 @@ import com.xinwallet.app.data.repository.AccountRepository
 import com.xinwallet.app.data.repository.AiRepository
 import com.xinwallet.app.data.repository.BudgetRepository
 import com.xinwallet.app.data.repository.CategoryRepository
-import com.xinwallet.app.data.repository.CsvRepository
 import com.xinwallet.app.data.repository.DebtRepository
 import com.xinwallet.app.data.repository.ReportRepository
 import com.xinwallet.app.data.repository.TagRepository
@@ -68,8 +67,6 @@ object AppContainer {
         private set
     lateinit var tagRepository: TagRepository
         private set
-    lateinit var csvRepository: CsvRepository
-        private set
     lateinit var bookRepository: BookRepository
         private set
 
@@ -119,7 +116,6 @@ object AppContainer {
         debtRepository = DebtRepository { api }
         reportRepository = ReportRepository { api }
         tagRepository = TagRepository { api }
-        csvRepository = CsvRepository { api }
         bookRepository = BookRepository { api }
     }
 

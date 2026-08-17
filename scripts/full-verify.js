@@ -2,11 +2,12 @@
 /* ============================================
    XinWallet 全功能端到端验证脚本
    覆盖：认证、账户、交易、分类、预算、标签、
-   转账、理财、储蓄、统计、账本、报表、CSV、AI
+   转账、理财、储蓄、统计、账本、报表、备份、AI
    ============================================ */
 
 const BASE = process.env.TEST_URL || 'http://localhost:18888';
 const API = `${BASE}/api`;
+const ExcelJS = require('exceljs');
 let TOKEN = '';
 let p = 0, f = 0, errors = [];
 
@@ -403,26 +404,31 @@ const reportY = await call('/reports?type=annual&period=2026');
 ok('11.4 年度报表', reportY);
 
 // ================================================================
-log('模块十二：CSV 导入导出 (CSV)');
+log('模块十二：账本 xlsx 备份 (Backup)');
 
-// 12.1 CSV 导出交易（返回 CSV 文本，不是 JSON）
-const csvExportRaw = await fetch(`${API}/export/csv?type=transactions`, { headers: { 'Authorization': `Bearer ${TOKEN}` } });
-ok('12.1 CSV 导出交易', { ok: csvExportRaw.ok, success: csvExportRaw.ok, msg: '' });
+// 12.1 备份导出（返回 xlsx 二进制）
+const bakRes = await fetch(`${API}/backup/export`, { headers: { 'Authorization': `Bearer ${TOKEN}` } });
+ok('12.1 备份导出', { ok: bakRes.ok, success: bakRes.ok, msg: '' });
 
-// 12.2 CSV 导出账户
-const csvAccRaw = await fetch(`${API}/export/csv?type=accounts`, { headers: { 'Authorization': `Bearer ${TOKEN}` } });
-ok('12.2 CSV 导出账户', { ok: csvAccRaw.ok, success: csvAccRaw.ok, msg: '' });
+// 12.2 备份为 xlsx 文件（spreadsheetml 内容类型）
+const bakCt = bakRes.headers.get('content-type') || '';
+ok('12.2 备份为 xlsx 文件', { ok: bakCt.includes('spreadsheetml'), success: bakCt.includes('spreadsheetml'), msg: bakCt });
 
-// 12.3 CSV 导入
-const csvImport = await call('/import/csv', 'POST', {
-    type: 'transactions',
-    csv: 'date,amount,type,account,category,note\n2026-07-18,123.45,expense,现金,餐饮,CSV测试导入'
-});
-ok('12.3 CSV 导入', csvImport);
+// 12.3 导出文件可解析为 3 工作表（账本配置页 / 账户页 / 账单流水页）
+let bakParsed = false, bakMsg = '';
+try {
+    const bakBuf = Buffer.from(await bakRes.arrayBuffer());
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(bakBuf);
+    const sheets = wb.worksheets.map(w => w.name);
+    bakParsed = sheets.includes('账本配置页') && sheets.includes('账户页') && sheets.includes('账单流水页');
+    bakMsg = sheets.join(',');
+} catch (e) { bakMsg = e.message; }
+ok('12.3 备份含 3 工作表', { ok: bakParsed, success: bakParsed, msg: bakMsg });
 
-// 12.4 CSV 无文件拒绝
-const csvNoFile = await call('/import/csv', 'POST', { type: 'transactions', csv: '' });
-ok('12.4 CSV 空内容拒绝', csvNoFile, false);
+// 12.4 备份导入（无文件）拒绝
+const bakNoFile = await call('/backup/import', 'POST', {});
+ok('12.4 备份导入无文件拒绝', bakNoFile, false);
 
 // ================================================================
 log('模块十三：AI 服务商 (AI Providers)');

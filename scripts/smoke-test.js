@@ -82,13 +82,10 @@ function test(name, ok, detail) {
     test('AI 服务商', (await call('/ai/providers', 'GET', null, token)).ok);
     test('OCR 配置', (await call('/ai/ocr-config', 'GET', null, token)).ok);
 
-    // CSV
-    console.log('\n📋 CSV');
-    const csv = await call('/import/csv', 'POST', {
-        type: 'transactions',
-        csv: 'date,amount,type,account,category,note\n2026-07-18,1,income,现金,工资,test'
-    }, token);
-    test('CSV 导入', csv.ok, csv.msg);
+    // 备份
+    console.log('\n📋 备份');
+    const bakExp = await fetch(`${API}/backup/export`, { headers: { 'Authorization': `Bearer ${token}` } });
+    test('备份导出', bakExp.ok, bakExp.headers.get('content-type'));
 
     console.log(`\n${'='.repeat(40)}`);
     console.log(`结果: ${p} 通过, ${f} 失败`);

@@ -78,7 +78,8 @@ const AnalysisManager = {
         // 消费结构：只取一级分类（后端已做子级向父级汇总，parent_id 为 null 即一级）
         const topCats = (summary.expenseByCategory || []).filter(e => e.parent_id == null);
         container.className = '';
-        const colors = ['#6366f1','#f43f5e','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+        // 莫兰迪色系（低饱和柔和灰调），与饼图配色风格统一
+        const colors = ['#B98E8E','#8FA9C4','#9CB39A','#A99BC4','#C9B79C','#C09A86','#8FB5B0','#C7A0AE','#A38FA6','#AEB39A','#8FA6C0','#B7AEC9'];
         container.innerHTML = topCats.map((e, i) => `
             <div class="analysis-structure-item">
                 <div class="analysis-structure-cat">${escapeHtml(e.icon || "📌")} ${escapeHtml(e.name)}</div>

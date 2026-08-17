@@ -762,19 +762,19 @@ const ReportManager = {
         showToast('CSV 已导出', 'success');
     },
     async exportFull() {
-        showToast('正在导出完整账本...', 'info');
+        showToast('正在导出完整账本备份...', 'info');
         try {
-            const res = await fetch(`${API}/export/full`, {
+            const res = await fetch(`${API}/backup/export`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('xin_token') }
             });
             if (!res.ok) throw new Error('导出失败');
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url;
-            a.download = `鑫钱包_完整账本_${new Date().toISOString().slice(0, 10)}.json`;
+            a.download = `xinwallet_backup_${new Date().toISOString().slice(0, 10)}.xlsx`;
             a.click();
             URL.revokeObjectURL(url);
-            showToast('完整账本已导出（含账户/交易/预算/理财/储蓄目标）', 'success');
+            showToast('完整账本已导出（xlsx 备份，含账户/交易/预算/理财/储蓄目标/债务）', 'success');
         } catch (err) {
             showToast('导出失败: ' + err.message, 'error');
         }
@@ -782,23 +782,33 @@ const ReportManager = {
 
     async importFull(file) {
         if (!file) return;
-        if (!confirm('导入将合并到当前账本（按名称匹配账户/分类），确认导入？')) {
+        if (!confirm('导入 xlsx 备份将恢复账本（含账户/交易/预算/理财/储蓄目标/债务等），确认导入？')) {
             document.getElementById('importFullInput').value = ''; return;
         }
         showToast('正在导入...', 'info');
         try {
-            const text = await file.text();
-            const data = JSON.parse(text);
+            const fd = new FormData();
+            fd.append('file', file, file.name);
             const token = localStorage.getItem('xin_token');
-            const res = await fetch(`${API}/import/full`, {
+            const res = await fetch(`${API}/backup/import`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify(data)
+                headers: { 'Authorization': 'Bearer ' + token },
+                body: fd
             });
             const result = await res.json();
             if (!result.success) throw new Error(result.message || '导入失败');
             const imp = result.data.imported;
-            showToast(`导入完成：账户${imp.accounts} 交易${imp.transactions} 预算${imp.budgets} 储蓄${imp.goals} 理财${imp.investments} 转账${imp.transfers}`, 'success');
+            const parts = [];
+            if (imp.accounts) parts.push(`账户${imp.accounts}`);
+            if (imp.categories) parts.push(`分类${imp.categories}`);
+            if (imp.transactions) parts.push(`交易${imp.transactions}`);
+            if (imp.transfers) parts.push(`转账${imp.transfers}`);
+            if (imp.budgets) parts.push(`预算${imp.budgets}`);
+            if (imp.savings_goals) parts.push(`储蓄${imp.savings_goals}`);
+            if (imp.investments) parts.push(`理财${imp.investments}`);
+            if (imp.debts) parts.push(`债务${imp.debts}`);
+            if (imp.tags) parts.push(`标签${imp.tags}`);
+            showToast(`导入完成：${parts.join(' ')}`, 'success');
             await initCache();
             await DashboardManager.refresh();
         } catch (err) {

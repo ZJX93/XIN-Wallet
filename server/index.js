@@ -90,7 +90,7 @@ app.use(morgan((tokens, req, res) => {
     logger.http(req, res, duration);
     return undefined; // 交由 logger 统一输出，morgan 不再直接写控制台
 }, { skip: (req) => req.path === '/healthz' || req.path === '/readyz' }));
-// 修复（P1）：显式 body limit，防止 DoS。Express 4.x 默认 100kb 对 /import/full 等导入接口可能不足，
+// 修复（P1）：显式 body limit，防止 DoS。Express 4.x 默认 100kb 对 /backup/import 等导入接口可能不足，
 // 但过大会放大单请求攻击面；选 1mb 与 csv 单笔最大 5mb 之间留出余量，超出请客户端分批。
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));

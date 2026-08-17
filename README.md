@@ -1002,33 +1002,25 @@ npm start
 
 ---
 
-### 15. CSV 导入 / 导出
+### 15. 账本备份（xlsx 3 工作表）
 
-#### `GET /export/csv` — 导出 CSV
+备份为单个 `.xlsx` 文件，内含三个工作表，首行带固定识别标记 `鑫钱包账本备份` 与版本号，可用于数据损坏后的完整恢复。
 
-**查询参数**：`type` —— `accounts` / `investments` / `transactions`（缺省 `transactions`）。
-返回 `text/csv; charset=utf-8` 文件下载（`Content-Disposition: attachment`），带 BOM 头以兼容 Excel 中文。
+- **账本配置页**：账本信息 + 分类 + 标签 + 预算 + 债务 + 储蓄目标
+- **账户页**：账户 + 理财持仓
+- **账单流水页**：全部交易（含转账）
 
-- `accounts`：`id,name,type,balance,credit_limit,icon`
-- `investments`：`id,name,code,type,buy_price,current_price,quantity,total_cost,current_value`
-- `transactions`：`date,type,amount,account,category,note`
+#### `GET /backup/export` — 导出备份
 
-#### `POST /import/csv` — 导入交易 CSV
+**响应** `200` — `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` 文件下载（`Content-Disposition: attachment; filename="xinwallet_backup_YYYY-MM-DD.xlsx"`）。
 
-**请求体**：`type`(固定 `transactions`) · `csv`(string, 完整 CSV 文本，首行为表头)。
+#### `POST /backup/import` — 导入备份
 
-表头需包含 `date,type,amount,account,category,note`（字段可缺，按列名匹配）。`type` 取值 `收入`/`income` 记收入，否则记支出；金额非法或账户不存在的行会被跳过。成功导入后按复式记账重算账户余额。
+**请求体**：`file`(multipart/form-data，仅接受 `.xlsx`，≤5MB)。
 
-**响应** `200` — `data: { imported }`，`message: "成功导入 N 条交易"`。
-**错误**：`400` 仅支持交易导入 / CSV 无数据行。
+导入时校验识别标记与三个工作表，事务内恢复标签、账户、分类（仅用户自建，系统预设跳过）、理财持仓、预算、债务、储蓄目标、交易与转账（生成 1 条转账主记录 + 2 条 `transfer_out`/`transfer_in` 台账），末尾按账本重算所有账户余额。
 
-#### `GET /export/full` — 全量导出
-
-按用户维度导出账户、分类、交易、理财持仓、预算、储蓄目标、债务等全部数据（结构化打包），用于完整备份。**响应** `200` — 文件下载（`application/zip` 或 `text/csv`）。
-
-#### `POST /import/full` — 全量导入
-
-**请求体**：`file`(multipart) · `mode`(string: `merge` 合并 / `replace` 覆盖)。导入完整备份包，重建用户全部财务数据。**响应** `200` — `data: { imported }`；`400` 文件缺失 / 格式错误。
+**响应** `200` — `data: { imported: { tags, accounts, categories, budgets, debts, savings_goals, investments, transactions, transfers } }`；`400` 缺少文件 / 非备份文件 / 格式错误。
 
 ---
 

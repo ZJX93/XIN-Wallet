@@ -547,19 +547,18 @@ const spec = {
       },
     },
 
-    // ============ 数据导入导出 ============
-    '/api/export/csv': {
+    // ============ 账本备份（xlsx 3 工作表） ============
+    '/api/backup/export': {
       get: {
-        tags: ['数据'], summary: '导出 CSV（accounts/investments/transactions）',
-        parameters: [{ name: 'type', in: 'query', schema: { type: 'string', enum: ['accounts', 'investments', 'transactions'] } }],
-        responses: { 200: { description: 'text/csv 文件下载' } },
+        tags: ['数据'], summary: '导出账本 xlsx 备份（账本配置页 / 账户页 / 账单流水页）',
+        responses: { 200: { description: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet 文件下载' } },
       },
     },
-    '/api/import/csv': {
+    '/api/backup/import': {
       post: {
-        tags: ['数据'], summary: '导入交易 CSV',
-        requestBody: { required: true, content: { 'text/csv': { schema: { type: 'string' } } } },
-        responses: { 200: { description: '{ imported }' } },
+        tags: ['数据'], summary: '导入账本 xlsx 备份',
+        requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } } } },
+        responses: { 200: { description: '{ success, data: { imported } }' } },
       },
     },
   },

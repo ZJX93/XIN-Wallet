@@ -462,7 +462,6 @@ async function boot() {
     safeInit('TagManager', () => TagManager.init());
     safeInit('DataManager', () => DataManager.init());
     safeInit('SavingsGoalManager', () => SavingsGoalManager.init());
-    safeInit('CsvManager', () => CsvManager.init());
     safeInit('AIRecognition', () => AIRecognition.init());
     safeInit('AIProviderManager', () => AIProviderManager.init());
     safeInit('ReportManager', () => ReportManager.init());

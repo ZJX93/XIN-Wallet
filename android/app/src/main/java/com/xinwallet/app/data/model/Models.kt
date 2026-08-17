@@ -746,15 +746,6 @@ data class UpdateCategoryRequest(
     val color: String? = null
 )
 
-/* ----------------------------- 数据导入导出 ----------------------------- */
-
-data class ImportCsvRequest(val type: String, val csv: String)
-
-data class CsvImportResult(
-    val imported: Int = 0,
-    val errors: List<String> = emptyList()
-)
-
 /* ----------------------------- 多账本（账套） ----------------------------- */
 
 data class Book(

@@ -80,7 +80,6 @@ import com.xinwallet.app.ui.screens.ReportsScreen
 import com.xinwallet.app.ui.screens.TagsScreen
 import com.xinwallet.app.ui.screens.TransactionsScreen
 import com.xinwallet.app.ui.screens.BudgetScreen
-import com.xinwallet.app.ui.screens.DataManagementScreen
 import com.xinwallet.app.ui.screens.SavingsGoalsScreen
 import com.xinwallet.app.ui.screens.LoanScreen
 import com.xinwallet.app.ui.screens.SettingsScreen
@@ -128,7 +127,6 @@ sealed class Screen(val route: String) {
     object SavingsGoals : Screen("savings-goals")
     object Debts : Screen("debts")
     object Settings : Screen("settings")
-    object DataManagement : Screen("data-management")
     object AppLock : Screen("app_lock")
 }
 
@@ -416,7 +414,6 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
         composable(Screen.SavingsGoals.route) { SavingsGoalsScreen(navController) }
         composable(Screen.Debts.route) { LoanScreen(navController) }
         composable(Screen.Settings.route) { SettingsScreen(navController) }
-        composable(Screen.DataManagement.route) { DataManagementScreen(navController) }
         composable(Screen.AppLock.route) { AppLockScreen(navController, mode = "Settings") }
     }
 }

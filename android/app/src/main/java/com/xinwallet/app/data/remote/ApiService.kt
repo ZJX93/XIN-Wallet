@@ -3,7 +3,6 @@ package com.xinwallet.app.data.remote
 import com.xinwallet.app.data.model.*
 import com.xinwallet.app.data.model.Tag
 import okhttp3.MultipartBody
-import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -227,11 +226,6 @@ interface ApiService {
     @DELETE("tags/{id}")
     suspend fun deleteTag(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
-    /* 数据导入导出 */
-    /** 导出 CSV：后端直接返回 text/csv 文本（非 JSON 包装），故用 ResponseBody 接收 */
-    @GET("csv/export/csv")
-    suspend fun exportCsv(@Query("type") type: String): Response<ResponseBody>
-
     /* 多账本（账套） */
     @GET("books")
     suspend fun getBooks(): Response<ApiResponse<BooksResponse>>
@@ -248,11 +242,4 @@ interface ApiService {
     @DELETE("books/{id}")
     suspend fun deleteBook(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
-    /** 导出完整账本（JSON）：同样直接返回文件内容 */
-    @GET("csv/export/full")
-    suspend fun exportFull(): Response<ResponseBody>
-
-    /** 导入交易 CSV：csv 为文件文本 */
-    @POST("csv/import/csv")
-    suspend fun importCsv(@Body req: ImportCsvRequest): Response<ApiResponse<CsvImportResult>>
 }

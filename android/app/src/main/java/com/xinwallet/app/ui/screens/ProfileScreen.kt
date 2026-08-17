@@ -78,11 +78,11 @@ import com.xinwallet.app.ui.viewmodel.viewModelFactory
 /**
  * 「我的」页 — V2 精简版
  * 1) 头像 + 昵称 + 编辑 + 陪伴天数
- * 2) 12 宫格快捷入口（点击进入独立页面）— 含设置、数据管理
+ * 2) 宫格快捷入口（点击进入独立页面）— 含设置、应用锁
  * 3) 退出登录
  *
  * 外观主题 / 服务器地址 / 关于我们 + 应用内升级 已迁到独立页面 SettingsScreen。
- * 导出 CSV / 导入 CSV / 导出 JSON 已迁到独立页面 DataManagementScreen。
+ * 账本备份（xlsx）为服务端能力，通过网页端或鸿蒙端操作，安卓端不再内置 CSV/JSON 导入导出。
  */
 @Composable
 fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
@@ -192,7 +192,6 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         QuickAction("债务管理", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Debts.route) }
                     )
                     val row3 = listOf(
-                        QuickAction("数据管理", Icons.Filled.Storage, QuickActionKind.Nav) { navController.navigate(Screen.DataManagement.route) },
                         QuickAction("应用锁", Icons.Filled.Lock, QuickActionKind.Nav) { navController.navigate(Screen.AppLock.route) },
                         QuickAction("设置", Icons.Filled.Settings, QuickActionKind.Nav) { navController.navigate(Screen.Settings.route) }
                     )
