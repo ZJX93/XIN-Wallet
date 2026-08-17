@@ -442,7 +442,7 @@ const InvestmentManager = {
         document.getElementById('invTotalRate').textContent = s.totalProfitRate.toFixed(2) + '%';
         // 进阶指标：组合年化 / 持仓集中度 / 预期年化
         const annEl = document.getElementById('invAnnualized');
-        if (annEl) { annEl.textContent = (s.annualizedRate ?? 0).toFixed(2) + '%'; annEl.className = `inv-value ${(s.annualizedRate ?? 0) >= 0 ? 'profit-positive' : 'profit-negative'}`; }
+        if (annEl) { annEl.textContent = fmtPct(s.annualizedRate); annEl.className = `inv-value ${(s.annualizedRate ?? 0) >= 0 ? 'profit-positive' : 'profit-negative'}`; }
         const conEl = document.getElementById('invConcentration');
         if (conEl) conEl.textContent = (s.concentration ?? 0).toFixed(1) + '%';
         const expEl = document.getElementById('invExpectedRate');

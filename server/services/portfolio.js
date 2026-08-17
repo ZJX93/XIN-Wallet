@@ -12,21 +12,30 @@ const { sumAmounts, subtractAmounts, toCents, percentOf } = require('./money');
 /**
  * 单持仓年化收益率（基于买入日持有期）
  * 公式: ((当前值/成本)^(365/持有天数) - 1) * 100
+ *
+ * 可靠性约束：年化对极短持有期会爆炸式外推（如持有 8 天、区间收益 +9%，
+ * 几何年化会被放大到 6000%+），这种数字没有参考意义且明显"不符合逻辑"。
+ * 因此以下情况返回 null（前端显示为 '--'，而非一个荒谬的固定数值）：
+ *  - 成本/市值非正、买入日缺失或非法
+ *  - 当天或未来买入（尚无持有期）
+ *  - 持有不足 7 天（样本太短，年化不可信）
+ *  - 计算结果超出 ±1000%（仍属极端外推，不可信）
  */
 function annualizedRate(totalCost, currentValue, buyDate) {
   const cost = parseFloat(totalCost);
   const value = parseFloat(currentValue);
-  if (!(cost > 0) || !(value > 0) || !buyDate) return 0;
+  if (!(cost > 0) || !(value > 0) || !buyDate) return null;
 
   const start = new Date(buyDate);
-  if (isNaN(start.getTime())) return 0;
+  if (isNaN(start.getTime())) return null;
 
   const days = (Date.now() - start.getTime()) / 86400000;
-  if (days <= 0) return 0;
-  // 持有期不足 1 天时不做年化放大，避免极小的 days 导致天文数字收益率
-  if (days < 1) return ((value - cost) / cost) * 100;
+  if (days <= 0) return null;          // 当天/未来买入：无持有期
+  if (days < 7) return null;           // 持有过短：年化无意义
 
-  return (Math.pow(value / cost, 365 / days) - 1) * 100;
+  const ann = (Math.pow(value / cost, 365 / days) - 1) * 100;
+  if (!isFinite(ann) || Math.abs(ann) > 1000) return null;
+  return Math.round(ann * 100) / 100;
 }
 
 /**
@@ -71,9 +80,13 @@ function calcPortfolioMetrics(investments) {
   }, null);
 
   const days = earliest ? Math.max((Date.now() - earliest.getTime()) / 86400000, 1) : 0;
-  const annualized = (tCost > 0 && tVal > 0 && days > 0)
+  const rawAnn = (tCost > 0 && tVal > 0 && days > 0)
     ? (Math.pow(tVal / tCost, 365 / days) - 1) * 100
-    : 0;
+    : null;
+  // 组合年化同样受极端值约束：超出 ±1000% 视为不可信，返回 null（前端显示 '--'）
+  const annualized = (rawAnn != null && isFinite(rawAnn) && Math.abs(rawAnn) <= 1000)
+    ? Math.round(rawAnn * 100) / 100
+    : null;
 
   // 集中度：最大持仓占比
   const maxHolding = investments.reduce((m, i) => {
@@ -94,7 +107,7 @@ function calcPortfolioMetrics(investments) {
     totalCost: tCost,
     totalValue: tVal,
     totalProfit: subtractAmounts(tVal, tCost),
-    annualizedRate: Math.round(annualized * 100) / 100,
+    annualizedRate: annualized,
     concentration: percentOf(maxHolding, tVal, 1),
     expectedRateAvg: Math.round(expectedRateAvg * 100) / 100
   };
@@ -116,7 +129,7 @@ function formatHolding(raw) {
     profit_rate:   profitRate(raw.total_cost, raw.current_value),
     expected_rate: parseFloat(raw.expected_rate),
     actual_rate:   parseFloat(raw.actual_rate),
-    annualizedRate: Math.round(annualizedRate(raw.total_cost, raw.current_value, raw.buy_date) * 100) / 100
+    annualizedRate: (() => { const ar = annualizedRate(raw.total_cost, raw.current_value, raw.buy_date); return ar == null ? null : Math.round(ar * 100) / 100; })()
   };
 }
 

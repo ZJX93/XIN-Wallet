@@ -196,7 +196,16 @@ private fun ReportContent(
         if (dataType == "income") report.incomeByCategory else report.expenseByCategory
     }
     val cats = remember(rawCats, granularity) {
-        if (granularity == "major") rawCats.filter { it.parentId == null } else rawCats
+        if (granularity == "major") {
+            // 「大类」仅展示顶层分类（parentId 为空，后端已将其子类的金额上卷到此处）
+            rawCats.filter { it.parentId == null }
+        } else {
+            // 「小类」= 末级（叶子）分类：既包含挂在顶层下的二级子类（parentId 非空），
+            // 也包含本身没有子类的顶层分类（parentId 为空，但无其他分类以其为父）。
+            // 过滤掉「是其它分类父级」的分类，避免大类与子类同时出现造成重复/叠加。
+            val parentIds = rawCats.mapNotNull { it.parentId }.toSet()
+            rawCats.filter { it.id !in parentIds }
+        }
     }
 
     BookSwitcherSheet(

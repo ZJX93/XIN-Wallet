@@ -246,7 +246,7 @@ router.get('/investments', async (req, res) => {
                 profit_rate: parseFloat(i.total_cost) > 0 ? ((parseFloat(i.current_value) - parseFloat(i.total_cost)) / parseFloat(i.total_cost) * 100) : 0,
                 expected_rate: parseFloat(i.expected_rate),
                 actual_rate: parseFloat(i.actual_rate),
-                annualizedRate: Math.round(calcAnnualizedRate(i.total_cost, i.current_value, i.buy_date) * 100) / 100
+                annualizedRate: (() => { const ar = calcAnnualizedRate(i.total_cost, i.current_value, i.buy_date); return ar == null ? null : Math.round(ar * 100) / 100; })()
             })),
             summary: { ...calcPortfolioMetrics(investments), totalProfitRate: Math.round(totalProfitRate * 100) / 100 },
             byType
