@@ -25,4 +25,10 @@ code-review-report.html
 local.properties
 # Android 调试签名密钥，不应入库（每台机器不同，泄露也无意义）
 android/app/debug.keystore
+# 鸿蒙 DevEco/IntelliJ IDE 配置（每台机器不同，不入库）
+harmony/.idea/
+# uitest dumpLayout 调试产物（非源码，不入库）
+harmony/*_layout.json
+# 本地交接/工作笔记（不入库）
+.handover/
 
