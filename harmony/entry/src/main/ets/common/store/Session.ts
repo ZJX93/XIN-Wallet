@@ -59,6 +59,17 @@ class SessionStore {
     return prefs ? ((await prefs.get('baseUrl', '')) as string) : '';
   }
 
+  /** 暴露 AbilityContext（供文件下载/上传等需要 context 的 API 使用） */
+  getContext(): common.Context | null {
+    return this.context;
+  }
+
+  /** 当前 Ability 的缓存目录（导出文件临时存放） */
+  getCacheDir(): string {
+    const c = this.context as common.UIAbilityContext;
+    return c && c.cacheDir ? c.cacheDir : '';
+  }
+
   async saveTokens(accessToken: string, refreshToken: string): Promise<void> {
     const prefs = await this.getPrefs();
     if (!prefs) {

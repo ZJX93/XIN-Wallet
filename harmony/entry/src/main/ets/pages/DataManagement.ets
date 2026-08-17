@@ -1,8 +1,12 @@
 /**
- * 数据管理（对齐安卓 DataManagementScreen.kt）：导出 CSV / 导入 CSV / 导出 JSON。
+ * 数据管理（账本备份）：导出/导入为 xlsx（3 工作表：账本配置页 / 账户页 / 账单流水页）。
+ * 服务端生成与解析，App 仅调用接口；文件可被识别，用于数据损坏时恢复。
  */
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
+import fileUri from '@ohos.file.fileuri';
+import { picker } from '@ohos.file.picker';
+import type Want from '@ohos.app.ability.Want';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS } from '../common/theme';
@@ -16,43 +20,63 @@ struct DataManagement {
   @State msg: string = '';
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
-  async doExport(type: string): Promise<void> {
+  /** 导出账本备份：服务端生成 xlsx，下载到本地并弹出分享/保存 */
+  async doExportBackup(): Promise<void> {
     if (this.loading) return;
-    this.loading = true; this.msg = '';
+    this.loading = true; this.msg = '正在导出备份…';
     try {
-      const csv = await Api.exportCsv(type);
-      const path = `${this.ctx.cacheDir}/xinwallet_${type}_${Date.now()}.csv`;
-      const f = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-      fs.writeSync(f.fd, csv);
-      fs.closeSync(f);
-      this.msg = `已导出到：${path}`;
-    } catch (e) { this.msg = '导出失败：' + (e as ApiError).message; }
-    finally { this.loading = false; }
+      const path = await Api.exportBackup();
+      this.msg = `已生成备份：${path}`;
+      // 尝试调用系统分享面板保存到本地（无可用目标时回退到展示路径）
+      try {
+        const uri = fileUri.getUriFromPath(path);
+        const want: Want = {
+          action: 'ohos.want.action.send',
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          parameters: { uri }
+        };
+        await this.ctx.startAbility(want);
+      } catch (e) {
+        // 分享面板不可用不影响已完成的导出
+        console.info('share skipped: ' + JSON.stringify(e));
+      }
+    } catch (e) {
+      this.msg = '导出失败：' + (e as ApiError).message;
+    } finally {
+      this.loading = false;
+    }
   }
 
-  async doExportFull(): Promise<void> {
+  /** 导入账本备份：选择 xlsx 文件，上传到服务端解析恢复 */
+  async doImportBackup(): Promise<void> {
     if (this.loading) return;
-    this.loading = true; this.msg = '';
+    this.loading = true; this.msg = '请选择备份文件…';
     try {
-      const json = await Api.exportFull();
-      const path = `${this.ctx.cacheDir}/xinwallet_full_${Date.now()}.json`;
-      const f = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-      fs.writeSync(f.fd, json);
-      fs.closeSync(f);
-      this.msg = `已导出到：${path}`;
-    } catch (e) { this.msg = '导出失败：' + (e as ApiError).message; }
-    finally { this.loading = false; }
-  }
-
-  async doImport(): Promise<void> {
-    if (this.loading) return;
-    this.loading = true; this.msg = '';
-    try {
-      const csv = 'id,name\n1,示例';
-      const r = await Api.importCsv({ csv });
-      this.msg = r.success ? '导入完成' : (r.message || '导入失败');
-    } catch (e) { this.msg = '导入失败：' + (e as ApiError).message; }
-    finally { this.loading = false; }
+      const dp = new picker.DocumentViewPicker();
+      const uris = await dp.select({ maxSelectNumber: 1, fileSuffixFilters: ['.xlsx'] });
+      if (!uris || uris.length === 0) {
+        this.msg = '未选择文件';
+        return;
+      }
+      const srcUri = uris[0];
+      // 复制到缓存目录（picker 返回的 uri 可能不可被网络上传直接读取）
+      const tmp = `${this.ctx.cacheDir}/import_${Date.now()}.xlsx`;
+      fs.copyFileSync(srcUri, tmp);
+      const r = await Api.importBackup(tmp);
+      const imp = (r.data as object) ? (r.data as Record<string, Object>)['imported'] : undefined;
+      if (r.success) {
+        const summary = imp ? Object.entries(imp as Record<string, number>)
+          .filter(([, v]) => (v as number) > 0)
+          .map(([k, v]) => `${k}:${v}`).join('  ') : '';
+        this.msg = '账本已恢复 ✅' + (summary ? '\n' + summary : '');
+      } else {
+        this.msg = '恢复失败：' + (r.message || '未知错误');
+      }
+    } catch (e) {
+      this.msg = '导入失败：' + (e as ApiError).message;
+    } finally {
+      this.loading = false;
+    }
   }
 
   @Builder ActionCard(title: string, desc: string, btn: string, onClick: () => void) {
@@ -69,11 +93,23 @@ struct DataManagement {
       if (this.loading) { LoadingBox() }
       Scroll() {
         Column({ space: 12 }) {
-          this.ActionCard('导出 CSV', '按类型导出交易为 CSV 文件', '导出 CSV', () => this.doExport('transactions'))
-          this.ActionCard('导入 CSV', '从 CSV 文件导入交易（重复自动跳过）', '导入 CSV', () => this.doImport())
-          this.ActionCard('导出完整备份', '导出全部数据为 JSON 备份', '导出 JSON', () => this.doExportFull())
+          this.ActionCard(
+            '导出账本备份',
+            '导出 xlsx（账本配置页 / 账户页 / 账单流水页），可识别、可恢复',
+            '导出备份',
+            () => this.doExportBackup()
+          )
+          this.ActionCard(
+            '导入账本备份',
+            '选择此前导出的 xlsx，恢复全部账本数据（损坏时可还原）',
+            '导入备份',
+            () => this.doImportBackup()
+          )
           if (this.msg) {
-            Text(this.msg).fontSize(13).fontColor(COLORS.textSecondary).padding(12)
+            Text(this.msg)
+              .fontSize(13)
+              .fontColor(COLORS.textSecondary)
+              .padding(12)
           }
           Blank().height(20)
         }.padding(12)

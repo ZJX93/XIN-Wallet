@@ -230,17 +230,22 @@ export async function deleteBook(id: number): Promise<ApiResponse<object>> {
   return del<object>(`books/${id}`);
 }
 
-/* 数据导入导出 */
-export async function exportCsv(type: string): Promise<string> {
-  const r = await get<string>('csv/export/csv', { type });
-  return r.data;
+/* 账本备份（xlsx 3 工作表，服务端生成/解析） */
+import { Session } from '../store/Session';
+import { downloadFileTo, uploadFileFrom } from '../http/Http';
+
+/** 导出账本备份为 xlsx，返回本地保存路径 */
+export async function exportBackup(): Promise<string> {
+  const date = new Date().toISOString().slice(0, 10);
+  const cacheDir = Session.getCacheDir();
+  const savePath = `${cacheDir}/xinwallet_backup_${date}.xlsx`;
+  await downloadFileTo('backup/export', savePath);
+  return savePath;
 }
-export async function exportFull(): Promise<string> {
-  const r = await get<string>('csv/export/full');
-  return r.data;
-}
-export async function importCsv(req: object): Promise<ApiResponse<object>> {
-  return post<object>('csv/import/csv', req);
+
+/** 导入账本备份（xlsx 文件路径，服务端解析恢复） */
+export async function importBackup(filePath: string): Promise<ApiResponse<object>> {
+  return uploadFileFrom('backup/import', filePath);
 }
 
 export { ApiError };
