@@ -223,7 +223,7 @@ export interface CalendarDay {
 export interface CalendarSummary {
   year: number;
   month: number;
-  days: CalendarDay[];
+  monthDays: CalendarDay[];
   monthSummary?: object;
 }
 
@@ -232,6 +232,7 @@ export interface CalendarSummary {
 export interface Book {
   id: number;
   name: string;
+  icon?: string;
   type?: string;
   currency?: string;
   is_default?: boolean;
@@ -245,6 +246,11 @@ export interface BooksResponse {
 
 export interface BookIdResponse {
   id: number;
+}
+
+export interface CreateBookRequest {
+  name: string;
+  icon?: string;
 }
 
 export interface SwitchBookResponse {
@@ -297,4 +303,32 @@ export interface ListResponse<T> {
   list?: T[];
   items?: T[];
   [key: string]: Object;
+}
+
+/* ----------------------------- 写入请求（页面本地构造） ----------------------------- */
+
+export interface TagRequest {
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface BudgetRequest {
+  name: string;
+  amount: number;
+  period: string;
+}
+
+export interface DebtRequest {
+  name: string;
+  type: string;
+  principal: number;
+  monthlyPayment: number;
+}
+
+export interface SavingsGoalRequest {
+  name: string;
+  icon?: string;
+  target: number;
+  accountId?: number;
 }

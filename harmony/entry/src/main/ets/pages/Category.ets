@@ -6,9 +6,14 @@ import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS } from '../common/theme';
 import { Category } from '../common/models';
-import { SectionTitle, EmptyState, LoadingBox, CategoryIcon, TopBar } from '../common/components/Components';
+import { SectionTitle, EmptyState, LoadingBox, CategoryIcon, TopBar, FloatingButton } from '../common/components/Components';
 
-const TYPES: { key: string; label: string }[] = [
+interface Iface1 {
+  key: string;
+  label: string;
+}
+
+const TYPES: Iface1[] = [
   { key: 'expense', label: '支出' },
   { key: 'income', label: '收入' },
   { key: 'transfer', label: '转账' }
@@ -18,6 +23,7 @@ const PALETTE: string[] = ['#995F2C', '#C11435', '#009558', '#4DD0C4', '#E54D42'
 
 @Component
 export struct CategoryPage {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State cats: Category[] = [];
   @State loading: boolean = false;
   @State showEdit: boolean = false;
@@ -54,7 +60,7 @@ export struct CategoryPage {
 
   async save(): Promise<void> {
     if (!this.fName) return;
-    const req = { name: this.fName, type: this.fType, icon: this.fIcon, color: this.fColor };
+    const req: ESObject = { name: this.fName, type: this.fType, icon: this.fIcon, color: this.fColor };
     try {
       if (this.editing) await Api.updateCategory(this.editing.id, req);
       else await Api.createCategory(req);
@@ -73,7 +79,7 @@ export struct CategoryPage {
       TextInput({ placeholder: '分类名称', text: this.fName }).onChange((v: string) => this.fName = v)
       Row({ space: 8 }) {
         Text('类型').fontSize(14).fontColor(COLORS.textSecondary)
-        ForEach(TYPES, (t: any) => {
+        ForEach(TYPES, (t: ESObject) => {
           Text(t.label).fontSize(13).padding({ left: 12, right: 12, top: 6, bottom: 6 })
             .backgroundColor(this.fType === t.key ? COLORS.brand : COLORS.brandBgLight)
             .fontColor(this.fType === t.key ? '#FFFFFF' : COLORS.textPrimary)
@@ -106,7 +112,7 @@ export struct CategoryPage {
       else {
         Scroll() {
           Column({ space: 12 }) {
-            ForEach(TYPES, (t: any) => {
+            ForEach(TYPES, (t: ESObject) => {
               Column({ space: 6 }) {
                 SectionTitle({ text: t.label })
                 if (this.grouped(t.key).length === 0) {
@@ -114,7 +120,7 @@ export struct CategoryPage {
                 } else {
                   ForEach(this.grouped(t.key), (c: Category) => {
                     Row({ space: 12 }) {
-                      CategoryIcon({ icon: c.icon || '📌', bg: c.color || COLORS.brandBgLight, size: 40 })
+                      CategoryIcon({ icon: c.icon || '📌', bg: c.color || COLORS.brandBgLight, iconSize: 40 })
                       Text(c.name).fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
                       if (c.is_system) {
                         Text('🔒').fontSize(16)
@@ -128,31 +134,25 @@ export struct CategoryPage {
                   }, (c: Category) => c.id.toString())
                 }
               }
-            }, (t: any) => t.key)
+            }, (t: ESObject) => t.key)
             Blank().height(20)
           }.padding(12)
         }.layoutWeight(1)
       }
-      Column() {
-        Text('+').fontSize(28).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
-      }.width(52).height(52).backgroundColor(COLORS.brand).borderRadius(26)
-        .position({ x: '88%', y: '88%' }).shadow({ radius: 6, color: '#995F2C55' })
-        .onClick(() => this.openAdd())
+      FloatingButton({ onTap: () => this.openAdd() })
+      if (this.showEdit) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
+          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showEdit) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-        Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 }
 
 @Entry
 @Component
-struct Category {
-  @State page: CategoryPage = new CategoryPage();
-  build() { Column() { this.page }.width('100%').height('100%') }
+struct CategoryEntry {
+  build() { Column() { CategoryPage() }.width('100%').height('100%') }
 }

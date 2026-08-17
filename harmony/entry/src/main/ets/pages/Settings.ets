@@ -4,10 +4,14 @@
 import router from '@ohos.router';
 import { Session } from '../common/store/Session';
 import { normalizeBaseUrl } from '../common/config';
-import { COLORS } from '../common/theme';
+import { COLORS, applyTheme } from '../common/theme';
 import { TopBar, RowItem, LoadingBox } from '../common/components/Components';
 
-const THEME_LABEL: Record<string, string> = { light: '浅色', dark: '深色', system: '跟随系统' };
+function themeLabel(mode: string): string {
+  if (mode === 'light') return '浅色';
+  if (mode === 'dark') return '深色';
+  return '跟随系统';
+}
 
 @Entry
 @Component
@@ -28,6 +32,7 @@ struct Settings {
     const i = order.indexOf(this.themeMode);
     this.themeMode = order[(i + 1) % 3];
     AppStorage.Set('themeMode', this.themeMode);
+    applyTheme();
   }
 
   async saveServer(): Promise<void> {
@@ -51,20 +56,19 @@ struct Settings {
       TopBar({ title: '设置' })
       Scroll() {
         Column({ space: 8 }) {
-          RowItem({ icon: '🎨', title: '外观主题', value: THEME_LABEL[this.themeMode] || '跟随系统', onClick: () => this.cycleTheme() })
-          RowItem({ icon: '🌐', title: '服务器地址', value: this.serverDisplay || '未设置', onClick: () => { this.newServer = this.serverDisplay; this.showServer = true; } })
-          RowItem({ icon: 'ℹ️', title: '关于我们', value: 'v' + this.version, onClick: () => {/* 双击检查更新：简化为展示版本 */ } })
+          RowItem({ icon: '🎨', title: '外观主题', value: themeLabel(this.themeMode), onItemClick: () => this.cycleTheme() })
+          RowItem({ icon: '🌐', title: '服务器地址', value: this.serverDisplay || '未设置', onItemClick: () => { this.newServer = this.serverDisplay; this.showServer = true; } })
+          RowItem({ icon: 'ℹ️', title: '关于我们', value: 'v' + this.version, onItemClick: () => {/* 双击检查更新：简化为展示版本 */ } })
           Blank().height(20)
         }.padding(12)
       }.layoutWeight(1)
+      if (this.showServer) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showServer = false)
+          Column() { this.ServerSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showServer) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showServer = false)
-        Column() { this.ServerSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 }

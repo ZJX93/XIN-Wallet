@@ -15,7 +15,8 @@ interface Inv {
 
 @Component
 export struct InvestmentDetailPage {
-  id: number = 0;
+  @StorageProp('themeMode') themeMode: string = 'system';
+  @Prop itemId: number = 0;
   @State inv: Inv | null = null;
   @State loading: boolean = false;
 
@@ -25,8 +26,8 @@ export struct InvestmentDetailPage {
     this.loading = true;
     try {
       const r = await Api.getInvestments();
-      const arr = (r.data as any)?.investments || [];
-      this.inv = arr.find((x: Inv) => x.id === this.id) || null;
+      const arr: ESObject[] = ((r.data as ESObject)?.investments as ESObject[]) || [];
+      this.inv = arr.find((x: Inv) => x.id === this.itemId) || null;
     } catch (e) { console.error('InvDetail:', (e as ApiError).message); }
     finally { this.loading = false; }
   }
@@ -90,10 +91,10 @@ struct SectionTitleLocal {
 @Entry
 @Component
 struct InvestmentDetail {
-  @State page: InvestmentDetailPage = new InvestmentDetailPage();
+  @State itemId: number = 0;
   aboutToAppear(): void {
-    const p: any = (router.getParams() as any) || {};
-    if (p.id) this.page.id = p.id;
+    const p: ESObject = (router.getParams() as ESObject) || {};
+    if (p.id) this.itemId = p.id;
   }
-  build() { Column() { this.page }.width('100%').height('100%') }
+  build() { Column() { InvestmentDetailPage({ itemId: this.itemId }) }.width('100%').height('100%') }
 }

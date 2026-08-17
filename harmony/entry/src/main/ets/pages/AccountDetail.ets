@@ -10,7 +10,8 @@ import { BalanceCard, LoadingBox, EmptyState, TransactionRow, TopBar, CategoryIc
 
 @Component
 export struct AccountDetailPage {
-  id: number = 0;
+  @StorageProp('themeMode') themeMode: string = 'system';
+  @Prop itemId: number = 0;
   @State account: Account | null = null;
   @State txs: TransactionItem[] = [];
   @State loading: boolean = false;
@@ -20,12 +21,14 @@ export struct AccountDetailPage {
   async load(): Promise<void> {
     this.loading = true;
     try {
-      const [a, t] = await Promise.all([
+      const _r = await Promise.all([
         Api.getAccounts(),
-        Api.getTransactions({ account_id: this.id, limit: 200 })
+        Api.getTransactions({ account_id: this.itemId, limit: 200 })
       ]);
+      const a = _r[0];
+      const t = _r[1];
       if (a.success && a.data) {
-        this.account = (a.data.accounts || []).find((x: Account) => x.id === this.id) || null;
+        this.account = (a.data.accounts || []).find((x: Account) => x.id === this.itemId) || null;
       }
       if (t.success) this.txs = t.data || [];
     } catch (e) { console.error('AccountDetail:', (e as ApiError).message); }
@@ -62,12 +65,12 @@ export struct AccountDetailPage {
 @Entry
 @Component
 struct AccountDetail {
-  @State page: AccountDetailPage = new AccountDetailPage();
+  @State itemId: number = 0;
   aboutToAppear(): void {
-    const p: any = (router.getParams() as any) || {};
-    if (p.id) this.page.id = p.id;
+    const p: ESObject = (router.getParams() as ESObject) || {};
+    if (p.id) this.itemId = p.id;
   }
   build() {
-    Column() { this.page }.width('100%').height('100%')
+    Column() { AccountDetailPage({ itemId: this.itemId }) }.width('100%').height('100%')
   }
 }

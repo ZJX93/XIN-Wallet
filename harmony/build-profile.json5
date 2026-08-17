@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "key.cer",
-          "storePassword": "",
-          "keyAlias": "",
-          "keyPassword": "",
-          "profile": "key.p7b",
+          "certpath": "C:\\Users\\XIN\\.ohos\\config\\default_harmony_skfFPKZFVT0dUaIs8qMogD2btVtk3s9CXYn2H-KglNg=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B2148F9CCC2554BEBCCC4DF5CC76E5559B5E26494E28B65A2B11DE527C16244DEF201C9793729DA",
+          "profile": "C:\\Users\\XIN\\.ohos\\config\\default_harmony_skfFPKZFVT0dUaIs8qMogD2btVtk3s9CXYn2H-KglNg=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "key.p12"
+          "storeFile": "C:\\Users\\XIN\\.ohos\\config\\default_harmony_skfFPKZFVT0dUaIs8qMogD2btVtk3s9CXYn2H-KglNg=.p12",
+          "storePassword": "0000001B5B987F7717A0E9D551B4F3D1031F9EBEF044797F58CE4F410547E78F58EB55000832BC3FCC485B"
         }
       }
     ],
@@ -19,8 +19,8 @@
       {
         "name": "default",
         "signingConfig": "default",
-        "compatibleSdkVersion": "5.0.0(12)",
-        "targetSdkVersion": "5.0.0(12)",
+        "compatibleSdkVersion": "6.1.1(24)",
+        "targetSdkVersion": "6.1.1(24)",
         "runtimeOS": "HarmonyOS",
         "buildOption": {
           "strictMode": {
@@ -46,7 +46,9 @@
       "targets": [
         {
           "name": "default",
-          "applyToProducts": ["default"]
+          "applyToProducts": [
+            "default"
+          ]
         }
       ]
     }

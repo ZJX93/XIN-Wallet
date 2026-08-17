@@ -2,10 +2,11 @@
  * 储蓄目标（对齐安卓 SavingsGoalsScreen.kt）：列表 + 进度条 + 存入/取回/流水。
  */
 import router from '@ohos.router';
+import { SavingsGoalRequest } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
-import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon } from '../common/components/Components';
+import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton } from '../common/components/Components';
 
 const ICONS: string[] = ['🎯', '🏠', '🚗', '✈️', '💍', '📱', '🎓', '🐱'];
 
@@ -13,8 +14,9 @@ interface Goal { id: number; name: string; icon?: string; accountId?: number; cu
 
 @Component
 export struct SavingsGoalsPage {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State list: Goal[] = [];
-  @State accounts: any[] = [];
+  @State accounts: ESObject[] = [];
   @State loading: boolean = false;
   @State showEdit: boolean = false;
   @State showAlloc: boolean = false;
@@ -32,9 +34,11 @@ export struct SavingsGoalsPage {
   async load(): Promise<void> {
     this.loading = false;
     try {
-      const [g, a] = await Promise.all([Api.getSavingsGoals(), Api.getAccounts()]);
+      const _r = await Promise.all([Api.getSavingsGoals(), Api.getAccounts()]);
+      const g = _r[0];
+      const a = _r[1];
       if (g.success) this.list = g.data as Goal[] || [];
-      if (a.success) this.accounts = (a.data as any)?.accounts || [];
+      if (a.success) this.accounts = (a.data as ESObject)?.accounts || [];
     } catch (e) { console.error('Savings:', (e as ApiError).message); }
   }
 
@@ -44,7 +48,7 @@ export struct SavingsGoalsPage {
   async save(): Promise<void> {
     const t = Number(this.fTarget);
     if (!this.fName || !t) return;
-    const req = { name: this.fName, icon: this.fIcon, target: t, accountId: this.fAccount };
+    const req: SavingsGoalRequest = { name: this.fName, icon: this.fIcon, target: t, accountId: this.fAccount };
     try {
       if (this.editingId) await Api.updateSavingsGoal(this.editingId, req);
       else await Api.createSavingsGoal(req);
@@ -78,12 +82,12 @@ export struct SavingsGoalsPage {
             .onClick(() => this.fIcon = ic)
         })
       }
-      TextInput({ placeholder: '目标金额', text: this.fTarget, type: InputType.Number }).onChange((v: string) => this.fTarget = v)
+      TextInput({ placeholder: '目标金额', text: this.fTarget }).type(InputType.Number).onChange((v: string) => this.fTarget = v)
       Row({ space: 8 }) {
         Text('账户').fontSize(14).fontColor(COLORS.textSecondary)
         Scroll() {
           Row({ space: 8 }) {
-            ForEach(this.accounts, (a: any) => {
+            ForEach(this.accounts, (a: ESObject) => {
               Text(a.name).fontSize(13).padding({ left: 12, right: 12, top: 6, bottom: 6 })
                 .backgroundColor(this.fAccount === a.id ? COLORS.brand : COLORS.brandBgLight)
                 .fontColor(this.fAccount === a.id ? '#FFFFFF' : COLORS.textPrimary)
@@ -100,7 +104,7 @@ export struct SavingsGoalsPage {
   @Builder AllocSheet() {
     Column({ space: 12 }) {
       Text(this.allocMode + '目标').fontSize(16).fontWeight(FontWeight.Bold)
-      TextInput({ placeholder: '金额', text: this.allocAmt, type: InputType.Number }).onChange((v: string) => this.allocAmt = v)
+      TextInput({ placeholder: '金额', text: this.allocAmt }).type(InputType.Number).onChange((v: string) => this.allocAmt = v)
       Button('确定').width('100%').onClick(() => this.doAlloc())
       Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showAlloc = false)
     }
@@ -118,7 +122,7 @@ export struct SavingsGoalsPage {
               ForEach(this.list, (g: Goal) => {
                 Column({ space: 6 }) {
                   Row({ space: 12 }) {
-                    CategoryIcon({ icon: g.icon || '🎯', size: 40 })
+                    CategoryIcon({ icon: g.icon || '🎯', iconSize: 40 })
                     Column() {
                       Text(g.name).fontSize(15).fontColor(COLORS.textPrimary)
                     }.layoutWeight(1).alignItems(HorizontalAlign.Start)
@@ -126,8 +130,9 @@ export struct SavingsGoalsPage {
                       .fontSize(13).fontColor(COLORS.textSecondary)
                   }
                   LinearProgress({
-                    value: g.target > 0 ? (g.current || 0) / g.target : 0,
-                    color: (g.current || 0) >= (g.target || 0) ? COLORS.brand : COLORS.expense
+                    value: (g.target ?? 0) > 0 ? (g.current || 0) / (g.target ?? 0) : 0,
+                    color: (g.current || 0) >= (g.target || 0) ? COLORS.brand : COLORS.expense,
+                    showPercent: true
                   })
                   Row({ space: 12 }) {
                     Text('存入').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openAlloc(g, '存入'))
@@ -142,33 +147,27 @@ export struct SavingsGoalsPage {
           }.padding(12)
         }.layoutWeight(1)
       }
-      Column() {
-        Text('+').fontSize(28).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
-      }.width(52).height(52).backgroundColor(COLORS.brand).borderRadius(26)
-        .position({ x: '88%', y: '88%' }).shadow({ radius: 6, color: '#995F2C55' })
-        .onClick(() => this.openAdd())
+      FloatingButton({ onTap: () => this.openAdd() })
+      if (this.showEdit) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
+          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
+      if (this.showAlloc) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAlloc = false)
+          Column() { this.AllocSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showEdit) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-        Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
-    if (this.showAlloc) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAlloc = false)
-        Column() { this.AllocSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 }
 
 @Entry
 @Component
 struct SavingsGoals {
-  @State page: SavingsGoalsPage = new SavingsGoalsPage();
-  build() { Column() { this.page }.width('100%').height('100%') }
+  build() { Column() { SavingsGoalsPage() }.width('100%').height('100%') }
 }

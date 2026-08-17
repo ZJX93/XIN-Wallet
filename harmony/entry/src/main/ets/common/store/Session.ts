@@ -41,22 +41,22 @@ class SessionStore {
 
   async getAccessToken(): Promise<string> {
     const prefs = await this.getPrefs();
-    return prefs ? (prefs.get('accessToken', '') as string) : '';
+    return prefs ? ((await prefs.get('accessToken', '')) as string) : '';
   }
 
   async getRefreshToken(): Promise<string> {
     const prefs = await this.getPrefs();
-    return prefs ? (prefs.get('refreshToken', '') as string) : '';
+    return prefs ? ((await prefs.get('refreshToken', '')) as string) : '';
   }
 
   async getCurrentBookId(): Promise<number> {
     const prefs = await this.getPrefs();
-    return prefs ? (prefs.get('bookId', 0) as number) : 0;
+    return prefs ? ((await prefs.get('bookId', 0)) as number) : 0;
   }
 
   async getBaseUrl(): Promise<string> {
     const prefs = await this.getPrefs();
-    return prefs ? (prefs.get('baseUrl', '') as string) : '';
+    return prefs ? ((await prefs.get('baseUrl', '')) as string) : '';
   }
 
   async saveTokens(accessToken: string, refreshToken: string): Promise<void> {

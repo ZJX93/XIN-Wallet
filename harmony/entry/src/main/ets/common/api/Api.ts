@@ -2,12 +2,12 @@
  * API 映射：对应安卓 ApiService.kt 的全部端点。
  * 命名与后端路径一致；复杂响应用 models 中的接口或宽松类型。
  */
-import { get, post, put, del, ApiError } from './Http';
+import { get, post, put, del, ApiError } from '../http/Http';
 import {
   ApiResponse, LoginRequest, RefreshRequest, AuthResponse, UserWrapper, UpdateProfileRequest,
   Account, AccountsResponse, CreateAccountRequest, UpdateAccountRequest,
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
-  Book, BooksResponse, BookIdResponse, SwitchBookResponse,
+  Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse,
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
   TranscribeRequest, TranscribeResponse, IdResponse
 } from '../models';
@@ -217,7 +217,7 @@ export async function deleteTag(id: number): Promise<ApiResponse<object>> {
 export async function getBooks(): Promise<ApiResponse<BooksResponse>> {
   return get<BooksResponse>('books');
 }
-export async function createBook(req: object): Promise<ApiResponse<BookIdResponse>> {
+export async function createBook(req: CreateBookRequest): Promise<ApiResponse<BookIdResponse>> {
   return post<BookIdResponse>('books', req);
 }
 export async function updateBook(id: number, req: object): Promise<ApiResponse<object>> {

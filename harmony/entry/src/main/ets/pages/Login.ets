@@ -4,18 +4,22 @@ import { setBaseUrl } from '../common/http/Http';
 import { normalizeBaseUrl } from '../common/config';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
+import { COLORS } from '../common/theme';
 
 @Entry
 @Component
 struct Login {
-  @State server: string = '';
+  @StorageProp('themeMode') themeMode: string = 'system';
+  @State server: string = 'http://127.0.0.1:18888'; // 本地 mock 演示；真实服务器恢复后改回 xqb.kuaik.top:18888
   @State username: string = '';
   @State password: string = '';
   @State loading: boolean = false;
   @State error: string = '';
 
   async aboutToAppear(): Promise<void> {
-    const [savedUrl, loggedIn] = await Promise.all([Session.getBaseUrl(), Session.isLoggedIn()]);
+    const _r = await Promise.all([Session.getBaseUrl(), Session.isLoggedIn()]);
+    const savedUrl = _r[0];
+    const loggedIn = _r[1];
     if (savedUrl) {
       this.server = savedUrl.replace(/\/api\/?$/, '');
       setBaseUrl(savedUrl);
@@ -64,24 +68,42 @@ struct Login {
 
   build() {
     Column({ space: 14 }) {
-      Text('XinWallet')
-        .fontSize(30)
+      Image($r('app.media.logo'))
+        .width(88)
+        .height(88)
+        .borderRadius(20)
+        .margin({ top: 80, bottom: 4 })
+      Text('鑫钱包')
+        .fontSize(28)
         .fontWeight(FontWeight.Bold)
-        .margin({ top: 70, bottom: 8 })
-      Text('登录到你的自托管记账服务')
+        .fontColor(COLORS.textPrimary)
+      Text('个人财务管家')
         .fontSize(14)
         .fontColor($r('app.color.text_secondary'))
+        .margin({ bottom: 16 })
 
       TextInput({ placeholder: '服务器地址，如 https://nas.com:18888', text: this.server })
         .onChange((v) => (this.server = v))
         .width('82%')
+        .height(48)
+        .backgroundColor(COLORS.card)
+        .borderRadius(12)
+        .padding({ left: 14, right: 14 })
       TextInput({ placeholder: '账号', text: this.username })
         .onChange((v) => (this.username = v))
         .width('82%')
+        .height(48)
+        .backgroundColor(COLORS.card)
+        .borderRadius(12)
+        .padding({ left: 14, right: 14 })
       TextInput({ placeholder: '密码', text: this.password })
         .type(InputType.Password)
         .onChange((v) => (this.password = v))
         .width('82%')
+        .height(48)
+        .backgroundColor(COLORS.card)
+        .borderRadius(12)
+        .padding({ left: 14, right: 14 })
 
       if (this.error) {
         Text(this.error)
@@ -92,15 +114,23 @@ struct Login {
 
       Button(this.loading ? '登录中...' : '登录')
         .width('82%')
+        .height(48)
+        .backgroundColor(COLORS.brand)
+        .borderRadius(12)
         .enabled(!this.loading)
         .onClick(() => this.doLogin(false))
       Button('体验 Demo 账号')
         .width('82%')
+        .height(48)
+        .backgroundColor(COLORS.brandBgLight)
+        .fontColor(COLORS.brand)
+        .borderRadius(12)
         .stateEffect(true)
         .onClick(() => this.doLogin(true))
     }
     .width('100%')
     .height('100%')
+    .backgroundColor(COLORS.pageBg)
     .justifyContent(FlexAlign.Center)
   }
 }

@@ -4,8 +4,9 @@
  * 语音：鸿蒙原生 AudioCapturer 录音 → 后端 /ai/transcribe（Whisper）转写，根治 GMS 语音超时 Bug。
  */
 import router from '@ohos.router';
-import { common } from '@ohos.app.ability.common';
-import abilityAccessCtrl from '@ohos.ability.accessCtrl';
+import { ChatMessage } from '../common/models';
+import common from '@ohos.app.ability.common';
+import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import buffer from '@ohos.buffer';
@@ -24,6 +25,7 @@ interface ChatMsg {
 @Entry
 @Component
 struct Chat {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State messages: ChatMsg[] = [];
   @State input: string = '';
   @State recording: boolean = false;
@@ -96,9 +98,9 @@ struct Chat {
   async send(): Promise<void> {
     const text = this.input.trim();
     if (!text && !this.pendingImage) return;
-    const history = this.messages
+    const history: ChatMessage[] = this.messages
       .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({ role: m.role, content: m.content }));
+      .map((m: ChatMessage): ChatMessage => ({ role: m.role, content: m.content }));
     this.messages.push({ role: 'user', content: text || '[图片]' });
     this.input = '';
     const img = this.pendingImage;
@@ -118,11 +120,11 @@ struct Chat {
       if (m.role === 'user') {
         Text(m.content).fontSize(15).fontColor('#FFFFFF')
           .backgroundColor(COLORS.brand).padding(12).borderRadius(12)
-          .alignSelf(HorizontalAlign.End).constraintSize({ maxWidth: '78%' })
+          .alignSelf(ItemAlign.End).constraintSize({ maxWidth: '78%' })
       } else {
         Text(m.content).fontSize(15).fontColor(COLORS.textPrimary)
           .backgroundColor(COLORS.brandBgLight).padding(12).borderRadius(12)
-          .alignSelf(HorizontalAlign.Start).constraintSize({ maxWidth: '85%' })
+          .alignSelf(ItemAlign.Start).constraintSize({ maxWidth: '85%' })
         if (m.txs && m.txs.length > 0) {
           ForEach(m.txs, (t: TransactionItem) => {
             Column({ space: 4 }) {
@@ -165,7 +167,7 @@ struct Chat {
             this.Bubble(m)
           }, (m: ChatMsg, i: number) => i.toString())
           if (this.transcribing) {
-            Text('转写中...').fontSize(14).fontColor(COLORS.textSecondary).alignSelf(HorizontalAlign.Center)
+            Text('转写中...').fontSize(14).fontColor(COLORS.textSecondary).alignSelf(ItemAlign.Center)
           }
           Blank().height(8)
         }.padding(12)

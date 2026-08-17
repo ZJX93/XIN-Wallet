@@ -2,16 +2,18 @@
  * 债务管理（对齐安卓 DebtsScreen.kt）：汇总 4 卡 + 应付/应收分组 + 还款/编辑/删除。
  */
 import router from '@ohos.router';
+import { DebtRequest } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
-import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon } from '../common/components/Components';
+import { TopBar, SectionTitle, EmptyState, LoadingBox, LinearProgress, CategoryIcon, FloatingButton } from '../common/components/Components';
 
 interface Debt { id: number; name: string; type?: string; principal?: number; remaining?: number; monthly?: number; paid?: number; dueDate?: string; icon?: string; }
 
 @Component
 export struct DebtsPage {
-  @State data: any = null;
+  @StorageProp('themeMode') themeMode: string = 'system';
+  @State data: ESObject = null;
   @State loading: boolean = false;
   @State showEdit: boolean = false;
   @State showRepay: boolean = false;
@@ -40,7 +42,7 @@ export struct DebtsPage {
   openEdit(d: Debt): void { this.editingId = d.id; this.fName = d.name; this.fType = d.type || 'payable'; this.fPrincipal = String(d.principal || ''); this.fMonthly = String(d.monthly || ''); this.showEdit = true; }
 
   async save(): Promise<void> {
-    const req = {
+    const req: DebtRequest = {
       name: this.fName,
       type: this.fType,
       principal: Number(this.fPrincipal) || 0,
@@ -65,7 +67,7 @@ export struct DebtsPage {
   @Builder DebtRow(d: Debt) {
     Column({ space: 6 }) {
       Row({ space: 12 }) {
-        CategoryIcon({ icon: d.icon || '🤝', size: 40 })
+        CategoryIcon({ icon: d.icon || '🤝', iconSize: 40 })
         Column() {
           Text(d.name).fontSize(15).fontColor(COLORS.textPrimary)
           if (d.dueDate) Text(`到期 ${d.dueDate}`).fontSize(11).fontColor(COLORS.textSecondary)
@@ -80,7 +82,7 @@ export struct DebtsPage {
         if (d.monthly) Text(`月供 ${fmtMoney(d.monthly)}`).fontSize(12).fontColor(COLORS.textSecondary)
       }
       if ((d.principal || 0) > 0 && (d.remaining ?? 0) >= 0) {
-        LinearProgress({ value: 1 - (d.remaining ?? 0) / (d.principal || 1), color: COLORS.brand })
+        LinearProgress({ value: 1 - (d.remaining ?? 0) / (d.principal || 1), color: COLORS.brand, showPercent: true })
       }
       Row({ space: 12 }) {
         Text('还款').fontSize(13).fontColor(COLORS.brand).onClick(() => this.openRepay(d))
@@ -105,8 +107,8 @@ export struct DebtsPage {
           .fontColor(this.fType === 'receivable' ? '#FFFFFF' : COLORS.textPrimary).borderRadius(14)
           .onClick(() => this.fType = 'receivable')
       }
-      TextInput({ placeholder: '本金', text: this.fPrincipal, type: InputType.Number }).onChange((v: string) => this.fPrincipal = v)
-      TextInput({ placeholder: '月供', text: this.fMonthly, type: InputType.Number }).onChange((v: string) => this.fMonthly = v)
+      TextInput({ placeholder: '本金', text: this.fPrincipal }).type(InputType.Number).onChange((v: string) => this.fPrincipal = v)
+      TextInput({ placeholder: '月供', text: this.fMonthly }).type(InputType.Number).onChange((v: string) => this.fMonthly = v)
       Button('保存').width('100%').onClick(() => this.save())
       Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showEdit = false)
     }
@@ -115,7 +117,7 @@ export struct DebtsPage {
   @Builder RepaySheet() {
     Column({ space: 12 }) {
       Text('记还款').fontSize(16).fontWeight(FontWeight.Bold)
-      TextInput({ placeholder: '还款金额', text: this.repayAmt, type: InputType.Number }).onChange((v: string) => this.repayAmt = v)
+      TextInput({ placeholder: '还款金额', text: this.repayAmt }).type(InputType.Number).onChange((v: string) => this.repayAmt = v)
       Button('确定').width('100%').onClick(() => this.doRepay())
       Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showRepay = false)
     }
@@ -152,27 +154,22 @@ export struct DebtsPage {
           }.padding(12)
         }.layoutWeight(1)
       }
-      Column() {
-        Text('+').fontSize(28).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
-      }.width(52).height(52).backgroundColor(COLORS.brand).borderRadius(26)
-        .position({ x: '88%', y: '88%' }).shadow({ radius: 6, color: '#995F2C55' })
-        .onClick(() => this.openAdd())
+      FloatingButton({ onTap: () => this.openAdd() })
+      if (this.showEdit) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
+          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
+      if (this.showRepay) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showRepay = false)
+          Column() { this.RepaySheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showEdit) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-        Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
-    if (this.showRepay) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showRepay = false)
-        Column() { this.RepaySheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '60%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 
   @Builder SumCell(title: string, value: string, color: string) {
@@ -186,6 +183,5 @@ export struct DebtsPage {
 @Entry
 @Component
 struct Debts {
-  @State page: DebtsPage = new DebtsPage();
-  build() { Column() { this.page }.width('100%').height('100%') }
+  build() { Column() { DebtsPage() }.width('100%').height('100%') }
 }

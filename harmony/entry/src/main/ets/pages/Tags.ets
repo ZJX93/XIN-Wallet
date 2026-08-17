@@ -2,10 +2,11 @@
  * 标签管理（对齐安卓 TagsScreen.kt）：彩色圆 + 名称 + 新增/编辑/删除。
  */
 import router from '@ohos.router';
+import { TagRequest } from '../common/models';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS } from '../common/theme';
-import { TopBar, EmptyState, LoadingBox, CategoryIcon } from '../common/components/Components';
+import { TopBar, EmptyState, LoadingBox, CategoryIcon, FloatingButton } from '../common/components/Components';
 
 const PALETTE: string[] = ['#995F2C', '#C11435', '#009558', '#4DD0C4', '#E54D42', '#7E57C2', '#F9A825', '#26A69A', '#5C6BC0', '#EC407A'];
 const ICONS: string[] = ['🏷️', '⭐', '🔥', '💡', '🎯', '❤️', '🌟', '⚡', '🌈', '🍀', '📌', '✅'];
@@ -14,6 +15,7 @@ interface TagItem { id: number; name: string; icon?: string; color?: string; }
 
 @Component
 export struct TagPage {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State tags: TagItem[] = [];
   @State loading: boolean = false;
   @State showEdit: boolean = false;
@@ -37,7 +39,7 @@ export struct TagPage {
 
   async save(): Promise<void> {
     if (!this.fName) return;
-    const req = { name: this.fName, icon: this.fIcon, color: this.fColor };
+    const req: TagRequest = { name: this.fName, icon: this.fIcon, color: this.fColor };
     try {
       if (this.editingId) await Api.updateTag(this.editingId, req);
       else await Api.createTag(req);
@@ -84,7 +86,7 @@ export struct TagPage {
             } else {
               ForEach(this.tags, (t: TagItem) => {
                 Row({ space: 12 }) {
-                  CategoryIcon({ icon: t.icon || '🏷️', bg: t.color || COLORS.brandBgLight, size: 40 })
+                  CategoryIcon({ icon: t.icon || '🏷️', bg: t.color || COLORS.brandBgLight, iconSize: 40 })
                   Text(t.name).fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
                   Row({ space: 14 }) {
                     Text('✎').fontSize(16).fontColor(COLORS.textSecondary).onClick(() => this.openEdit(t))
@@ -97,26 +99,20 @@ export struct TagPage {
           }.padding(12)
         }.layoutWeight(1)
       }
-      Column() {
-        Text('+').fontSize(28).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
-      }.width(52).height(52).backgroundColor(COLORS.brand).borderRadius(26)
-        .position({ x: '88%', y: '88%' }).shadow({ radius: 6, color: '#995F2C55' })
-        .onClick(() => this.openAdd())
+      FloatingButton({ onTap: () => this.openAdd() })
+      if (this.showEdit) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
+          Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showEdit) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showEdit = false)
-        Column() { this.EditSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 }
 
 @Entry
 @Component
 struct Tags {
-  @State page: TagPage = new TagPage();
-  build() { Column() { this.page }.width('100%').height('100%') }
+  build() { Column() { TagPage() }.width('100%').height('100%') }
 }

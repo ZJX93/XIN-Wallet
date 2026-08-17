@@ -6,13 +6,19 @@ import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
 import { Account, AccountsResponse } from '../common/models';
-import { BalanceCard, SectionTitle, EmptyState, LoadingBox, CategoryIcon, TopBar } from '../common/components/Components';
+import { BalanceCard, SectionTitle, EmptyState, LoadingBox, AccountListItem, TopBar, FloatingButton } from '../common/components/Components';
 
 const TYPES: string[] = ['现金', '储蓄卡', '信用卡', '电子支付', '金融账户', '数字货币', '其他'];
 const ICONS: string[] = ['💵', '🏦', '💳', '📱', '📊', '🪙', '💰'];
 
+interface GroupedItem {
+  type: string;
+  list: Account[];
+}
+
 @Component
 export struct AccountsPage {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State accounts: Account[] = [];
   @State total: number = 0;
   @State loading: boolean = false;
@@ -37,14 +43,14 @@ export struct AccountsPage {
     } catch (e) { console.error('Accounts:', (e as ApiError).message); }
   }
 
-  grouped(): { type: string; list: Account[] }[] {
+  grouped(): GroupedItem[] {
     const map = new Map<string, Account[]>();
     this.accounts.forEach(a => {
       const t = a.type || '其他';
       if (!map.has(t)) map.set(t, []);
       map.get(t)!.push(a);
     });
-    const res: { type: string; list: Account[] }[] = [];
+    const res: GroupedItem[] = [];
     TYPES.forEach(t => { if (map.has(t)) res.push({ type: t, list: map.get(t)! }); });
     map.forEach((list, t) => { if (!TYPES.includes(t)) res.push({ type: t, list }); });
     return res;
@@ -109,55 +115,36 @@ export struct AccountsPage {
             if (this.accounts.length === 0) {
               EmptyState({ text: '还没有账户，点右下角「+」添加第一个' })
             } else {
-              ForEach(this.grouped(), (g: any) => {
+              ForEach(this.grouped(), (g: ESObject) => {
                 Column({ space: 6 }) {
                   SectionTitle({ text: g.type })
                   ForEach(g.list, (a: Account) => {
-                    Row({ space: 12 }) {
-                      CategoryIcon({ icon: a.icon || '💵', size: 40 })
-                      Column() {
-                        Text(a.name).fontSize(15).fontColor(COLORS.textPrimary)
-                        Text(g.type).fontSize(12).fontColor(COLORS.textSecondary)
-                      }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-                      Column() {
-                        Text(fmtMoney(a.balance)).fontSize(15).fontWeight(FontWeight.Medium).fontColor(COLORS.textPrimary)
-                        if (a.type === '信用卡' && a.credit_limit) {
-                          Text(`额度 ${fmtMoney(a.credit_limit)}`).fontSize(11).fontColor(COLORS.textSecondary)
-                        }
-                      }.alignItems(HorizontalAlign.End)
-                    }.width('100%').padding({ top: 12, bottom: 12 }).backgroundColor(COLORS.card).borderRadius(12)
-                      .onClick(() => router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } }))
+                    AccountListItem({ account: a, onTap: () => router.pushUrl({ url: 'pages/AccountDetail', params: { id: a.id } }) })
                   }, (a: Account) => a.id.toString())
                 }
-              }, (g: any) => g.type)
+              }, (g: ESObject) => g.type)
             }
             Blank().height(20)
           }.padding(12)
         }.layoutWeight(1)
       }
       // FAB
-      Column() {
-        Text('+').fontSize(28).fontColor('#FFFFFF').fontWeight(FontWeight.Bold)
-      }.width(52).height(52).backgroundColor(COLORS.brand).borderRadius(26)
-        .position({ x: '88%', y: '88%' }).shadow({ radius: 6, color: '#995F2C55' })
-        .onClick(() => this.showAdd = true)
+      FloatingButton({ onTap: () => { this.showAdd = true; } })
+      if (this.showAdd) {
+        Column() {
+          Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAdd = false)
+          Column() { this.AddSheet() }.width('100%').backgroundColor(COLORS.card)
+            .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
+        }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
+      }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
-
-    if (this.showAdd) {
-      Column() {
-        Column().layoutWeight(1).backgroundColor('#00000066').onClick(() => this.showAdd = false)
-        Column() { this.AddSheet() }.width('100%').backgroundColor(COLORS.card)
-          .borderRadius({ topLeft: 16, topRight: 16 }).padding(20).constraintSize({ maxHeight: '80%' })
-      }.width('100%').height('100%').position({ x: 0, y: 0 }).zIndex(20)
-    }
   }
 }
 
 @Entry
 @Component
 struct Accounts {
-  @State page: AccountsPage = new AccountsPage();
   build() {
-    Column() { this.page }.width('100%').height('100%')
+    Column() { AccountsPage() }.width('100%').height('100%')
   }
 }

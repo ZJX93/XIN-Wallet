@@ -61,9 +61,9 @@ async function tryRefresh(): Promise<string | null> {
   const url = baseUrl + 'auth/refresh';
   const req = http.createHttp();
   try {
-    const resp = await req.request(url, {
+    const resp = await (req.request as unknown as (url: string, options?: http.HttpRequestOptions) => Promise<http.HttpResponse>)(url, {
       method: http.RequestMethod.POST,
-      headers: { 'Content-Type': 'application/json' },
+      header: { 'Content-Type': 'application/json' },
       extraData: JSON.stringify({ refreshToken: rt }),
       connectTimeout: 10000,
       readTimeout: 10000
@@ -105,9 +105,9 @@ async function doRequest<T>(path: string, options: RequestOptions, tokenOverride
   }
   const req = http.createHttp();
   try {
-    const resp = await req.request(url, {
+    const resp = await (req.request as unknown as (url: string, options?: http.HttpRequestOptions) => Promise<http.HttpResponse>)(url, {
       method,
-      headers,
+      header: headers,
       extraData: options.body ? JSON.stringify(options.body) : undefined,
       connectTimeout: 15000,
       readTimeout: 60000

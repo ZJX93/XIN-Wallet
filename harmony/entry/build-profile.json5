@@ -2,8 +2,7 @@
   "apiType": "stageMode",
   "targets": [
     {
-      "name": "default",
-      "applyTo": "phone"
+      "name": "default"
     }
   ]
 }

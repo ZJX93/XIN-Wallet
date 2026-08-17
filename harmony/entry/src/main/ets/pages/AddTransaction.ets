@@ -3,20 +3,25 @@
  * 定位改用鸿蒙 @ohos.geoLocationManager（根治无 GMS 机型 NETWORK_PROVIDER 失效导致的定位失败）。
  */
 import router from '@ohos.router';
-import { common } from '@ohos.app.ability.common';
-import abilityAccessCtrl from '@ohos.ability.accessCtrl';
+import common from '@ohos.app.ability.common';
+import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 import geoLocationManager from '@ohos.geoLocationManager';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
-import { Category } from '../common/models';
-import { TopBar, CategoryIcon, LoadingBox } from '../common/components/Components';
+import { Category, CreateTransactionRequest } from '../common/models';
+import { TopBar, CategoryIcon, LoadingBox, DropdownField, DateTimePickerField, DropdownOption } from '../common/components/Components';
 
 function today(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-function fmtDate(ts: number): string {
+function nowDateTime(): string {
+  const d = new Date();
+  const p = (x: number): string => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function fmtTs(ts: number): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -24,14 +29,15 @@ function fmtDate(ts: number): string {
 @Entry
 @Component
 struct AddTransaction {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State editId: number = 0;
   @State type: string = 'expense';
   @State categories: Category[] = [];
-  @State accounts: any[] = [];
+  @State accounts: ESObject[] = [];
   @State catId: number = 0;
   @State accId: number = 0;
   @State accName: string = '';
-  @State date: string = today();
+  @State date: string = nowDateTime();
   @State amount: string = '';
   @State note: string = '';
   @State location: string = '';
@@ -40,7 +46,7 @@ struct AddTransaction {
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   aboutToAppear(): void {
-    const p: any = (router.getParams() as any) || {};
+    const p: ESObject = (router.getParams() as ESObject) || {};
     if (p.editId) this.editId = p.editId;
     this.load();
   }
@@ -48,10 +54,12 @@ struct AddTransaction {
   async load(): Promise<void> {
     this.loadingData = true;
     try {
-      const [c, a] = await Promise.all([Api.getCategories(), Api.getAccounts()]);
+      const _r = await Promise.all([Api.getCategories(), Api.getAccounts()]);
+      const c = _r[0];
+      const a = _r[1];
       if (c.success) this.categories = c.data || [];
       if (a.success) {
-        this.accounts = (a.data as any)?.accounts || [];
+        this.accounts = (a.data as ESObject)?.accounts || [];
         this.accId = this.accounts[0]?.id || 0;
         this.accName = this.accounts[0]?.name || '';
       }
@@ -87,10 +95,23 @@ struct AddTransaction {
   }
 
   onKey(k: string): void {
-    if (k === '删除') { this.amount = this.amount.slice(0, -1); return; }
+    if (k === '⌫' || k === '删除') { this.amount = this.amount.slice(0, -1); return; }
     if (k === '清空') { this.amount = ''; return; }
+    if (k === '确定') { this.submit(false); return; }
+    // 小数点：最多一个，空时补0
     if (k === '.') { if (!this.amount.includes('.')) this.amount += this.amount ? '.' : '0.'; return; }
-    if (/[0-9]/.test(k)) { if (this.amount === '0') this.amount = k; else this.amount += k; }
+    // 运算符：直接追加
+    if (['+', '-', '*', '/', '(', ')'].includes(k)) { this.amount += k; return; }
+    // 数字
+    if (/[0-9]/.test(k)) {
+      if (this.amount === '0') this.amount = k;
+      else this.amount += k;
+      // 小数位限制（最多2位）
+      const dotIdx = this.amount.indexOf('.');
+      if (dotIdx >= 0 && this.amount.length - dotIdx - 1 > 2) {
+        this.amount = this.amount.slice(0, dotIdx + 3);
+      }
+    }
   }
 
   async submit(again: boolean): Promise<void> {
@@ -98,7 +119,7 @@ struct AddTransaction {
     if (!amt || !this.catId || !this.accId) { return; }
     this.loading = true;
     try {
-      const req = {
+      const req: CreateTransactionRequest = {
         account_id: this.accId,
         category_id: this.catId,
         type: this.type,
@@ -118,12 +139,44 @@ struct AddTransaction {
     finally { this.loading = false; }
   }
 
-  @Builder Key(key: string) {
+  @Builder Key(key: string, isPrimary?: boolean, isAction?: boolean, isOperator?: boolean) {
     Column() {
-      Text(key).fontSize(22).fontColor(COLORS.textPrimary)
-    }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-      .backgroundColor(COLORS.card).borderRadius(8)
+      if (key === '⌫') {
+        Text('⌫').fontSize(20).fontColor(isPrimary ? '#FFFFFF' : COLORS.textPrimary)
+      } else {
+        Text(key).fontSize(isPrimary || isAction || isOperator ? 18 : 22)
+          .fontColor(isPrimary ? '#FFFFFF' : COLORS.textPrimary)
+          .fontWeight(isPrimary || isAction || isOperator ? FontWeight.Medium : FontWeight.Normal)
+      }
+    }.width('100%').height(50).justifyContent(FlexAlign.Center)
+      .backgroundColor(
+        isPrimary ? COLORS.brand : (isAction ? COLORS.brandBgLight : (isOperator ? COLORS.brandBgLight : COLORS.card))
+      ).borderRadius(isPrimary ? 12 : 10)
       .onClick(() => this.onKey(key))
+  }
+
+  /** 安卓对齐 NewKeypad：4行×5列（含运算符/小数点/括号/⌫/确定） */
+  @Builder NewKeypad() {
+    Column({ space: 6 }).width('100%').padding({ left: 8, right: 8 }) {
+      ForEach([
+        ['+', '1', '2', '3', '⌫'],
+        ['-', '4', '5', '6', '清空'],
+        ['×', '7', '8', '9', '.'],
+        ['/', '(', '0', ')', '确定']
+      ], (row: string[], rIdx: number) => {
+        Row({ space: 6 }) {
+          ForEach(row, (k: string) => {
+            Column() {
+              this.Key(k,
+                k === '确定',
+                ['⌫', '清空', '+', '-', '×', '/'].includes(k),
+                ['+', '-', '×', '/', '(', ')'].includes(k)
+              )
+            }.layoutWeight(1)
+          }, (k: string) => k)
+        }.width('100%')
+      }, (row: string[]) => row.join())
+    }
   }
 
   build() {
@@ -152,7 +205,7 @@ struct AddTransaction {
               ForEach(this.visibleCats(), (c: Category) => {
                 GridItem() {
                   Column({ space: 4 }) {
-                    CategoryIcon({ icon: c.icon || '📌', bg: this.catId === c.id ? COLORS.brand : (c.color || COLORS.brandBgLight), size: 40 })
+                    CategoryIcon({ icon: c.icon || '📌', bg: this.catId === c.id ? COLORS.brand : (c.color || COLORS.brandBgLight), iconSize: 40 })
                     Text(c.name).fontSize(12).fontColor(this.catId === c.id ? COLORS.brand : COLORS.textPrimary)
                   }.width('100%').padding({ top: 8, bottom: 8 })
                     .onClick(() => this.catId = c.id)
@@ -160,29 +213,24 @@ struct AddTransaction {
               }, (c: Category) => c.id.toString())
             }.columnsTemplate('1fr 1fr 1fr 1fr 1fr').rowsGap(6).columnsGap(6)
 
-            // 上下文 chips
-            Row({ space: 10 }) {
-              Row({ space: 6 }) {
-                Text('💰').fontSize(16)
-                Text(this.accName || '选择账户').fontSize(14).fontColor(COLORS.textPrimary)
-              }.padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(COLORS.brandBgLight).borderRadius(16)
-                .onClick(() => {/* 简化：用首个账户，可扩展为选择器 */ if (this.accounts.length) { this.accId = this.accounts[0].id; this.accName = this.accounts[0].name; } })
-              Row({ space: 6 }) {
-                Text('📅').fontSize(16)
-                Text(this.date).fontSize(14).fontColor(COLORS.textPrimary)
-              }.padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(COLORS.brandBgLight).borderRadius(16)
-                .onClick(() => {
-                  DatePickerDialog.show({
-                    start: new Date('2020-01-01'), end: new Date(), selected: new Date(this.date),
-                    onAccept: (v: DatePickerResult) => { this.date = fmtDate(v.year, v.month, v.day); }
-                  });
-                })
-              Row({ space: 6 }) {
-                Text('📍').fontSize(16)
-                Text(this.location ? '已定位' : '地点').fontSize(14).fontColor(COLORS.textPrimary)
-              }.padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(COLORS.brandBgLight).borderRadius(16)
-                .onClick(() => this.requestLoc())
-            }.width('100%')
+            // 上下文：账户 + 日期
+            DropdownField({
+              label: '账户',
+              value: this.accName || '选择账户',
+              options: (this.accounts as ESObject[]).map((a: ESObject): DropdownOption => ({ name: a.name as string, id: a.id as number })),
+              onSelected: (id: number) => {
+                const list: ESObject[] = this.accounts as ESObject[];
+                const a: ESObject | undefined = list.find((x: ESObject): boolean => x.id === id);
+                if (a) { this.accId = id; this.accName = a.name as string; }
+              }
+            })
+            DateTimePickerField({ label: '日期时间', value: this.date, onValueChange: (d: string) => this.date = d })
+            // 地点
+            Row({ space: 6 }) {
+              Text('📍').fontSize(16)
+              Text(this.location ? '已定位' : '地点').fontSize(14).fontColor(COLORS.textPrimary)
+            }.padding({ left: 12, right: 12, top: 8, bottom: 8 }).backgroundColor(COLORS.brandBgLight).borderRadius(16)
+              .onClick(() => this.requestLoc())
 
             // 金额 + 备注
             Row({ space: 8 }) {
@@ -191,19 +239,12 @@ struct AddTransaction {
             }.width('100%').padding(12).backgroundColor(COLORS.card).borderRadius(12)
             TextInput({ placeholder: '备注（可选）', text: this.note }).onChange((v: string) => this.note = v)
 
-            // 键盘
-            Grid() {
-              ForEach(['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '删除'], (k: string) => {
-                GridItem() { this.Key(k) }
-              }, (k: string) => k)
-            }.columnsTemplate('1fr 1fr 1fr').rowsGap(8).columnsGap(8).width('100%').height(220)
+            // 金额键盘（对齐安卓 NewKeypad 4×5）
+            this.NewKeypad()
 
-            Row({ space: 10 }) {
-              Button('确定').layoutWeight(1).backgroundColor(COLORS.brand)
-                .onClick(() => this.submit(false))
-              Button('再记一笔').layoutWeight(1).backgroundColor(COLORS.brandBgLight).fontColor(COLORS.brand)
-                .onClick(() => this.submit(true))
-            }.width('100%')
+            Button('再记一笔').width('100%').height(44).backgroundColor(COLORS.brandBgLight)
+              .fontColor(COLORS.brand).fontWeight(FontWeight.Medium).borderRadius(12)
+              .onClick(() => this.submit(true))
             Blank().height(20)
           }.padding(12)
         }.layoutWeight(1)

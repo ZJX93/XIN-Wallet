@@ -11,6 +11,7 @@ import { InvestmentsPage } from './Investments';
 @Entry
 @Component
 struct Planning {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State tab: number = 0;
 
   @Builder TabLabel(label: string, idx: number) {

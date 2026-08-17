@@ -6,15 +6,21 @@ import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
 import { DonutChart, DonutPiece, TrendChart } from '../common/components/Charts';
-import { SectionTitle, LoadingBox, EmptyState } from '../common/components/Components';
+import { SectionTitle, LoadingBox, EmptyState, TopBar, StatKpiCard, CategoryBars } from '../common/components/Components';
 
 function ym(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 
+interface RSummary { income?: number; expense?: number; balance?: number; savingsRate?: number; transactionCount?: number; avgDailyExpense?: number; }
+interface RSlice { id?: number; name?: string; icon?: string; parentId?: number; total?: number; color?: string; }
+interface RTrend { date?: string; income?: number; expense?: number; }
+interface RData { type?: string; period?: string; label?: string; summary?: RSummary; dailyTrend?: RTrend[]; expenseByCategory?: RSlice[]; incomeByCategory?: RSlice[]; topExpenses?: object[]; budgetExecution?: object[]; compare?: object; }
+
 @Component
 export struct ReportsPage {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State type: string = 'expense';
   @State month: string = ym(new Date());
-  @State data: any = null;
+  @State data: ESObject = null;
   @State loading: boolean = false;
   @State selectedIdx: number = -1;
 
@@ -23,14 +29,19 @@ export struct ReportsPage {
   async load(): Promise<void> {
     this.loading = true;
     try {
-      const r = await Api.getReport(this.type, this.month);
-      if (r.success) this.data = r.data;
+      // 后端 /reports 的 type 是粒度(monthly/yearly/custom)，不是支出/收入维度
+      const r = await Api.getReport('monthly', this.month);
+      if (r.success && r.data) {
+        this.data = r.data as ESObject;
+      }
     } catch (e) { console.error('Report load:', (e as ApiError).message); }
     finally { this.loading = false; }
   }
 
   changeMonth(delta: number): void {
-    const [y, m] = this.month.split('-').map(Number);
+    const _parts = this.month.split('-').map(Number);
+    const y = _parts[0];
+    const m = _parts[1];
     let ny = y, nm = m + delta;
     if (nm < 1) { nm = 12; ny--; } else if (nm > 12) { nm = 1; ny++; }
     this.month = `${ny}-${String(nm).padStart(2, '0')}`;
@@ -38,21 +49,37 @@ export struct ReportsPage {
   }
 
   pieces(): DonutPiece[] {
-    const cats = (this.data?.byCategory || []) as any[];
-    return cats.map((c: any) => ({
-      name: c.name,
-      value: c.total ?? c.value ?? 0,
-      color: c.color || COLORS.brand
+    if (!this.data) return [];
+    const d: RData = this.data as RData;
+    const cats: RSlice[] = this.type === 'income'
+      ? (d.incomeByCategory || [])
+      : (d.expenseByCategory || []);
+    return cats.map((c: RSlice): DonutPiece => ({
+      name: c.name || '',
+      value: c.total ?? 0,
+      color: c.color || COLORS.brand,
+      icon: c.icon || '📌'
     }));
   }
 
   trendPoints(): number[] {
-    const t = (this.data?.trend || []) as any[];
-    return t.map((x: any) => typeof x === 'number' ? x : (x.value ?? 0));
+    if (!this.data) return [];
+    const d: RData = this.data as RData;
+    const t: RTrend[] = d.dailyTrend || [];
+    return t.map((x: RTrend): number => {
+      if (this.type === 'income') return x.income ?? 0;
+      if (this.type === 'balance') return (x.income ?? 0) - (x.expense ?? 0);
+      return x.expense ?? 0;
+    });
   }
 
   total(): number {
-    return (this.data?.total ?? 0) || this.pieces().reduce((s, p) => s + p.value, 0);
+    if (!this.data) return 0;
+    const d: RData = this.data as RData;
+    const s: RSummary = d.summary || {};
+    if (this.type === 'income') return s.income ?? 0;
+    if (this.type === 'balance') return s.balance ?? 0;
+    return s.expense ?? 0;
   }
 
   @Builder Seg() {
@@ -78,22 +105,21 @@ export struct ReportsPage {
     }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 8 })
   }
 
-  @Builder Kpi() {
-    let total = this.total();
-    let avg = this.data?.avgDaily ?? (total / 30);
-    let count = this.data?.count ?? 0;
-    Row({ space: 10 }) {
-      this.KpiCell('金额', fmtMoney(total), this.type === 'income' ? COLORS.income : COLORS.expense)
-      this.KpiCell('日均', fmtMoney(avg), COLORS.brand)
-      this.KpiCell('笔数', `${count}`, COLORS.textPrimary)
-    }.width('100%').padding({ left: 12, right: 12 })
+  reportSummary(): RSummary {
+    if (!this.data) return {};
+    const d: RData = this.data as RData;
+    return d.summary || {};
   }
 
-  @Builder KpiCell(title: string, value: string, color: string) {
-    Column({ space: 4 }) {
-      Text(title).fontSize(12).fontColor(COLORS.textSecondary)
-      Text(value).fontSize(18).fontWeight(FontWeight.Bold).fontColor(color)
-    }.layoutWeight(1).padding(12).backgroundColor(COLORS.card).borderRadius(12)
+  @Builder Kpi() {
+    Grid() {
+      GridItem() { StatKpiCard({ title: '金额', amount: this.total(), icon: this.type === 'income' ? '📈' : '📉' }) }
+      GridItem() { StatKpiCard({ title: '日均', amount: this.reportSummary().avgDailyExpense ?? (this.total() / 30), icon: '📅' }) }
+      GridItem() { StatKpiCard({ title: '笔均', amount: (this.reportSummary().transactionCount ?? 0) > 0 ? this.total() / (this.reportSummary().transactionCount as number) : 0, icon: '⚖️' }) }
+      GridItem() { StatKpiCard({ title: '结余', amount: this.reportSummary().balance ?? 0, icon: '🪙' }) }
+    }
+    .columnsTemplate('1fr 1fr').rowsTemplate('1fr 1fr').rowsGap(10).columnsGap(10)
+    .width('100%').padding({ left: 12, right: 12 })
   }
 
   @Builder DonutBlock() {
@@ -106,23 +132,12 @@ export struct ReportsPage {
           data: this.pieces(),
           selectedIndex: this.selectedIdx,
           centerTitle: this.type === 'income' ? '总收入' : '总支出',
-          centerValue: fmtMoney(this.total())
+          centerValue: fmtMoney(this.total()),
+          onSliceClick: (i: number) => { this.selectedIdx = i; }
         })
         // 分类条形排行
-        Column({ space: 8 }) {
-          ForEach(this.pieces(), (p: DonutPiece, i: number) => {
-            Column({ space: 4 }) {
-              Row() {
-                Text(p.name).fontSize(14).layoutWeight(1)
-                Text(fmtMoney(p.value)).fontSize(14).fontColor(COLORS.textPrimary)
-              }
-              Row() {
-                Row().width(`${this.total() > 0 ? (p.value / this.total() * 100) : 0}%`)
-                  .height(6).backgroundColor(p.color).borderRadius(3)
-              }.width('100%').backgroundColor(COLORS.divider).borderRadius(3)
-            }.onClick(() => this.selectedIdx = i)
-          }, (p: DonutPiece) => p.name)
-        }.padding(12)
+        CategoryBars({ items: this.pieces(), onItemClick: (i: number) => { this.selectedIdx = i; } })
+          .padding(12)
       }
     }.padding(12).backgroundColor(COLORS.card).borderRadius(14).margin(12)
   }
@@ -159,11 +174,10 @@ export struct ReportsPage {
 @Entry
 @Component
 struct Reports {
-  @State page: ReportsPage = new ReportsPage();
   build() {
     Column() {
       TopBar({ title: '统计', showBack: false })
-      this.page
+      ReportsPage()
     }.width('100%').height('100%')
   }
 }

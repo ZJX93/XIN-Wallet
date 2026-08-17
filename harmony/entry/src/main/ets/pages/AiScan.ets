@@ -2,14 +2,14 @@
  * AI 智能记账（对齐安卓 AiScanScreen.kt）：OCR 配置提示 + 选图识别 + 逐条确认 + 批量入账。
  */
 import router from '@ohos.router';
-import { common } from '@ohos.app.ability.common';
+import common from '@ohos.app.ability.common';
 import picker from '@ohos.file.picker';
 import fs from '@ohos.file.fs';
 import buffer from '@ohos.buffer';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
 import { COLORS, fmtMoney } from '../common/theme';
-import { TopBar, LoadingBox, CategoryIcon } from '../common/components/Components';
+import { TopBar, LoadingBox, CategoryIcon, EmptyState } from '../common/components/Components';
 import { TransactionItem, Category } from '../common/models';
 
 interface ScanRow { picked: boolean; id: number; merchant: string; amount: number; type: string; categoryId: number; date: string; note: string; }
@@ -17,9 +17,10 @@ interface ScanRow { picked: boolean; id: number; merchant: string; amount: numbe
 @Entry
 @Component
 struct AiScan {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State ocrConfigured: boolean = true;
   @State rows: ScanRow[] = [];
-  @State accounts: any[] = [];
+  @State accounts: ESObject[] = [];
   @State categories: Category[] = [];
   @State loading: boolean = false;
   @State picking: boolean = false;
@@ -29,9 +30,12 @@ struct AiScan {
   aboutToAppear(): void { this.init(); }
   async init(): Promise<void> {
     try {
-      const [c, a, cat] = await Promise.all([Api.getOcrConfig(), Api.getAccounts(), Api.getCategories()]);
-      if (c.success) this.ocrConfigured = !!(c.data as any)?.configured;
-      if (a.success) this.accounts = (a.data as any)?.accounts || [];
+      const _r = await Promise.all([Api.getOcrConfig(), Api.getAccounts(), Api.getCategories()]);
+      const c = _r[0];
+      const a = _r[1];
+      const cat = _r[2];
+      if (c.success) this.ocrConfigured = !!(c.data as ESObject)?.configured;
+      if (a.success) this.accounts = (a.data as ESObject)?.accounts || [];
       if (cat.success) this.categories = cat.data || [];
     } catch (e) { /* ignore */ }
   }
@@ -52,8 +56,9 @@ struct AiScan {
         const b64 = buffer.from(buf).toString('base64');
         this.loading = true;
         const r = await Api.ocr(b64);
-        const items = (r.data as any)?.transactions || (r.data as any)?.items || [];
-        this.rows = items.map((t: any, i: number) => ({
+        const rd: ESObject = r.data as ESObject;
+        const items: ESObject[] = ((rd.transactions as ESObject[]) || (rd.items as ESObject[]) || []);
+        this.rows = items.map((t: ESObject, i: number): ScanRow => ({
           picked: true,
           id: i,
           merchant: t.note || t.merchant || t.category?.name || '消费',
@@ -125,7 +130,7 @@ struct AiScan {
                     .onClick(() => r.type = r.type === 'income' ? 'expense' : 'income')
                   Text('选择分类').fontSize(12).fontColor(COLORS.brand)
                     .onClick(() => {/* 简化为切换首个分类 */ r.categoryId = this.categories.find(c => c.type === r.type)?.id || r.categoryId; })
-                  TextInput({ placeholder: '金额', text: String(r.amount), type: InputType.Number })
+                  TextInput({ placeholder: '金额', text: String(r.amount) }).type(InputType.Number)
                     .layoutWeight(1).onChange((v: string) => r.amount = Number(v) || 0)
                 }
               }.width('100%').padding(12).backgroundColor(COLORS.card).borderRadius(12)

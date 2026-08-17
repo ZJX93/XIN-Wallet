@@ -1,7 +1,7 @@
 /**
  * 数据管理（对齐安卓 DataManagementScreen.kt）：导出 CSV / 导入 CSV / 导出 JSON。
  */
-import { common } from '@ohos.app.ability.common';
+import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
@@ -11,6 +11,7 @@ import { TopBar, LoadingBox } from '../common/components/Components';
 @Entry
 @Component
 struct DataManagement {
+  @StorageProp('themeMode') themeMode: string = 'system';
   @State loading: boolean = false;
   @State msg: string = '';
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;

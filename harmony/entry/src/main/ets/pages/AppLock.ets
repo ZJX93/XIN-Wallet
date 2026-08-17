@@ -4,9 +4,9 @@
  * 注：全屏解锁覆盖层（mode=Unlock）可在 Main 外层叠加，本文件先提供设置能力。
  */
 import router from '@ohos.router';
-import { common } from '@ohos.app.ability.common';
+import common from '@ohos.app.ability.common';
 import dataPreferences from '@ohos.data.preferences';
-import cryptoFramework from '@ohos.cryptoFramework';
+import cryptoFramework from '@ohos.security.cryptoFramework';
 import util from '@ohos.util';
 import { COLORS } from '../common/theme';
 import { TopBar, LoadingBox } from '../common/components/Components';
@@ -22,7 +22,8 @@ async function sha256(s: string): Promise<string> {
 @Entry
 @Component
 struct AppLock {
-  @State enabled: boolean = false;
+  @StorageProp('themeMode') themeMode: string = 'system';
+  @State isEnabled: boolean = false;
   @State hasPin: boolean = false;
   @State showSet: boolean = false;
   @State step: number = 1;        // 1 输入 / 2 确认
@@ -35,8 +36,8 @@ struct AppLock {
 
   async load(): Promise<void> {
     const prefs = await dataPreferences.getPreferences(this.ctx, 'xinwallet_session');
-    this.enabled = (prefs.get('appLockEnabled', false) as boolean);
-    const h = (prefs.get('appLockPinHash', '') as string);
+    this.isEnabled = (await prefs.get('appLockEnabled', false)) as boolean;
+    const h = (await prefs.get('appLockPinHash', '')) as string;
     this.hasPin = !!h;
   }
 
@@ -47,7 +48,7 @@ struct AppLock {
   }
 
   async toggleEnable(v: boolean): Promise<void> {
-    this.enabled = v;
+    this.isEnabled = v;
     await this.put('appLockEnabled', v);
     if (v && !this.hasPin) this.openSet();
   }
@@ -90,20 +91,32 @@ struct AppLock {
   }
 
   @Builder KeyPad() {
-    Grid() {
-      ForEach(['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '删除'], (k: string) => {
-        GridItem() {
-          Text(k).fontSize(22).fontColor(COLORS.textPrimary)
-            .width('100%').height('100%').textAlign(TextAlign.Center)
-            .onClick(() => {
-              if (k === '清空') this.onClear();
-              else if (k === '删除') this.onDel();
-              else this.onDigit(k);
-            })
-        }
-      }, (k: string) => k)
-    }.columnsTemplate('1fr 1fr 1fr').rowsGap(8).columnsGap(8)
-      .width('80%').height(220).margin({ top: 12 })
+    Column() {
+      Column({ space: 8 }).width('80%') {
+        ForEach([
+          ['1', '2', '3'],
+          ['4', '5', '6'],
+          ['7', '8', '9'],
+          ['清空', '0', '⌫']
+        ], (row: string[]) => {
+          Row({ space: 8 }) {
+            ForEach(row, (k: string) => {
+              Column() {
+                Text(k === '⌫' ? '⌫' : k).fontSize(20).fontColor(COLORS.textPrimary)
+                  .fontWeight((k === '清空' || k === '⌫') ? FontWeight.Medium : FontWeight.Normal)
+              }.width('100%').height(52).justifyContent(FlexAlign.Center)
+              .backgroundColor((k === '清空' || k === '⌫') ? COLORS.brandBgLight : COLORS.card)
+              .borderRadius(14)
+              .onClick(() => {
+                if (k === '清空') this.onClear();
+                else if (k === '⌫') this.onDel();
+                else this.onDigit(k);
+              })
+            }, (k: string) => k)
+          }.width('100%')
+        }, (row: string[]) => row.join())
+      }
+    }.margin({ top: 12 }).width('100%')
   }
 
   build() {
@@ -120,7 +133,7 @@ struct AppLock {
         Column({ space: 0 }) {
           Row({ space: 12 }) {
             Text('启用应用锁').fontSize(15).layoutWeight(1).fontColor(COLORS.textPrimary)
-            Toggle({ type: ToggleType.Switch, isOn: this.enabled })
+            Toggle({ type: ToggleType.Switch, isOn: this.isEnabled })
               .onChange((v: boolean) => this.toggleEnable(v))
           }.width('100%').padding({ top: 16, bottom: 16, left: 16, right: 16 })
             .backgroundColor(COLORS.card)

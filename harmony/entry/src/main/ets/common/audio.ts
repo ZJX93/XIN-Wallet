@@ -63,7 +63,7 @@ export async function startRecord(path: string): Promise<void> {
   fs.writeSync(fileStream.fd, buildWavHeader(0));
   capturer.on('readData', (data: ArrayBuffer) => {
     if (data && data.byteLength > 0 && fileStream) {
-      fs.writeSync(fileStream.fd, data, { position: 44 + pcmSize });
+      fs.writeSync(fileStream.fd, data, { offset: 44 + pcmSize });
       pcmSize += data.byteLength;
     }
   });
@@ -77,7 +77,7 @@ export async function stopRecord(): Promise<string> {
   }
   if (fileStream) {
     // 回写正确的 WAV 头
-    fs.writeSync(fileStream.fd, buildWavHeader(pcmSize), { position: 0 });
+    fs.writeSync(fileStream.fd, buildWavHeader(pcmSize), { offset: 0 });
     fs.closeSync(fileStream.fd);
     fileStream = null;
   }
