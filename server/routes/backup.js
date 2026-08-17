@@ -214,15 +214,15 @@ router.get('/export', async (req, res) => {
             db.query('SELECT name, color, icon FROM tags WHERE user_id = $1 AND book_id = $2', [userId, bookId]),
             db.query('SELECT name, period_type, amount, start_date, end_date FROM budgets WHERE user_id = $1 AND book_id = $2', [userId, bookId]),
             db.query(
-                `SELECT name, type, direction, creditor, principal, remaining, interest_rate, term_months,
+                `SELECT d.name, d.type, direction, creditor, principal, remaining, interest_rate, term_months,
                         method, monthly_payment, start_date, due_date, billing_day, payment_day, min_payment,
-                        status, note, a.name AS account_name
+                        d.status, note, a.name AS account_name
                    FROM debts d LEFT JOIN accounts a ON d.account_id = a.id
                   WHERE d.user_id = $1 AND d.book_id = $2`,
                 [userId, bookId]
             ),
             db.query(
-                `SELECT name, target_amount, current_amount, icon, note, status, a.name AS account_name
+                `SELECT g.name, target_amount, current_amount, g.icon, note, g.status, a.name AS account_name
                    FROM savings_goals g LEFT JOIN accounts a ON g.account_id = a.id
                   WHERE g.user_id = $1 AND g.book_id = $2`,
                 [userId, bookId]
