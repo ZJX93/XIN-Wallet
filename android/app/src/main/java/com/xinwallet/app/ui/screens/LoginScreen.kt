@@ -28,9 +28,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.ContentType
-import androidx.compose.ui.semantics.contentType
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,7 +58,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         serverUrl = if (isPlaceholderUrl(saved)) "" else saved
         showServer = serverUrl.isBlank()
         vm.loadConfig()
-        // 记住用户名：预填上次成功登录的用户名（密码由系统 Autofill 自动填充）
+        // 记住用户名：预填上次成功登录的用户名（密码由系统 Autofill 默认行为处理）
         if (username.isBlank()) username = AppContainer.sessionManager.lastUsername()
     }
     LaunchedEffect(state.success) {
@@ -119,11 +116,9 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
             }
 
-            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-                .semantics { contentType = ContentType.Username })
+            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
-                .semantics { contentType = ContentType.Password })
+            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
