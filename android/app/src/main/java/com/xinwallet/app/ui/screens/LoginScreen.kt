@@ -8,9 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.ui.text.input.AutoCompleteType
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -21,6 +19,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,6 +29,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.autofill.autofill
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -54,6 +59,24 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     var showServer by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // 系统 Autofill（账号/密码）：注册节点供 Android 密码管理器识别并自动填充
+    val autofill = LocalAutofill.current
+    val autofillTree = LocalAutofillTree.current
+    val usernameAutofillNode = remember {
+        AutofillNode(autofillTypes = listOf(AutofillType.Username), onFill = { username = it })
+    }
+    val passwordAutofillNode = remember {
+        AutofillNode(autofillTypes = listOf(AutofillType.Password), onFill = { password = it })
+    }
+    DisposableEffect(autofillTree) {
+        autofillTree += usernameAutofillNode
+        autofillTree += passwordAutofillNode
+        onDispose {
+            autofillTree -= usernameAutofillNode
+            autofillTree -= passwordAutofillNode
+        }
+    }
 
     LaunchedEffect(Unit) {
         val saved = AppContainer.normalizeBaseUrl(AppContainer.sessionManager.baseUrl())
@@ -118,9 +141,13 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
             }
 
-            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, keyboardOptions = KeyboardOptions(autoComplete = AutoCompleteType.Username), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                .onGloballyPositioned { usernameAutofillNode.boundingBox = it.boundsInWindow() }
+                .autofill(autofill, usernameAutofillNode))
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoComplete = AutoCompleteType.Password), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth()
+                .onGloballyPositioned { passwordAutofillNode.boundingBox = it.boundsInWindow() }
+                .autofill(autofill, passwordAutofillNode))
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
