@@ -10,7 +10,7 @@
 const { sumAmounts, subtractAmounts, toCents, percentOf } = require('./money');
 
 /**
- * 单持仓年化收益率（基于买入日持有期；前端展示为「七日年化」）
+ * 单持仓年化收益率（基于买入日持有期的复合年化 CAGR）
  * 公式: ((当前值/成本)^(365/持有天数) - 1) * 100
  *
  * 可靠性约束：
