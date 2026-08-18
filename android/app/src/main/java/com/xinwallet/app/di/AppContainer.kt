@@ -80,6 +80,13 @@ object AppContainer {
     /** 全局认证过期事件：AuthInterceptor 在 401 且刷新失败时发射，AppRoot 收集后回到登录页 */
     val authExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
+    /**
+     * 回到前台信号：AppRoot 在 Lifecycle ON_START 且已登录时发射，
+     * 各常驻页（首页/账单/统计/理财/账户/我的）收集后重新拉取数据，
+     * 避免「后台回来页面停留在过期数据、且因 token 过期无法刷新」。
+     */
+    val onForeground = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
 

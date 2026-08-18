@@ -60,10 +60,25 @@ fun AppRoot() {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                scope.launch {
-                    if (lockConfigured()) needUnlock = true
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    // 退到后台：若启用了应用锁，回来时重新要求解锁
+                    scope.launch {
+                        if (lockConfigured()) needUnlock = true
+                    }
                 }
+                Lifecycle.Event.ON_START -> {
+                    // 回到前台：已登录则主动续期 access token（冷启动有 validateSession，
+                    // 但单纯后台返回不会续期；token 过期后首屏请求 401 会导致页面空白/掉登录）。
+                    // 续期后再广播 onForeground，让可见页重新拉取数据。
+                    if (loggedIn == true) {
+                        scope.launch {
+                            AppContainer.authRepository.refresh()
+                            AppContainer.onForeground.emit(Unit)
+                        }
+                    }
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

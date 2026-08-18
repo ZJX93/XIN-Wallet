@@ -58,6 +58,10 @@ fun InvestmentsContent(navController: NavHostController, contentPadding: Padding
     val state by vm.state.collectAsState()
 
     LaunchedEffect(Unit) { vm.load() }
+    // 回到前台（从后台返回）：重新拉取理财数据
+    LaunchedEffect(Unit) {
+        AppContainer.onForeground.collect { vm.load() }
+    }
 
     when {
         state.loading -> LoadingBox()

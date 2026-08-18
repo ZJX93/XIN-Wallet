@@ -81,6 +81,10 @@ fun AccountsScreen(navController: NavHostController) {
     var confirmDelete by remember { mutableStateOf<Account?>(null) }
 
     LaunchedEffect(Unit) { vm.load() }
+    // 回到前台（从后台返回）：重新拉取账户数据
+    LaunchedEffect(Unit) {
+        AppContainer.onForeground.collect { vm.load() }
+    }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
     LaunchedEffect(state.toast) { state.toast?.let { snackbar.showSnackbar(it); vm.consumeToast() } }
     LaunchedEffect(state.formDone) {

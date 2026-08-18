@@ -126,6 +126,14 @@ fun HomeScreen(navController: NavHostController) {
     LaunchedEffect(calYear, calMonth) {
         vm.loadCalendar(calYear, calMonth)
     }
+    // 回到前台（从后台返回）：重新拉取首页数据，避免停留在过期数据 / 因 token 过期无法刷新
+    LaunchedEffect(Unit) {
+        AppContainer.onForeground.collect {
+            vm.loadDashboard()
+            vm.loadTodayBills()
+            vm.loadCalendar(calYear, calMonth)
+        }
+    }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
 
     BookSwitcherSheet(

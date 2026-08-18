@@ -119,6 +119,10 @@ fun ReportsScreen(navController: NavHostController) {
     // 当前账本切换后重新拉取报表
     val curBookId = AppContainer.currentBookId.collectAsState().value
     LaunchedEffect(curBookId) { vm.reload() }
+    // 回到前台（从后台返回）：重新拉取报表数据
+    LaunchedEffect(Unit) {
+        AppContainer.onForeground.collect { vm.reload() }
+    }
 
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
 

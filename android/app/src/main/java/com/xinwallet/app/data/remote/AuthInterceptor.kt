@@ -4,6 +4,8 @@ import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.RefreshRequest
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -18,6 +20,14 @@ class AuthInterceptor(
     private val apiProvider: () -> ApiService?
 ) : Interceptor {
 
+    /**
+     * 刷新单飞锁：并发 401 时多个请求会同时尝试刷新 token。
+     * 若服务端对 refreshToken 做「刷新即轮换/失效旧 token」，并发刷新会让后到的请求
+     * 拿到已失效的旧 refreshToken -> 刷新失败 -> 误清会话登出（表现就是「后台回来页面掉了/不能刷新」）。
+     * 用 Mutex 串行化，保证同一时刻只有一个刷新在进行，后续请求复用最新 refreshToken。
+     */
+    private val refreshMutex = Mutex()
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val token = runBlocking { session.accessToken() }
@@ -30,7 +40,7 @@ class AuthInterceptor(
 
         val response = chain.proceed(authed)
         if (response.code == 401 && original.header("Authorization") != null) {
-            val refreshed = runBlocking { tryRefresh() }
+            val refreshed = runBlocking { refreshTokenSerialized() }
             response.close()
             if (refreshed != null) {
                 val retry = original.newBuilder().header("Authorization", "Bearer $refreshed").build()
@@ -43,6 +53,11 @@ class AuthInterceptor(
             }
         }
         return response
+    }
+
+    /** 串行化刷新，避免并发 401 的 refreshToken 竞态误登出 */
+    private suspend fun refreshTokenSerialized(): String? = refreshMutex.withLock {
+        tryRefresh()
     }
 
     private suspend fun tryRefresh(): String? {
