@@ -10,16 +10,14 @@
 const { sumAmounts, subtractAmounts, toCents, percentOf } = require('./money');
 
 /**
- * 单持仓年化收益率（基于买入日持有期）
+ * 单持仓年化收益率（基于买入日持有期；前端展示为「七日年化」）
  * 公式: ((当前值/成本)^(365/持有天数) - 1) * 100
  *
- * 可靠性约束：年化对极短持有期会爆炸式外推（如持有 8 天、区间收益 +9%，
- * 几何年化会被放大到 6000%+），这种数字没有参考意义且明显"不符合逻辑"。
- * 因此以下情况返回 null（前端显示为 '--'，而非一个荒谬的固定数值）：
- *  - 成本/市值非正、买入日缺失或非法
- *  - 当天或未来买入（尚无持有期）
- *  - 持有不足 7 天（样本太短，年化不可信）
- *  - 计算结果超出 ±1000%（仍属极端外推，不可信）
+ * 可靠性约束：
+ *  - 成本/市值非正、买入日缺失或非法 → null
+ *  - 当天或未来买入（尚无持有期） → null
+ *  - 持有不足 7 天（样本太短，年化无意义） → null
+ *  - 计算结果超出 ±100000%（仍属极端外推，超过前端展示上限） → null
  */
 function annualizedRate(totalCost, currentValue, buyDate) {
   const cost = parseFloat(totalCost);
@@ -34,7 +32,7 @@ function annualizedRate(totalCost, currentValue, buyDate) {
   if (days < 7) return null;           // 持有过短：年化无意义
 
   const ann = (Math.pow(value / cost, 365 / days) - 1) * 100;
-  if (!isFinite(ann) || Math.abs(ann) > 1000) return null;
+  if (!isFinite(ann) || Math.abs(ann) > 100000) return null;
   return Math.round(ann * 100) / 100;
 }
 
@@ -83,8 +81,8 @@ function calcPortfolioMetrics(investments) {
   const rawAnn = (tCost > 0 && tVal > 0 && days > 0)
     ? (Math.pow(tVal / tCost, 365 / days) - 1) * 100
     : null;
-  // 组合年化同样受极端值约束：超出 ±1000% 视为不可信，返回 null（前端显示 '--'）
-  const annualized = (rawAnn != null && isFinite(rawAnn) && Math.abs(rawAnn) <= 1000)
+  // 组合年化同样受极端值约束：超出 ±100000%（前端展示上限）视为不可信，返回 null（前端显示 '--'）
+  const annualized = (rawAnn != null && isFinite(rawAnn) && Math.abs(rawAnn) <= 100000)
     ? Math.round(rawAnn * 100) / 100
     : null;
 

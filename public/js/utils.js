@@ -10,11 +10,12 @@ function escapeHtml(s) {
 }
 
 // 货币格式化（统一：使用 Intl.NumberFormat，兼容大量数字）
+// 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 → "-¥74.14"
 const _moneyFmt = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function fmt(n) {
     const v = Number(n);
     if (!isFinite(v)) return '¥0.00';
-    return '¥' + _moneyFmt.format(v);
+    return (v < 0 ? '-' : '') + '¥' + _moneyFmt.format(Math.abs(v));
 }
 
 // CSV 单元格转义：含逗号/引号/换行的字段用双引号包裹并转义内部引号

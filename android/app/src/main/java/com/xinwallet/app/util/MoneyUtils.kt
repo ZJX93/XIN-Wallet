@@ -8,7 +8,8 @@ import java.util.Locale
 
 fun formatMoney(value: Double): String {
     val df = DecimalFormat("#,##0.00")
-    return "¥" + df.format(value)
+    // 负数标准格式：-¥X.XX（负号在货币符号前），例如 -74.14 → "-¥74.14"
+    return (if (value < 0) "-" else "") + "¥" + df.format(kotlin.math.abs(value))
 }
 
 fun formatMoneySigned(value: Double): String {

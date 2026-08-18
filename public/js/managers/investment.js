@@ -467,7 +467,7 @@ const InvestmentManager = {
                 </div>
                 <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
                 <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
-                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
+                <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>七日年化 ${fmtPct(i.annualizedRate)}</span></div>
                 <div class="goal-actions">
                     <button class="btn btn-ghost" data-action="inv-detail" data-id="${i.id}" title="详情">🔍</button>
                     <button class="btn btn-ghost" data-action="refresh-quote" data-id="${i.id}" title="刷新行情">🔄</button>
@@ -600,7 +600,7 @@ const InvestmentManager = {
                 <div><span class="stat-label">当前市值</span><span class="inv-detail-val">${fmt(inv.current_value)}</span></div>
                 <div><span class="stat-label">浮动盈亏</span><span class="inv-detail-val ${profitCls}">${fmt(inv.profit)}</span></div>
                 <div><span class="stat-label">收益率</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.profit_rate)}</span></div>
-                <div><span class="stat-label">年化</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.annualizedRate)}</span></div>
+                <div><span class="stat-label">七日年化</span><span class="inv-detail-val ${profitCls}">${fmtPct(inv.annualizedRate)}</span></div>
                 <div><span class="stat-label">持有数量</span><span class="inv-detail-val">${inv.quantity}</span></div>
             </div>
             ${inv.note ? `<div class="inv-detail-note">📝 ${escapeHtml(inv.note)}</div>` : ''}
@@ -626,7 +626,7 @@ const InvestmentManager = {
             </div>
             <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
             <div class="goal-progress"><div class="goal-progress-fill ${i.profit >= 0 ? 'profit-positive' : 'profit-negative'}" style="width:${progress}%"></div></div>
-            <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>年化 ${fmtPct(i.annualizedRate)}</span></div>
+            <div class="goal-amounts"><span class="goal-pct ${profitCls}">${fmtPct(i.profit_rate)}</span><span>七日年化 ${fmtPct(i.annualizedRate)}</span></div>
         </div>`;
     },
     openInvGrid(typeName) {
