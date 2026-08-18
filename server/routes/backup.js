@@ -12,6 +12,7 @@ const ExcelJS = require('exceljs');
 const db = require('../db');
 const { success, fail, handleServerError, computeAccountBalance } = require('./_helpers');
 const { toAmount } = require('../validate');
+const { recomputeInvestmentPosition } = require('./transactions');
 
 // 备份文件识别标记：导入时校验，避免误读普通 xlsx
 const BACKUP_MARK = '鑫钱包账本备份';
@@ -21,6 +22,7 @@ const BACKUP_VERSION = 1;
 const SHEET_CONFIG = '账本配置页';
 const SHEET_ACCOUNTS = '账户页';
 const SHEET_TX = '账单流水页';
+const SHEET_INV_TX = '理财流水页'; // 可选工作表：原始理财交易流水（导入时据此复现，而非只写计算快照）
 
 // 各工作表内的「区段标题」（解析时据此切换区块）
 const CONFIG_SECTIONS = ['账本', '分类', '标签', '预算', '债务', '储蓄目标'];
@@ -109,6 +111,11 @@ function buildWorkbook(data) {
     const txRows = (data.transactions || []).map(t => [
         fmtDateTime(t.date) || fmtDate(t.date), t.type_label, t.amount, t.account, t.category || '', t.note || '', t.counterparty || ''
     ]);
+    // 理财交易流水：原始买卖/红利记录，导入时据此复现（而非合成单笔建仓）。
+    const invTxRows = (data.investmentTxns || []).map(t => [
+        t.investment_name || '', t.account_name || '', t.type, fmtDate(t.date) || fmtDate(t.date),
+        t.amount, t.price, t.quantity, t.fee, t.note || ''
+    ]);
 
     // ---- Sheet 1: 账本配置页 ----
     const cfg = wb.addWorksheet(SHEET_CONFIG);
@@ -134,6 +141,11 @@ function buildWorkbook(data) {
     const tx = wb.addWorksheet(SHEET_TX);
     tx.addRow([SHEET_TX]);
     addSection(tx, TX_SECTION, ['时间', '类型', '金额', '账户', '分类', '备注', '对方账户'], txRows);
+
+    // ---- Sheet 4: 理财流水页（可选，旧备份无此表则导入时回退到合成建仓）----
+    const invTx = wb.addWorksheet(SHEET_INV_TX);
+    invTx.addRow([SHEET_INV_TX]);
+    addSection(invTx, '理财流水', ['持仓名称', '关联账户', '类型', '日期', '金额', '价格', '数量', '手续费', '备注'], invTxRows);
 
     return wb;
 }
@@ -183,11 +195,15 @@ function parseWorkbook(buf) {
         const config = parseSections(cfgWs, CONFIG_SECTIONS);
         const accounts = parseSections(accWs, ACCOUNT_SECTIONS);
         const tx = parseSections(txWs, [TX_SECTION]);
+        // 理财流水页为可选工作表：旧备份（无此表）导入时回退到合成建仓。
+        const invTxWs = wb.getWorksheet(SHEET_INV_TX);
+        const invTx = invTxWs ? parseSections(invTxWs, ['理财流水']) : {};
         return {
             version: cellNum(cfgWs.getRow(2).getCell(2).value) || BACKUP_VERSION,
             bookName: (config['账本'] && config['账本'][0] && config['账本'][0]['名称']) || '',
             config,
             accounts,
+            investmentTxns: (invTx['理财流水'] || []),
             transactions: (tx[TX_SECTION] || [])
         };
     });
@@ -201,7 +217,7 @@ router.get('/export', async (req, res) => {
         const userId = req.userId;
         const bookId = req.bookId;
 
-        const [book, cats, tags, budgets, debts, goals, accounts, investments, incExp, transfers] = await Promise.all([
+        const [book, cats, tags, budgets, debts, goals, accounts, investments, investmentTxns, incExp, transfers] = await Promise.all([
             db.queryOne('SELECT name, icon, color, is_default FROM books WHERE id = $1 AND user_id = $2', [bookId, userId]),
             db.query(
                 `SELECT c.code, c.name, c.type, c.icon, c.color, c.is_system,
@@ -238,6 +254,16 @@ router.get('/export', async (req, res) => {
                    FROM investments i LEFT JOIN accounts a ON i.account_id = a.id
                    LEFT JOIN investment_types it ON i.investment_type_id = it.id
                   WHERE i.user_id = $1 AND i.book_id = $2`,
+                [userId, bookId]
+            ),
+            db.query(
+                `SELECT it.type, CAST(it.date AS CHAR(10)) AS date, it.amount, it.price, it.quantity, it.fee, it.note,
+                       i.name AS investment_name, a.name AS account_name
+                   FROM investment_transactions it
+                   LEFT JOIN investments i ON it.investment_id = i.id
+                   LEFT JOIN accounts a ON i.account_id = a.id
+                  WHERE it.user_id = $1 AND it.book_id = $2
+                  ORDER BY i.name, it.date ASC, it.id ASC`,
                 [userId, bookId]
             ),
             db.query(
@@ -281,6 +307,7 @@ router.get('/export', async (req, res) => {
             savings_goals: goals,
             accounts: accounts,
             investments: investments,
+            investmentTxns: investmentTxns,
             transactions
         });
 
@@ -304,7 +331,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
         } catch (e) {
             return res.status(400).json(fail(e.message || '备份文件解析失败'));
         }
-        const { config, accounts, transactions } = parsed;
+        const { config, accounts, transactions, investmentTxns } = parsed;
         const userId = req.userId;
         const bookId = req.bookId;
 
@@ -455,6 +482,15 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
 
             // 3) 理财持仓
+            // 按 (持仓名称|关联账户) 归集原始理财流水：导入时若有真实流水则据此复现，
+            // 否则回退到合成单笔「导入建仓」使快照闭合（兼容旧备份/手动持仓）。
+            const invTxKey = (name, acct) => `${String(name || '').trim()}|${acct || ''}`;
+            const invTxByKey = {};
+            for (const f of (investmentTxns || [])) {
+                const key = invTxKey(f['持仓名称'], f['关联账户']);
+                if (!f || !String(f['持仓名称'] || '').trim()) continue;
+                (invTxByKey[key] = invTxByKey[key] || []).push(f);
+            }
             for (const i of (accounts['理财持仓'] || [])) {
                 if (!i || !String(i['名称'] || '').trim()) continue;
                 const aid = i['关联账户'] ? acMap[i['关联账户']] : null;
@@ -475,11 +511,29 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 );
                 const newInvId = ins && ins[0] && ins[0].id;
                 imported.investments++;
-                // 补建仓流水，使 investment_transactions 与持仓快照闭合：
-                // 系统持仓的唯一真相来自 investment_transactions（recomputeInvestmentPosition 仅按流水重算），
-                // 若不补，导入后流水为空，删除某笔加减仓台账交易触发回滚重算 / 清仓重算时持仓会被清零。
+                // 系统持仓的唯一真相来自 investment_transactions（recomputeInvestmentPosition 仅按流水重算）。
+                // 优先复现原始流水：逐笔写入后按净本金口径重算，得到与线上一致的持仓（含做T/负成本）；
+                // 无原始流水则合成单笔「导入建仓」使快照闭合，删除某笔交易触发重算时也不会清零。
                 const q0 = cellNum(i['数量']) || 0;
-                if (newInvId && q0 > 0) {
+                const flows = invTxByKey[invTxKey(i['名称'], i['关联账户'])];
+                if (newInvId && flows && flows.length) {
+                    for (const f of flows) {
+                        const ftype = String(f['类型'] || '').trim();
+                        const allowed = ['buy', 'sell', 'reinvest', 'dividend', 'interest'];
+                        const type = allowed.includes(ftype) ? ftype : 'buy';
+                        const fdate = fmtDate(f['日期']) || fmtDate(i['买入日期']) || new Date().toISOString().slice(0, 10);
+                        await conn.query(
+                            `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                            [
+                                userId, bookId, newInvId, type,
+                                cellNum(f['金额']) || 0, cellNum(f['价格']) || 0, cellNum(f['数量']) || 0,
+                                fdate, cellNum(f['手续费']) || 0, String(f['备注'] || '')
+                            ]
+                        );
+                    }
+                    await recomputeInvestmentPosition(conn, newInvId, userId);
+                } else if (newInvId && q0 > 0) {
                     await conn.query(
                         `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
                          VALUES ($1, $2, $3, 'buy', $4, $5, $6, $7, '导入建仓')`,

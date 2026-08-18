@@ -13,6 +13,8 @@ const {
   fetchQuoteByCategory,
   fetchPriceForInvestment
 } = require('../services/market-data');
+const transactionsRouter = require('./transactions');
+const recomputeInvestmentPosition = transactionsRouter.recomputeInvestmentPosition;
 
 const router = express.Router();
 
@@ -200,6 +202,19 @@ router.get('/investments', async (req, res) => {
             ? `(i.status = 'holding' OR i.status = 'sold')`
             : `(i.status = 'holding' OR (i.status = 'sold' AND i.sold_date = ?))`;
         const whereParams = includeSold ? [req.userId, req.bookId] : [req.userId, req.bookId, todayStr];
+
+        // 做T隔夜归档：holding 且数量已为 0、最后交易日期 < 今天的持仓，自动标记为 sold + sold_date=最后交易日期。
+        // 当天做T卖到 0 时仍保持 holding，列表继续显示；隔夜才归档，支持连贯计算。
+        await db.query(
+            `UPDATE investments i
+             SET status='sold',
+                 sold_date = (SELECT MAX(CAST(date AS DATE)) FROM investment_transactions WHERE investment_id = i.id)
+             WHERE i.user_id = ? AND i.book_id = ?
+               AND i.status = 'holding'
+               AND i.quantity = 0
+               AND (SELECT MAX(CAST(date AS DATE)) FROM investment_transactions WHERE investment_id = i.id) < ?`,
+            [req.userId, req.bookId, todayStr]
+        );
 
         const investments = await db.query(
             `SELECT i.*, it.name as type_name, it.icon as type_icon, it.risk_level as type_risk_level,
@@ -413,11 +428,11 @@ router.post('/investments/:id/transactions', async (req, res) => {
             [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, parseFloat(fee) || 0, note || '']
         );
 
-        // 如果是卖出，更新持仓
+        // 如果是卖出，更新持仓（净投入本金口径：成本按回款全额扣减，与 recompute 一致）
         if (type === 'sell') {
             await db.query(
-                'UPDATE investments SET quantity = quantity - $1, current_value = current_value - $2 WHERE id = $3 AND user_id = $4',
-                [parseFloat(quantity), parseFloat(amount), investmentId, req.userId]
+                'UPDATE investments SET quantity = quantity - $1, total_cost = total_cost - $2, current_value = current_value - $3 WHERE id = $4 AND user_id = $5',
+                [parseFloat(quantity), parseFloat(amount), parseFloat(amount), investmentId, req.userId]
             );
         }
 
@@ -503,6 +518,51 @@ router.get('/investments/:id/transactions', async (req, res) => {
     }
 });
 
+// 删除理财交易记录（加减仓流水），并同步删除关联台账交易、重算持仓与账户余额
+router.delete('/investments/:id/transactions/:txnId', async (req, res) => {
+    try {
+        const investmentId = parseInt(req.params.id);
+        const txnId = parseInt(req.params.txnId);
+        if (!investmentId || !txnId) return res.status(400).json(fail('参数错误'));
+
+        const investment = await db.queryOne(
+            'SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?',
+            [investmentId, req.userId, req.bookId]
+        );
+        if (!investment) return res.status(404).json(fail('持仓不存在'));
+
+        const txn = await db.queryOne(
+            'SELECT * FROM investment_transactions WHERE id = ? AND investment_id = ? AND user_id = ?',
+            [txnId, investmentId, req.userId]
+        );
+        if (!txn) return res.status(404).json(fail('交易记录不存在'));
+
+        await db.transaction(async (conn) => {
+            // 删除该流水在主账本生成的收入/支出交易
+            await conn.query(
+                'DELETE FROM transactions WHERE investment_txn_id = ? AND user_id = ? AND book_id = ?',
+                [txnId, req.userId, req.bookId]
+            );
+            // 删除理财流水
+            await conn.query(
+                'DELETE FROM investment_transactions WHERE id = ? AND user_id = ?',
+                [txnId, req.userId]
+            );
+            // 用剩余流水重算持仓（做T：数量归0也保持holding，隔夜自动归档）
+            await recomputeInvestmentPosition(conn, investmentId, req.userId);
+            // 关联账户余额重算（单一真相）
+            if (investment.account_id) {
+                const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);
+                await conn.query('UPDATE accounts SET balance = $1 WHERE id = $2', [newBalance, investment.account_id]);
+            }
+        });
+
+        res.json(success(null, '已删除'));
+    } catch (err) {
+        handleServerError(res, err);
+    }
+});
+
 // 卖出/清仓
 router.put('/investments/:id/sell', async (req, res) => {
     try {
@@ -581,8 +641,8 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     [req.userId, req.bookId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], fee, note || '加仓']
                 );
                 await conn.query(
-                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status=? WHERE id=? AND user_id=? AND book_id=?`,
-                    [newQty, newTotalCost, newCurrentValue, avgCost, 'holding', id, req.userId, req.bookId]
+                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status='holding', sold_date=NULL WHERE id=? AND user_id=? AND book_id=?`,
+                    [newQty, newTotalCost, newCurrentValue, avgCost, id, req.userId, req.bookId]
                 );
                 if (investment.account_id) {
                     const isIns = await isInsuranceType(conn, investment.investment_type_id);
@@ -601,19 +661,25 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 // ===== 减仓/卖出 =====
                 const sellAmount = p * q - fee;
                 const remainingQty = parseFloat(investment.quantity) - q;
-                const costRatio = parseFloat(investment.quantity) > 0 ? (q / parseFloat(investment.quantity)) : 0;
-                const reducedCost = parseFloat(investment.total_cost) * costRatio;
-                const newTotalCost = parseFloat(investment.total_cost) - reducedCost;
+                // 券商净投入本金口径：卖出按实际回款(sellAmount)全额从成本基数扣减，
+                // 与 recomputeInvestmentPosition 的 sell 分支保持一致（不再按当时均价比例扣减）。
+                const newTotalCost = parseFloat(investment.total_cost) - sellAmount;
                 const newCurrentValue = remainingQty * parseFloat(investment.current_price || p);
+                // 台账备注用的"本笔盈亏"：按卖出前均价估算该笔卖出对应的成本（仅展示，不影响持仓成本口径）。
+                const beforeQty = parseFloat(investment.quantity);
+                const avgUnitCost = beforeQty > 0 ? parseFloat(investment.total_cost) / beforeQty : 0;
+                const reducedCost = avgUnitCost * q;
 
                 const sellInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
                      VALUES (?, ?, ?, 'sell', ?, ?, ?, ?, ?, ?)`,
-                    [req.userId, req.bookId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], fee, note || '部分卖出']
+                    [req.userId, req.bookId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], fee, note || '卖出']
                 );
+                // 做T：卖到 0 也不立即清仓，保持 holding，隔夜由列表查询自动归档。
+                // 这样当天先卖后买可连贯计算，不会出现"已清仓"假象。
                 await conn.query(
-                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, status=? WHERE id=? AND user_id=? AND book_id=?`,
-                    [remainingQty, newTotalCost, newCurrentValue, remainingQty > 0 ? 'holding' : 'sold', id, req.userId, req.bookId]
+                    `UPDATE investments SET quantity=?, total_cost=?, current_value=?, status='holding', sold_date=NULL WHERE id=? AND user_id=? AND book_id=?`,
+                    [remainingQty, newTotalCost, newCurrentValue, id, req.userId, req.bookId]
                 );
                 if (investment.account_id) {
                     const profit = sellAmount - reducedCost;
@@ -621,7 +687,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
            VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
-                        [req.userId, req.bookId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0], sellInvTxn.insertId]
+                        [req.userId, req.bookId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0], sellInvTxn.insertId]
                     );
                     // 以账本为准重算账户余额
                     const newBalance = await computeAccountBalance(conn, req.userId, investment.account_id);

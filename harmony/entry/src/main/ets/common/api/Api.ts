@@ -114,6 +114,10 @@ export async function getInvestmentTransactions(id: number): Promise<ApiResponse
   return get<object[]>(`investments/investments/${id}/transactions`);
 }
 
+export async function deleteInvestmentTransaction(investmentId: number, txnId: number): Promise<ApiResponse<object>> {
+  return del<object>(`investments/investments/${investmentId}/transactions/${txnId}`);
+}
+
 /* 仪表盘 / 日历 */
 export async function getDashboard(): Promise<ApiResponse<Dashboard>> {
   return get<Dashboard>('stats/dashboard');

@@ -735,6 +735,8 @@
 .inv-txn-amount.expense { color: var(--expense); }
 .inv-txn-amount.income { color: var(--income); }
 .inv-txn-meta { grid-area: meta; font-size: var(--text-caption); color: var(--text-muted); }
+.inv-txn-del { margin-left: auto; background: transparent; border: none; cursor: pointer; font-size: 14px; color: var(--text-tertiary); padding: 2px 6px; border-radius: var(--radius-sm); line-height: 1; }
+.inv-txn-del:hover { color: var(--expense); background: var(--surface-hover); }
 .bs-empty { padding: var(--space-6) var(--space-3); text-align: center; color: var(--text-muted); font-size: var(--text-body-sm); }
 
 /* ============ 理财：单卡详情弹窗 ============ */

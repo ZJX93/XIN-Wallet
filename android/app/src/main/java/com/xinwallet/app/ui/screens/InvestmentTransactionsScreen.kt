@@ -12,10 +12,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,11 +63,12 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var list by remember { mutableStateOf<List<InvestmentTransaction>>(emptyList()) }
+    var showDeleteFor by remember { mutableStateOf<InvestmentTransaction?>(null) }
 
-    LaunchedEffect(Unit) { vm.load() }
-
-    LaunchedEffect(Unit) {
+    fun loadList() {
         scope.launch {
+            loading = true
+            error = null
             when (val res = AppContainer.investmentRepository.getTransactions(id)) {
                 is com.xinwallet.app.data.remote.ApiResult.Success -> {
                     list = res.data ?: emptyList()
@@ -75,26 +82,51 @@ fun InvestmentTransactionsScreen(navController: NavHostController, id: Int) {
         }
     }
 
+    LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(Unit) { loadList() }
+
     Scaffold(topBar = { TopBar("${inv?.name ?: "理财"} · 交易记录", onBack = { navController.popBackStack() }) }) { padding ->
         when {
             loading -> LoadingBox()
-            error != null -> ErrorState(error!!) { /* 重新拉取 */ scope.launch { loading = true; error = null; when (val res = AppContainer.investmentRepository.getTransactions(id)) { is com.xinwallet.app.data.remote.ApiResult.Success -> { list = res.data ?: emptyList(); loading = false } is com.xinwallet.app.data.remote.ApiResult.Error -> { error = res.message; loading = false } } } }
+            error != null -> ErrorState(error!!) { loadList() }
             list.isEmpty() -> EmptyState("暂无交易记录")
             else -> {
                 LazyColumn(
                     Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)
                 ) {
                     item { Spacer(Modifier.height(12.dp)) }
-                    items(list) { tx -> TxRow(tx) }
+                    items(list) { tx -> TxRow(tx, onDelete = { showDeleteFor = tx }) }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
             }
+        }
+
+        showDeleteFor?.let { tx ->
+            AlertDialog(
+                onDismissRequest = { showDeleteFor = null },
+                title = { Text("确认删除") },
+                text = { Text("确定删除该笔交易记录？") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteFor = null
+                            scope.launch {
+                                when (val res = AppContainer.investmentRepository.deleteTransaction(id, tx.id)) {
+                                    is com.xinwallet.app.data.remote.ApiResult.Success -> loadList()
+                                    is com.xinwallet.app.data.remote.ApiResult.Error -> error = res.message
+                                }
+                            }
+                        }
+                    ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { showDeleteFor = null }) { Text("取消") } }
+            )
         }
     }
 }
 
 @Composable
-private fun TxRow(tx: InvestmentTransaction) {
+private fun TxRow(tx: InvestmentTransaction, onDelete: () -> Unit = {}) {
     val dark = LocalIsDark.current
     val isBuy = tx.type == "buy" || tx.type == "reinvest"
     val isSell = tx.type == "sell"
@@ -162,6 +194,9 @@ private fun TxRow(tx: InvestmentTransaction) {
                     fontWeight = FontWeight.SemiBold,
                     color = amountColor
                 )
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

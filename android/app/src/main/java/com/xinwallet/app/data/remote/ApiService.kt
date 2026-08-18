@@ -117,6 +117,12 @@ interface ApiService {
     @GET("investments/investments/{id}/transactions")
     suspend fun getInvestmentTransactions(@Path("id") id: Int): Response<ApiResponse<List<InvestmentTransaction>>>
 
+    @DELETE("investments/investments/{investmentId}/transactions/{txnId}")
+    suspend fun deleteInvestmentTransaction(
+        @Path("investmentId") investmentId: Int,
+        @Path("txnId") txnId: Int
+    ): Response<ApiResponse<Unit>>
+
     /* 仪表盘 */
     @GET("stats/dashboard")
     suspend fun getDashboard(): Response<ApiResponse<Dashboard>>

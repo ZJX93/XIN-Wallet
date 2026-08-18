@@ -43,19 +43,18 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
         }
         // dividend / interest 仅产生现金入账，不影响持仓数量与成本
     }
-    if (qty <= 0) { qty = 0; cost = 0; } // 清仓后无持仓，成本基数归零
-    if (cost < 0) cost = 0;
+    if (qty < 0) qty = 0; // 异常保护：持仓数量不得为负
+    // 注意：cost 可为负。净投入本金口径下，减仓把本金拿回后剩余持仓成本变负，
+    // 即"零成本持股、利润已锁定在成本里"，属正确结果，不做归零（与同花顺/东方财富一致）。
     const currentPrice = parseFloat(row.current_price) || 0;
     const currentValue = qty * currentPrice;
     const buyPrice = qty > 0 ? cost / qty : 0;
-    const status = qty > 0 ? 'holding' : 'sold';
-    // 清仓当天：写入 sold_date（本地日期），用于列表「清仓当天保留卡片、隔天归档」逻辑
-    const todayStr = fmtDateOnly(new Date());
+    // 做T：数量归 0 也不立即标记 sold，保持 holding；隔夜由列表查询自动归档。
+    // 手动清仓（sell 路由）会单独写 status='sold' + sold_date=today。
     await conn.query(
-        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status=$5,
-            sold_date = CASE WHEN $5 = 'sold' THEN $8 ELSE NULL END
-         WHERE id=$6 AND user_id=$7`,
-        [qty, cost, currentValue, buyPrice, status, investmentId, userId, todayStr]
+        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status='holding', sold_date=NULL
+         WHERE id=$5 AND user_id=$6`,
+        [qty, cost, currentValue, buyPrice, investmentId, userId]
     );
 }
 

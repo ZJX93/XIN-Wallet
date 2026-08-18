@@ -19,6 +19,8 @@ struct InvestmentTransactions {
   @State name: string = '';
   @State list: Tx[] = [];
   @State loading: boolean = true;
+  @State showDeleteConfirm: boolean = false;
+  @State pendingDeleteTxn: Tx | null = null;
 
   aboutToAppear(): void {
     const p: ESObject = (router.getParams() as ESObject) || {};
@@ -38,6 +40,18 @@ struct InvestmentTransactions {
       const rows: ESObject[] = (tx.data as ESObject[]) || [];
       this.list = rows as Tx[];
     } catch (e) { console.error('InvTxns:', (e as ApiError).message); }
+    finally { this.loading = false; }
+  }
+
+  async doDelete(): Promise<void> {
+    if (!this.pendingDeleteTxn) return;
+    const txnId = this.pendingDeleteTxn.id;
+    this.showDeleteConfirm = false;
+    this.loading = true;
+    try {
+      await Api.deleteInvestmentTransaction(this.itemId, txnId);
+      await this.load();
+    } catch (e) { console.error('deleteInvTxn:', (e as ApiError).message); }
     finally { this.loading = false; }
   }
 
@@ -62,8 +76,17 @@ struct InvestmentTransactions {
         const noteText: string = (tx.note && !SYS_NOTES.includes(tx.note)) ? ('📝 ' + tx.note) : '';
         if (noteText.length > 0) Text(noteText).fontSize(11).fontColor(COLORS.textSecondary)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-      Text(`${income ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
-        .fontSize(15).fontWeight(FontWeight.SemiBold).fontColor(color)
+      Column({ space: 4 }) {
+        Text(`${income ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
+          .fontSize(15).fontWeight(FontWeight.SemiBold).fontColor(color)
+        Button('删')
+          .fontSize(11).fontColor('#fff').backgroundColor('#ef4444')
+          .width(36).height(24).padding(0)
+          .onClick(() => {
+            this.pendingDeleteTxn = tx;
+            this.showDeleteConfirm = true;
+          })
+      }.alignItems(HorizontalAlign.End)
     }.width('100%').padding(12).backgroundColor(COLORS.card).borderRadius(12)
   }
 
@@ -86,5 +109,24 @@ struct InvestmentTransactions {
         }.layoutWeight(1)
       }
     }.width('100%').height('100%').backgroundColor(COLORS.pageBg)
+
+    if (this.showDeleteConfirm) {
+      Column() {
+        Column({ space: 16 }) {
+          Text('确认删除').fontSize(16).fontWeight(FontWeight.Bold).fontColor(COLORS.textPrimary)
+          Text('确定删除该笔交易记录？').fontSize(14).fontColor(COLORS.textSecondary)
+          Row({ space: 12 }) {
+            Button('取消')
+              .fontSize(13).fontColor(COLORS.textSecondary).backgroundColor(COLORS.surface)
+              .onClick(() => { this.showDeleteConfirm = false; this.pendingDeleteTxn = null; })
+            Button('删除')
+              .fontSize(13).fontColor('#fff').backgroundColor('#ef4444')
+              .onClick(() => { this.doDelete(); })
+          }.width('100%').justifyContent(FlexAlign.End)
+        }.width('80%').padding(20).backgroundColor(COLORS.card).borderRadius(12)
+      }.width('100%').height('100%').backgroundColor('#00000066')
+      .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center)
+      .position({ x: 0, y: 0 }).zIndex(100)
+    }
   }
 }

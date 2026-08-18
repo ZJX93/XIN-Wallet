@@ -686,16 +686,31 @@ const InvestmentManager = {
             parts.push(`手续费 ${fmt(Number(t.fee) || 0)}`);
             if (t.note && !SYS_NOTES.has(t.note)) parts.push('📝 ' + escapeHtml(t.note));
             return `
-            <div class="inv-txn-row">
+            <div class="inv-txn-row" data-txn-id="${t.id}">
                 <div class="inv-txn-main">
                     <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(t.type_label || t.type)}</span>
                     <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
+                    <button class="inv-txn-del" title="删除">🗑</button>
                 </div>
                 <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>
                 <div class="inv-txn-meta">${parts.join(' · ')}</div>
             </div>`;
         }).join('');
-        body.innerHTML = `<div class="inv-txn-list">${rows}</div>`;
+        body.innerHTML = `<div class="inv-txn-list" id="invTxnList">${rows}</div>`;
+        document.getElementById('invTxnList').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.inv-txn-del');
+            if (!btn) return;
+            const row = btn.closest('.inv-txn-row');
+            const txnId = row && row.dataset.txnId;
+            if (!txnId || !confirm('确认删除该笔交易记录？')) return;
+            try {
+                await api(`/investments/investments/${id}/transactions/${txnId}`, 'DELETE');
+                showToast('已删除');
+                this.openInvTxns(id);
+            } catch (err) {
+                // api 已处理错误提示
+            }
+        });
     },
     closeInvTxns() {
         const ov = document.getElementById('invTxnsModal');
