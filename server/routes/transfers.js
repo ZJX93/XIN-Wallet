@@ -12,7 +12,7 @@ const { ensureCategory } = require('./utils');
 // 仅白名单的已知业务错误使用 err.message；未识别错误统一返回通用提示，避免泄露数据库堆栈/内部细节
 function classifyError(err) {
     const msg = err.message || '';
-    if (msg.includes('余额不足')) return failConflict(msg);             // 409
+    if (msg.includes('余额不能低于') || msg.includes('余额不足')) return failConflict(msg); // 409（余额下限）
     if (msg.includes('账户不存在')) return failNotFound(msg);            // 404
     if (msg.includes('金额')) return failValidation(msg);                // 422
     // 未识别的错误：记录到控制台，但对外不暴露原始消息

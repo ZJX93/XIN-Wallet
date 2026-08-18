@@ -782,10 +782,12 @@ const ReportManager = {
 
     async importFull(file) {
         if (!file) return;
-        if (!confirm('导入 xlsx 备份将恢复账本（含账户/交易/预算/理财/储蓄目标/债务等），确认导入？')) {
-            document.getElementById('importFullInput').value = ''; return;
-        }
-        showToast('正在导入...', 'info');
+        // 导入会先清空当前账本全部数据再恢复（干净账本），属破坏性操作，
+        // 用自定义模态框确认（不使用原生 confirm()，其在「先选文件再确认」流程里易被
+        // 浏览器弹窗拦截策略/广告拦截扩展拦截，拦截后静默返回 false 导致导入无声失败）。
+        const ok = await confirmClearImport();
+        if (!ok) { document.getElementById('importFullInput').value = ''; return; }
+        showToast('正在清空并导入账本，请稍候...', 'info');
         try {
             const fd = new FormData();
             fd.append('file', file, file.name);
@@ -817,6 +819,9 @@ const ReportManager = {
         document.getElementById('importFullInput').value = '';
     },
 
+    // 导入前破坏性确认：返回 Promise<boolean>。自建 DOM 模态框，不被浏览器弹窗拦截。
+    confirmClearImport() { return confirmClearImport(); },
+
     print() {
         // 打印前：强制重绘所有 Chart.js 图表以适应新的容器尺寸
         Object.values(this.charts).forEach(c => { if (c && c.resize) c.resize(); });
@@ -824,5 +829,41 @@ const ReportManager = {
         setTimeout(() => window.print(), 200);
     }
 };
+
+// 导入前破坏性确认：自建 DOM 模态框（不用原生 confirm，避免被浏览器弹窗拦截）。
+// 返回 Promise<boolean>：用户点「清空并导入」为 true，取消/关闭为 false。
+function confirmClearImport() {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay show';
+        overlay.style.zIndex = '2000';
+        overlay.innerHTML = `
+            <div class="modal glass-card" style="max-width:440px">
+                <div class="modal-header">
+                    <h3>⚠️ 导入将清空当前账本</h3>
+                    <button class="modal-close" aria-label="关闭">✕</button>
+                </div>
+                <div class="modal-body" style="padding:12px 16px 4px;line-height:1.6">
+                    <p>导入新账单前，会<strong>先清空当前账本的全部数据</strong>，再恢复备份内容，确保得到干净账本。</p>
+                    <p style="color:var(--text-secondary);font-size:var(--text-caption)">
+                        将清空：账户 / 分类 / 标签 / 预算 / 交易 / 转账 / 理财 / 储蓄目标 / 债务（系统预设分类保留）。此操作不可撤销。
+                    </p>
+                </div>
+                <div style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
+                    <button class="btn btn-ghost" data-act="cancel">取消</button>
+                    <button class="btn btn-danger" data-act="ok">清空并导入</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const done = (val) => { overlay.remove(); resolve(val); };
+        overlay.querySelector('.modal-close').addEventListener('click', () => done(false));
+        overlay.querySelector('[data-act="cancel"]').addEventListener('click', () => done(false));
+        overlay.querySelector('[data-act="ok"]').addEventListener('click', () => done(true));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) done(false); });
+        document.addEventListener('keydown', function onEsc(e) {
+            if (e.key === 'Escape') { overlay.remove(); resolve(false); document.removeEventListener('keydown', onEsc); }
+        });
+    });
+}
 
 export default ReportManager;

@@ -72,7 +72,22 @@ function fmtDateTime(v) {
     return s.slice(0, 19);
 }
 
+// 余额下限等业务校验错误：带明确语义的 4xx（而非 500），
+// 避免被前端/用户误报为"服务器内部错误"。所有 routes 的 catch 共用 handleServerError，
+// 因此只要 enforceBalanceLimit 抛出 BalanceLimitError，相关端点都会正确返回 409。
+class BalanceLimitError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'BalanceLimitError';
+    }
+}
+
 function handleServerError(res, err, label = '操作') {
+    // 余额下限等业务校验：返回 409 + 真实原因，前端可直接提示用户
+    if (err instanceof BalanceLimitError ||
+        (err && err.message && err.message.includes('余额不能低于'))) {
+        return res.status(ErrorCodes.CONFLICT).json(failConflict(err.message));
+    }
     logger.error(`[ERROR] ${label}: ${err && err.stack ? err.stack : err}`);
     return res.status(500).json(fail('服务器内部错误，请稍后重试', 500));
 }
@@ -166,7 +181,7 @@ async function enforceBalanceLimit(conn, userId, accountId, balance) {
     const limit = parseFloat(acc.credit_limit) || 0;
     const bal = balance !== undefined ? parseFloat(balance) : 0;
     if (bal < -limit - 0.005) {
-        throw new Error(`账户「${acc.name}」余额不能低于 -${limit.toFixed(2)}（当前将变为 ${bal.toFixed(2)}）`);
+        throw new BalanceLimitError(`账户「${acc.name}」余额不能低于 -${limit.toFixed(2)}（当前将变为 ${bal.toFixed(2)}）`);
     }
 }
 

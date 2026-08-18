@@ -317,6 +317,35 @@ router.post('/import', upload.single('file'), async (req, res) => {
         const transferCatId = transferCat ? transferCat.id : 22;
 
         await db.transaction(async (conn) => {
+            // 0) 先清空当前账本全部数据，保证导入后是「干净账本」（替换而非合并）。
+            //    仅删除本用户本账本的数据；系统预设分类(user_id IS NULL)全局共享，保留不删。
+            //    这些表之间没有外键约束，按依赖逻辑先删子表再删父表；分类含自引用，逐级删叶子后清顶层。
+            await conn.query('DELETE FROM transaction_tags WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = $1 AND book_id = $2)', [userId, bookId]);
+            await conn.query('DELETE FROM transactions WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM transfers WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM investments WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM investment_transactions WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM debts WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM debt_repayments WHERE user_id = $1', [userId]);
+            await conn.query('DELETE FROM savings_goals WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM savings_transactions WHERE user_id = $1', [userId]);
+            await conn.query('DELETE FROM budgets WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM tags WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            await conn.query('DELETE FROM accounts WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+            // 分类：逐级清空本账本用户自建分类（子分类先于父分类删除），系统预设保留
+            let catCleared = true;
+            while (catCleared) {
+                const rc = await conn.query(
+                    `DELETE FROM categories
+                      WHERE user_id = $1 AND book_id = $2
+                        AND parent_id IS NOT NULL
+                        AND parent_id IN (SELECT id FROM categories WHERE user_id = $1 AND book_id = $2)`,
+                    [userId, bookId]
+                );
+                catCleared = rc.rowCount > 0;
+            }
+            await conn.query('DELETE FROM categories WHERE user_id = $1 AND book_id = $2', [userId, bookId]);
+
             // 1) 标签
             for (const t of (config['标签'] || [])) {
                 if (!t || !String(t['名称'] || '').trim()) continue;
@@ -430,9 +459,9 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 if (!i || !String(i['名称'] || '').trim()) continue;
                 const aid = i['关联账户'] ? acMap[i['关联账户']] : null;
                 const it = await conn.query('SELECT id FROM investment_types WHERE name = $1', [String(i['类型'] || '其他')]);
-                await conn.query(
+                const ins = await conn.query(
                     `INSERT INTO investments (user_id, book_id, account_id, investment_type_id, name, code, buy_price, current_price, quantity, total_cost, current_value, fee, buy_date, expected_rate, status, note)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
                     [
                         userId, bookId, aid, it && it.length ? it[0].id : 1,
                         i['名称'], String(i['代码'] || ''),
@@ -444,7 +473,23 @@ router.post('/import', upload.single('file'), async (req, res) => {
                         String(i['备注'] || '')
                     ]
                 );
+                const newInvId = ins && ins[0] && ins[0].id;
                 imported.investments++;
+                // 补建仓流水，使 investment_transactions 与持仓快照闭合：
+                // 系统持仓的唯一真相来自 investment_transactions（recomputeInvestmentPosition 仅按流水重算），
+                // 若不补，导入后流水为空，删除某笔加减仓台账交易触发回滚重算 / 清仓重算时持仓会被清零。
+                const q0 = cellNum(i['数量']) || 0;
+                if (newInvId && q0 > 0) {
+                    await conn.query(
+                        `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
+                         VALUES ($1, $2, $3, 'buy', $4, $5, $6, $7, '导入建仓')`,
+                        [
+                            userId, bookId, newInvId,
+                            cellNum(i['成本价']) || 0, cellNum(i['买入价']) || 0, q0,
+                            fmtDate(i['买入日期']) || new Date().toISOString().slice(0, 10)
+                        ]
+                    );
+                }
             }
 
             // 4) 预算
@@ -553,7 +598,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
             }
         });
 
-        res.json(success({ imported }, '账本备份已恢复'));
+        res.json(success({ imported }, '已在清空当前账本后恢复备份（干净账本）'));
     } catch (err) { handleServerError(res, err, '账本导入'); }
 });
 

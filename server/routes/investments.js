@@ -556,7 +556,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
 
                 const buyInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                     VALUES (?, ?, 'buy', ?, ?, ?, ?, ?)`,
+                     VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, ?)`,
                     [req.userId, req.bookId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], note || '加仓']
                 );
                 await conn.query(
@@ -568,7 +568,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     const buyCatId = await getOrCreateInvestmentBuyCategory(conn, isIns);
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
-                         VALUES (?, ?, ?, 'expense', ?, ?, ?, ?)`,
+                         VALUES (?, ?, ?, ?, 'expense', ?, ?, ?, ?)`,
                         [req.userId, req.bookId, investment.account_id, buyCatId, buyAmount, `加仓${investment.name} ${q}份 @ ${p}`, date || new Date().toISOString().split('T')[0], buyInvTxn.insertId]
                     );
                     // 以账本为准重算账户余额
@@ -587,7 +587,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
 
                 const sellInvTxn = await conn.query(
                     `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                     VALUES (?, ?, 'sell', ?, ?, ?, ?, ?)`,
+                     VALUES (?, ?, ?, 'sell', ?, ?, ?, ?, ?)`,
                     [req.userId, req.bookId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], note || '部分卖出']
                 );
                 await conn.query(
@@ -599,7 +599,7 @@ router.post('/investments/:id/reduce', async (req, res) => {
                     const sellCatId = await getInvestmentSellCategoryId(conn);
                     await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, investment_txn_id)
-           VALUES (?, ?, ?, 'income', ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, 'income', ?, ?, ?, ?)`,
                         [req.userId, req.bookId, investment.account_id, sellCatId, sellAmount, `卖出${investment.name}${remainingQty > 0 ? '（部分）' : '（清仓）'}，盈亏${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`, date || new Date().toISOString().split('T')[0], sellInvTxn.insertId]
                     );
                     // 以账本为准重算账户余额
