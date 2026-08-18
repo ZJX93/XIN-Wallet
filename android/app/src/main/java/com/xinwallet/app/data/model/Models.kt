@@ -32,6 +32,9 @@ data class LoginRequest(val username: String, val password: String)
 data class RefreshRequest(@SerializedName("refreshToken") val refreshToken: String)
 data class DemoRequest(val demo: Boolean = true)
 
+/** 登录页配置：服务端是否开启演示账号（ALLOW_DEMO=true） */
+data class AuthConfigResponse(val allowDemo: Boolean = false)
+
 /** 修改个人资料（用户名 / 昵称 / 头像 / 改密）。所有字段均可选，服务端仅更新有变更的字段。 */
 data class UpdateProfileRequest(
     val username: String? = null,

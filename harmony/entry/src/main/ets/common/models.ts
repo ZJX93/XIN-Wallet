@@ -40,6 +40,11 @@ export interface AuthResponse {
   user?: User;
 }
 
+/** 登录页配置：服务端是否开启演示账号（ALLOW_DEMO=true） */
+export interface AuthConfig {
+  allowDemo: boolean;
+}
+
 export interface UserWrapper {
   user?: User;
 }

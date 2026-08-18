@@ -11,7 +11,8 @@ import kotlinx.coroutines.launch
 data class LoginUiState(
     val loading: Boolean = false,
     val error: String? = null,
-    val success: Boolean = false
+    val success: Boolean = false,
+    val showDemo: Boolean = true
 )
 
 class LoginViewModel(private val repo: AuthRepository) : ViewModel() {
@@ -44,5 +45,15 @@ class LoginViewModel(private val repo: AuthRepository) : ViewModel() {
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    /** 拉取登录页配置：服务端未开启演示账号时隐藏「体验 Demo 账号」按钮 */
+    fun loadConfig() {
+        viewModelScope.launch {
+            when (val r = repo.isDemoEnabled()) {
+                is ApiResult.Success -> _state.value = _state.value.copy(showDemo = r.data)
+                is ApiResult.Error -> { /* 接口异常时保持默认（显示） */ }
+            }
+        }
     }
 }

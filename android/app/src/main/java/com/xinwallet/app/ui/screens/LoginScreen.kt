@@ -58,6 +58,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         val saved = AppContainer.normalizeBaseUrl(AppContainer.sessionManager.baseUrl())
         serverUrl = if (isPlaceholderUrl(saved)) "" else saved
         showServer = serverUrl.isBlank()
+        vm.loadConfig()
     }
     LaunchedEffect(state.success) {
         if (state.success) {
@@ -135,23 +136,25 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             ) {
                 if (state.loading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp) else Text("登录")
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    val url = AppContainer.normalizeBaseUrl(serverUrl)
-                    if (url.isBlank()) {
-                        showServer = true
-                        scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
-                        return@OutlinedButton
-                    }
-                    AppContainer.setBaseUrl(url)
-                    serverUrl = url
-                    vm.demoLogin()
-                },
-                enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("体验 Demo 账号")
+            if (state.showDemo) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        val url = AppContainer.normalizeBaseUrl(serverUrl)
+                        if (url.isBlank()) {
+                            showServer = true
+                            scope.launch { snackbarHostState.showSnackbar("请先设置服务器地址") }
+                            return@OutlinedButton
+                        }
+                        AppContainer.setBaseUrl(url)
+                        serverUrl = url
+                        vm.demoLogin()
+                    },
+                    enabled = !state.loading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("体验 Demo 账号")
+                }
             }
         }
     }

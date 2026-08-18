@@ -109,6 +109,12 @@ router.post('/login', validate({
     }
 });
 
+// 登录页配置（公开，无需认证）：供各端登录页判断「演示账号」按钮是否展示
+// 服务端未设置 ALLOW_DEMO=true 时，多端登录页隐藏快捷登录演示账号的入口
+router.get('/config', (req, res) => {
+    res.json(success({ allowDemo: process.env.ALLOW_DEMO === 'true' }));
+});
+
 // 演示账号登录（无密码，仅开发/演示环境使用）
 router.post('/demo', async (req, res) => {
     try {

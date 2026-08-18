@@ -1,6 +1,7 @@
 package com.xinwallet.app.data.repository
 
 import com.xinwallet.app.data.local.SessionManager
+import com.xinwallet.app.data.model.AuthConfigResponse
 import com.xinwallet.app.data.model.AuthResponse
 import com.xinwallet.app.data.model.LoginRequest
 import com.xinwallet.app.data.model.RefreshRequest
@@ -32,6 +33,14 @@ class AuthRepository(
                 r
             }
             else -> r
+        }
+    }
+
+    /** 查询服务端是否开启演示账号（ALLOW_DEMO=true）。失败时按保守策略返回 true（保持按钮可见）。 */
+    suspend fun isDemoEnabled(): ApiResult<Boolean> {
+        return when (val r = safeApiCall { apiProvider().authConfig() }) {
+            is ApiResult.Success -> ApiResult.Success(r.data?.allowDemo ?: true)
+            is ApiResult.Error -> r
         }
     }
 

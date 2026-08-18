@@ -18,6 +18,9 @@ interface ApiService {
     @POST("auth/demo")
     suspend fun demoLogin(): Response<ApiResponse<AuthResponse>>
 
+    @GET("auth/config")
+    suspend fun authConfig(): Response<ApiResponse<AuthConfigResponse>>
+
     @GET("auth/profile")
     suspend fun profile(): Response<ApiResponse<UserWrapper>>
 

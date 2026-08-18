@@ -15,6 +15,7 @@ struct Login {
   @State password: string = '';
   @State loading: boolean = false;
   @State error: string = '';
+  @State allowDemo: boolean = true;
 
   async aboutToAppear(): Promise<void> {
     const _r = await Promise.all([Session.getBaseUrl(), Session.isLoggedIn()]);
@@ -26,6 +27,15 @@ struct Login {
     }
     if (loggedIn) {
       router.replaceUrl({ url: 'pages/Main' });
+    }
+    // 查询服务端是否开启演示账号，未开启则隐藏「体验 Demo 账号」按钮
+    try {
+      const cfg = await Api.authConfig();
+      if (cfg.success && cfg.data) {
+        this.allowDemo = cfg.data.allowDemo;
+      }
+    } catch (_) {
+      // 接口异常时保持默认（显示）
     }
   }
 
@@ -119,14 +129,16 @@ struct Login {
         .borderRadius(12)
         .enabled(!this.loading)
         .onClick(() => this.doLogin(false))
-      Button('体验 Demo 账号')
-        .width('82%')
-        .height(48)
-        .backgroundColor(COLORS.brandBgLight)
-        .fontColor(COLORS.brand)
-        .borderRadius(12)
-        .stateEffect(true)
-        .onClick(() => this.doLogin(true))
+      if (this.allowDemo) {
+        Button('体验 Demo 账号')
+          .width('82%')
+          .height(48)
+          .backgroundColor(COLORS.brandBgLight)
+          .fontColor(COLORS.brand)
+          .borderRadius(12)
+          .stateEffect(true)
+          .onClick(() => this.doLogin(true))
+      }
     }
     .width('100%')
     .height('100%')

@@ -22,6 +22,9 @@ export async function refresh(req: RefreshRequest): Promise<ApiResponse<AuthResp
 export async function demoLogin(): Promise<ApiResponse<AuthResponse>> {
   return post<AuthResponse>('auth/demo', { demo: true });
 }
+export async function authConfig(): Promise<ApiResponse<AuthConfig>> {
+  return get<AuthConfig>('auth/config');
+}
 export async function profile(): Promise<ApiResponse<UserWrapper>> {
   return get<UserWrapper>('auth/profile');
 }

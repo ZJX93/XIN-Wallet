@@ -44,6 +44,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const demoBtn = document.getElementById('demoLoginBtn');
     let mode = 'login';
 
+    // 根据服务端开关隐藏演示账号入口（未设置 ALLOW_DEMO=true 时隐藏）
+    (async () => {
+        try {
+            const cfg = await loginApi('/auth/config', 'GET');
+            if (cfg && cfg.allowDemo === false) {
+                const demoHint = document.querySelector('.demo-hint');
+                if (demoHint) demoHint.style.display = 'none';
+            }
+        } catch (_) { /* 接口异常时保持默认（显示） */ }
+    })();
+
     tabs.forEach(t => t.addEventListener('click', () => {
         tabs.forEach(x => x.classList.remove('active'));
         t.classList.add('active');
