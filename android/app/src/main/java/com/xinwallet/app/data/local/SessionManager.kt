@@ -28,6 +28,8 @@ class SessionManager(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode") // system / light / dark
         val USERNAME = stringPreferencesKey("username")
         val NICKNAME = stringPreferencesKey("nickname")
+        // 记住用户名（登出后保留，用于登录页预填）；与 USERNAME 区分，logout 不清它
+        val LAST_USERNAME = stringPreferencesKey("last_username")
         // 当前账本 id：前端切换账本后持久化，AuthInterceptor 据此注入 X-Book-Id。
         // 0 表示未设置（后端退化为默认账本）。
         val CURRENT_BOOK_ID = intPreferencesKey("current_book_id")
@@ -60,6 +62,12 @@ class SessionManager(private val context: Context) {
     suspend fun saveUsername(name: String) {
         context.dataStore.edit { it[USERNAME] = name }
     }
+
+    /** 记住最后成功登录的用户名（登出不清除），供登录页预填 */
+    suspend fun saveLastUsername(name: String) {
+        if (name.isNotBlank()) context.dataStore.edit { it[LAST_USERNAME] = name }
+    }
+    suspend fun lastUsername(): String = context.dataStore.data.first()[LAST_USERNAME] ?: ""
 
     suspend fun saveNickname(name: String) {
         context.dataStore.edit { it[NICKNAME] = name }

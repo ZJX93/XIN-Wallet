@@ -28,6 +28,10 @@ struct Login {
     if (loggedIn) {
       router.replaceUrl({ url: 'pages/Main' });
     }
+    // 记住用户名：预填上次成功登录的用户名（密码由系统密码管理器自动填充）
+    if (!this.username) {
+      this.username = await Session.getLastUsername();
+    }
     // 查询服务端是否开启演示账号，未开启则隐藏「体验 Demo 账号」按钮
     try {
       const cfg = await Api.authConfig();
@@ -65,6 +69,9 @@ struct Login {
         : await Api.login({ username: this.username, password: this.password });
       if (resp.success && resp.data) {
         await Session.saveTokens(resp.data.token, resp.data.refreshToken);
+        if (!demo) {
+          await Session.saveLastUsername(this.username); // 记住用户名，供下次预填
+        }
         router.replaceUrl({ url: 'pages/Main' });
       } else {
         this.error = resp.message ?? '登录失败';
@@ -101,6 +108,7 @@ struct Login {
         .padding({ left: 14, right: 14 })
       TextInput({ placeholder: '账号', text: this.username })
         .onChange((v) => (this.username = v))
+        .enableAutoFill(true)
         .width('82%')
         .height(48)
         .backgroundColor(COLORS.card)
@@ -109,6 +117,7 @@ struct Login {
       TextInput({ placeholder: '密码', text: this.password })
         .type(InputType.Password)
         .onChange((v) => (this.password = v))
+        .enableAutoFill(true)
         .width('82%')
         .height(48)
         .backgroundColor(COLORS.card)

@@ -10,6 +10,8 @@ function setSession(token, refreshToken, user) {
     localStorage.setItem(TOKEN_KEY, token);
     if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    // 记住用户名（不存密码）：下次进入登录页预填，配合 autocomplete 让浏览器密码管理器自动填充密码
+    if (user && user.username) localStorage.setItem('zhicai_last_user', user.username);
 }
 
 function setHint(msg, isError) {
@@ -38,6 +40,15 @@ if (localStorage.getItem(TOKEN_KEY)) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 记住用户名：未登录时预填上次用户名（密码仍由浏览器密码管理器自动填充）
+    if (!localStorage.getItem(TOKEN_KEY)) {
+        const lastUser = localStorage.getItem('zhicai_last_user');
+        if (lastUser) {
+            const u = document.getElementById('authUser');
+            if (u) u.value = lastUser;
+        }
+    }
+
     const tabs = document.querySelectorAll('.auth-tab');
     const nickGroup = document.getElementById('authNickGroup');
     const submitBtn = document.getElementById('authSubmit');

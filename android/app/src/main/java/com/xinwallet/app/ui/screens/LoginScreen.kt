@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.ui.text.input.AutoCompleteType
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,6 +60,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         serverUrl = if (isPlaceholderUrl(saved)) "" else saved
         showServer = serverUrl.isBlank()
         vm.loadConfig()
+        // 记住用户名：预填上次成功登录的用户名（密码由系统 Autofill 自动填充）
+        if (username.isBlank()) username = AppContainer.sessionManager.lastUsername()
     }
     LaunchedEffect(state.success) {
         if (state.success) {
@@ -115,9 +118,9 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
             }
 
-            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("用户名") }, singleLine = true, keyboardOptions = KeyboardOptions(autoComplete = AutoCompleteType.Username), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(autoComplete = AutoCompleteType.Password), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {

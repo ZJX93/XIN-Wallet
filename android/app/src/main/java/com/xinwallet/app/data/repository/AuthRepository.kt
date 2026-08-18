@@ -19,7 +19,11 @@ class AuthRepository(
     suspend fun login(username: String, password: String): ApiResult<AuthResponse> {
         return when (val r = safeApiCall { apiProvider().login(LoginRequest(username, password)) }) {
             is ApiResult.Success -> {
-                r.data?.let { session.saveTokens(it.token, it.refreshToken); session.saveUsername(username) }
+                r.data?.let {
+                    session.saveTokens(it.token, it.refreshToken)
+                    session.saveUsername(username)
+                    session.saveLastUsername(username)   // 记住用户名，供下次登录页预填
+                }
                 r
             }
             else -> r

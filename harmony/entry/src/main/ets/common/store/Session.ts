@@ -59,6 +59,24 @@ class SessionStore {
     return prefs ? ((await prefs.get('baseUrl', '')) as string) : '';
   }
 
+  /** 记住最后成功登录用户名（登出不清除），供登录页预填 */
+  async getLastUsername(): Promise<string> {
+    const prefs = await this.getPrefs();
+    return prefs ? ((await prefs.get('lastUsername', '')) as string) : '';
+  }
+
+  async saveLastUsername(username: string): Promise<void> {
+    if (!username) {
+      return;
+    }
+    const prefs = await this.getPrefs();
+    if (!prefs) {
+      return;
+    }
+    prefs.put('lastUsername', username);
+    await prefs.flush();
+  }
+
   /** 暴露 AbilityContext（供文件下载/上传等需要 context 的 API 使用） */
   getContext(): common.Context | null {
     return this.context;
