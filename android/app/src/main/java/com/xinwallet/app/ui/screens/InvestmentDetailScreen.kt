@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -70,13 +71,13 @@ fun InvestmentDetailScreen(navController: NavHostController, id: Int) {
             state.loading -> LoadingBox()
             state.error != null -> ErrorState(state.error!!) { vm.load() }
             inv == null -> EmptyState("未找到该理财记录")
-            else -> InvestmentDetailContent(inv, Modifier.fillMaxSize().padding(padding))
+            else -> InvestmentDetailContent(inv, navController, Modifier.fillMaxSize().padding(padding))
         }
     }
 }
 
 @Composable
-private fun InvestmentDetailContent(inv: Investment, modifier: Modifier = Modifier) {
+private fun InvestmentDetailContent(inv: Investment, navController: NavHostController, modifier: Modifier = Modifier) {
     val dark = LocalIsDark.current
     val gain = inv.profit >= 0
     val profitColor = if (gain) (if (dark) IncomeColorDark else IncomeColor) else (if (dark) ExpenseColorDark else ExpenseColor)
