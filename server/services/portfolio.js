@@ -10,18 +10,18 @@
 const { sumAmounts, subtractAmounts, toCents, percentOf } = require('./money');
 
 /**
- * 单持仓年化收益率（基于买入日持有期的【简单年化 / 单利】）
- * 公式: 持有期收益率 ÷ 持有天数 × 365
- *       = ((当前值/成本) - 1) / 持有天数 × 365 × 100
+ * 单持仓年化收益率（基于买入日持有期的【复合年化 / 复利 CAGR】）
+ * 公式: ((当前值/成本)^(365/持有天数) - 1) * 100
  *
- * 说明：简单年化对短期、单次投资更温和直观，不会像复合年化（CAGR）那样在
- * 极短持有期把小幅收益外推成上千倍的荒谬值（如 9 天 +9% → 复合年化 4194%，
- * 简单年化仅 365%）。长期持有两者差异很小。
+ * 说明：复合年化是金融标准算法，长期持有更精确（如 90 天 +5% → 22.13%，
+ * 与教科书一致）。代价是在极短持有期会把小幅收益外推成极大值（如 9 天 +9%
+ * → 4194%），这是复利年化的数学本征，前端对超过 ±100000% 的展示为 '--'。
  *
  * 可靠性约束：
  *  - 成本/市值非正、买入日缺失或非法 → null
  *  - 当天或未来买入（尚无持有期） → null
- *  - 计算结果超出 ±100000%（极端外推） → null
+ *  - 持有不足 7 天（样本太短） → null
+ *  - 计算结果超出 ±100000%（极端外推，超出前端展示上限） → null
  */
 function annualizedRate(totalCost, currentValue, buyDate) {
   const cost = parseFloat(totalCost);
@@ -33,9 +33,9 @@ function annualizedRate(totalCost, currentValue, buyDate) {
 
   const days = (Date.now() - start.getTime()) / 86400000;
   if (days <= 0) return null;          // 当天/未来买入：无持有期
+  if (days < 7) return null;           // 持有过短：年化无意义
 
-  const holdingReturn = (value / cost) - 1;
-  const ann = (holdingReturn / days) * 365 * 100;
+  const ann = (Math.pow(value / cost, 365 / days) - 1) * 100;
   if (!isFinite(ann) || Math.abs(ann) > 100000) return null;
   return Math.round(ann * 100) / 100;
 }
@@ -82,9 +82,9 @@ function calcPortfolioMetrics(investments) {
   }, null);
 
   const days = earliest ? Math.max((Date.now() - earliest.getTime()) / 86400000, 1) : 0;
-  // 组合年化同样采用简单年化（单利），与单持仓保持一致
+  // 组合年化同样采用复合年化（复利 CAGR），与单持仓保持一致
   const rawAnn = (tCost > 0 && tVal > 0 && days > 0)
-    ? ((((tVal / tCost) - 1) / days) * 365 * 100)
+    ? (Math.pow(tVal / tCost, 365 / days) - 1) * 100
     : null;
   // 组合年化受极端值约束：超出 ±100000%（前端展示上限）视为不可信，返回 null（前端显示 '--'）
   const annualized = (rawAnn != null && isFinite(rawAnn) && Math.abs(rawAnn) <= 100000)
