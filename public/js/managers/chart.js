@@ -206,9 +206,10 @@ const ChartManager = {
                         labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 10 }, padding: 10, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyleWidth: 10, generateLabels: function(chart) { const d = chart.data; return d.labels.map((l, i) => ({ text: l + '  ' + (d.datasets[0].data[i] / total * 100).toFixed(1) + '%', fillStyle: d.datasets[0].backgroundColor[i], strokeStyle: d.datasets[0].backgroundColor[i], pointStyle: 'circle', index: i })); } }
                     },
                     tooltip: {
-                        backgroundColor: c.bg,
-                        titleColor: c.text, bodyColor: c.text,
-                        borderColor: c.grid, borderWidth: 1,
+                        // 统一风格：固定深色背景 + 浅色文字，与其他饼图（仪表盘支出构成等）默认风格一致
+                        backgroundColor: '#1e1e3a',
+                        titleColor: '#e8e4df', bodyColor: '#e8e4df',
+                        borderColor: '#1e1e3a', borderWidth: 0,
                         cornerRadius: 8, padding: 12,
                         callbacks: {
                             label: ctx => ` ${ctx.label.split(' ').slice(1).join(' ')}: ¥${ctx.parsed.toLocaleString()}（${(ctx.parsed / total * 100).toFixed(1)}%）`
