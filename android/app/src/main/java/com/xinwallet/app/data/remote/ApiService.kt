@@ -103,7 +103,7 @@ interface ApiService {
     suspend fun getInvestmentTypes(): Response<ApiResponse<List<InvestmentType>>>
 
     @GET("investments/investments")
-    suspend fun getInvestments(): Response<ApiResponse<InvestmentsResponse>>
+    suspend fun getInvestments(@Query("includeSold") includeSold: Boolean = false): Response<ApiResponse<InvestmentsResponse>>
 
     @POST("investments/investments")
     suspend fun createInvestment(@Body req: CreateInvestmentRequest): Response<ApiResponse<IdResponse>>

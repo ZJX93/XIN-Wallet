@@ -50,6 +50,9 @@ const InvestmentManager = {
         document.getElementById('investQuoteBtn').addEventListener('click', () => this.fetchQuote());
         // 一键刷新按钮
         document.getElementById('refreshAllBtn').addEventListener('click', () => this.refreshAllQuotes());
+        // 显示已清仓开关
+        const includeSoldEl = document.getElementById('invIncludeSold');
+        if (includeSoldEl) includeSoldEl.addEventListener('change', () => this.refresh());
         // 类型下拉
         const typeSel = document.getElementById('investType');
         cache.investmentTypes.forEach(t => { typeSel.innerHTML += `<option value="${t.id}">${escapeHtml(t.icon)} ${escapeHtml(t.name)}</option>`; });
@@ -436,7 +439,8 @@ const InvestmentManager = {
         this.init();  // 如果 init 之前被 null-guard 跳过，在 refresh 时补上
         const container = document.getElementById('investList');
         showSkeleton(container, 4, 'grid');
-        const data = await api('/investments/investments');
+        const includeSold = document.getElementById('invIncludeSold') && document.getElementById('invIncludeSold').checked ? '?includeSold=true' : '';
+        const data = await api('/investments/investments' + includeSold);
         if (!data) return;   // data = { investments: [...], summary: {...}, byType: [...] }
         cache.investments = data.investments || [];
         const s = data.summary;

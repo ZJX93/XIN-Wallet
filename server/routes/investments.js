@@ -193,6 +193,14 @@ const { annualizedRate: calcAnnualizedRate, calcPortfolioMetrics } = require('..
 
 router.get('/investments', async (req, res) => {
     try {
+        const todayStr = fmtDateOnly(new Date());
+        // 默认只显示「持有中 + 清仓当天」；includeSold=true 时额外展示历史已清仓记录
+        const includeSold = req.query.includeSold === 'true' || req.query.includeSold === '1';
+        const whereSold = includeSold
+            ? `(i.status = 'holding' OR i.status = 'sold')`
+            : `(i.status = 'holding' OR (i.status = 'sold' AND i.sold_date = ?))`;
+        const whereParams = includeSold ? [req.userId, req.bookId] : [req.userId, req.bookId, todayStr];
+
         const investments = await db.query(
             `SELECT i.*, it.name as type_name, it.icon as type_icon, it.risk_level as type_risk_level,
        COALESCE(i.risk_level, it.risk_level) as risk_level,
@@ -201,9 +209,9 @@ router.get('/investments', async (req, res) => {
        JOIN investment_types it ON i.investment_type_id = it.id
        LEFT JOIN accounts a ON i.account_id = a.id
        WHERE i.user_id = ? AND i.book_id = ?
-         AND (i.status = 'holding' OR (i.status = 'sold' AND i.sold_date = ?))
+         AND ${whereSold}
        ORDER BY CASE WHEN i.status = 'holding' THEN 0 ELSE 1 END, i.current_value DESC`,
-            [req.userId, req.bookId, fmtDateOnly(new Date())]
+            whereParams
         );
 
         // 计算汇总：仅统计当前持有中的持仓，已清仓的不计入总市值

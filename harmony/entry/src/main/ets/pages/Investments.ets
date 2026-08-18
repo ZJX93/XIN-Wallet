@@ -27,14 +27,15 @@ export struct InvestmentsPage {
   @State totalValue: number = 0;
   @State totalCost: number = 0;
   @State totalProfit: number = 0;
+  @State includeSold: boolean = false;
   @State loading: boolean = false;
 
   aboutToAppear(): void { this.load(); }
 
-  async load(): Promise<void> {
+  async load(includeSold: boolean = false): Promise<void> {
     this.loading = false;
     try {
-      const r = await Api.getInvestments();
+      const r = await Api.getInvestments(includeSold);
       const arr: ESObject[] = ((r.data as ESObject)?.investments as ESObject[]) || [];
       this.list = arr as Inv[];
       this.totalValue = arr.reduce((s: number, x: Inv) => s + (x.currentValue || 0), 0);
@@ -68,6 +69,11 @@ export struct InvestmentsPage {
               amount: this.totalValue,
               subtitle: `总成本 ${fmtMoney(this.totalCost)} · 总收益 ${fmtMoney(this.totalProfit)}`
             })
+            Row() {
+              Text('显示已清仓').fontSize(14).fontColor(COLORS.textSecondary).layoutWeight(1)
+              Toggle({ type: ToggleType.Switch, isOn: this.includeSold })
+                .onChange((v: boolean) => { this.includeSold = v; this.load(v); })
+            }.width('100%').padding({ left: 12, right: 12, top: 4, bottom: 4 })
             if (this.list.length === 0) { EmptyState({ text: '暂无理财持仓' }) }
             else {
               ForEach(this.grouped(), (g: ESObject) => {

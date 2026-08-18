@@ -98,8 +98,8 @@ export async function deleteCategory(id: number): Promise<ApiResponse<object>> {
 export async function getInvestmentTypes(): Promise<ApiResponse<object[]>> {
   return get<object[]>('investment-types');
 }
-export async function getInvestments(): Promise<ApiResponse<object>> {
-  return get<object>('investments/investments');
+export async function getInvestments(includeSold: boolean = false): Promise<ApiResponse<object>> {
+  return get<object>('investments/investments', includeSold ? { includeSold: true } : undefined);
 }
 export async function createInvestment(req: object): Promise<ApiResponse<IdResponse>> {
   return post<IdResponse>('investments/investments', req);

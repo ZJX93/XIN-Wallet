@@ -23,10 +23,10 @@ class InvestmentsViewModel(private val invRepo: InvestmentRepository) : ViewMode
     private val _state = MutableStateFlow(InvUiState(loading = true))
     val state: StateFlow<InvUiState> = _state
 
-    fun load() {
+    fun load(includeSold: Boolean = false) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
-            val inv = invRepo.getInvestments()
+            val inv = invRepo.getInvestments(includeSold)
             val types = invRepo.getTypes()
             val invList = (inv as? ApiResult.Success)?.data?.investments ?: emptyList()
             val sum = (inv as? ApiResult.Success)?.data?.summary

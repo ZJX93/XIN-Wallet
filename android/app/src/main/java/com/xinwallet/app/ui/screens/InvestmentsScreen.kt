@@ -21,12 +21,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -56,11 +59,12 @@ import com.xinwallet.app.util.formatMoneySigned
 fun InvestmentsContent(navController: NavHostController, contentPadding: PaddingValues = PaddingValues()) {
     val vm: InvestmentsViewModel = viewModel(factory = viewModelFactory { InvestmentsViewModel(AppContainer.investmentRepository) })
     val state by vm.state.collectAsState()
+    var includeSold by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(Unit) { vm.load(includeSold) }
     // 回到前台（从后台返回）：重新拉取理财数据
     LaunchedEffect(Unit) {
-        AppContainer.onForeground.collect { vm.load() }
+        AppContainer.onForeground.collect { vm.load(includeSold) }
     }
 
     when {
@@ -71,6 +75,15 @@ fun InvestmentsContent(navController: NavHostController, contentPadding: Padding
             val sum = state.summary
             val grouped = state.investments.groupBy { it.typeName ?: "其他" }
             LazyColumn(Modifier.fillMaxSize().padding(contentPadding)) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("显示已清仓", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(checked = includeSold, onCheckedChange = { includeSold = it; vm.load(it) })
+                    }
+                }
                 item {
                     Spacer(Modifier.height(12.dp))
                     if (sum != null) {

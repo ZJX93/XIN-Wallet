@@ -8,7 +8,7 @@ import com.xinwallet.app.data.remote.safeUnitCall
 
 class InvestmentRepository(private val apiProvider: () -> ApiService) {
     suspend fun getTypes() = safeApiCall { apiProvider().getInvestmentTypes() }
-    suspend fun getInvestments() = safeApiCall { apiProvider().getInvestments() }
+    suspend fun getInvestments(includeSold: Boolean = false) = safeApiCall { apiProvider().getInvestments(includeSold) }
     suspend fun createInvestment(req: CreateInvestmentRequest) = safeApiCall { apiProvider().createInvestment(req) }
     suspend fun updateInvestment(id: Int, req: UpdateInvestmentRequest) = safeUnitCall { apiProvider().updateInvestment(id, req) }
     suspend fun deleteInvestment(id: Int) = safeUnitCall { apiProvider().deleteInvestment(id) }
