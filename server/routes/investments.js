@@ -474,19 +474,28 @@ router.get('/investments/:id/transactions', async (req, res) => {
         const rows = await db.query(
             `SELECT * FROM investment_transactions
              WHERE investment_id = ? AND user_id = ? AND book_id = ?
-             ORDER BY date DESC, id DESC`,
+             ORDER BY date ASC, id ASC`,
             [investmentId, req.userId, req.bookId]
         );
-        const list = rows.map(t => ({
-            id: t.id,
-            type: t.type,
-            type_label: INV_TXN_TYPE_LABEL[t.type] || t.type,
-            amount: parseFloat(t.amount),
-            price: parseFloat(t.price),
-            quantity: parseFloat(t.quantity),
-            date: fmtDateTime(t.date),
-            note: t.note || ''
-        }));
+        // 标记该持仓的第一笔买入为「建仓」，其余买入为「买入」
+        let firstBuyId = null;
+        for (const r of rows) {
+            if (r.type === 'buy') { firstBuyId = r.id; break; }
+        }
+        const list = rows.reverse().map(t => {
+            let label = INV_TXN_TYPE_LABEL[t.type] || t.type;
+            if (t.type === 'buy' && t.id === firstBuyId) label = '建仓';
+            return {
+                id: t.id,
+                type: t.type,
+                type_label: label,
+                amount: parseFloat(t.amount),
+                price: parseFloat(t.price),
+                quantity: parseFloat(t.quantity),
+                date: fmtDateTime(t.date),
+                note: t.note || ''
+            };
+        });
         res.json(success(list));
     } catch (err) {
         handleServerError(res, err);
