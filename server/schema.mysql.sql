@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS investments (
   actual_rate DECIMAL(8,4) DEFAULT 0,
   nav_date DATE DEFAULT NULL,                         -- 净值日期
   status VARCHAR(10) DEFAULT 'holding' CHECK (status IN ('holding','sold','expired')),
+  sold_date DATE DEFAULT NULL,                      -- 清仓日期（用于清仓当天保留、隔天归档）
   note VARCHAR(200) DEFAULT '',
   risk_level VARCHAR(10) DEFAULT NULL CHECK (risk_level IN ('low','medium','high','very_high')),  -- 每持仓独立风险等级（覆盖类型默认）
   create_transaction_id INT DEFAULT NULL,             -- 创建持仓时同步生成的台账交易（买入扣款），用于删除/编辑时回滚

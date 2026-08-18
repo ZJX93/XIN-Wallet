@@ -381,6 +381,31 @@ async function healBooks() {
   }
 }
 
+/**
+ * schema 列自愈（针对已部署库）：
+ * 项目启动仅执行 `CREATE TABLE IF NOT EXISTS`，对已存在的表不会补列，
+ * 导致「代码升级新增了列（如 sold_date）但老库没这列」时查询 500。
+ * 这里用幂等的 ALTER ADD COLUMN 补齐已知新增列，覆盖所有已部署库，
+ * 与 healCategoryData / healBooks 一样每次启动调用、对全新库为 no-op。
+ */
+async function ensureColumn(table, column, definition) {
+  try {
+    await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    console.log(`✅ 已补齐列 ${table}.${column}`);
+  } catch (err) {
+    // 列已存在（Postgres 42701 / MySQL Duplicate column name）属预期，忽略
+    if (/already exists|duplicate column|42701/i.test(err.message)) return;
+    console.warn(`⚠️ 补列 ${table}.${column} 失败（不影响启动，下次启动重试）:`, err.message);
+  }
+}
+
+async function healSchemaColumns() {
+  // 投资理财：清仓当天保留 / 隔天归档所需的清仓日期
+  await ensureColumn('investments', 'sold_date', 'DATE');
+  // 交易流水：每笔买卖的手续费（实在成本），用于记录与展示
+  await ensureColumn('investment_transactions', 'fee', 'DECIMAL(15,2) NOT NULL DEFAULT 0');
+}
+
 async function initDatabase() {
   console.log('🔧 正在初始化数据库...');
   try {
@@ -468,6 +493,14 @@ async function initDatabase() {
       console.log('✅ 多账本数据自愈完成（无需修复时无任何变化）');
     } catch (err) {
       console.warn('⚠️ 多账本数据自愈警告（不影响启动，下次启动会重试）:', err.message);
+    }
+
+    // schema 列自愈：补齐已部署库缺失的新增列（如 sold_date），避免升级后查询 500
+    try {
+      await healSchemaColumns();
+      console.log('✅ schema 列自愈完成（无需补列时无任何变化）');
+    } catch (err) {
+      console.warn('⚠️ schema 列自愈警告（不影响启动，下次启动重试）:', err.message);
     }
 
     // 注：本项目视为全新项目，schema 文件已包含完整表结构、列、索引、约束与种子数据，
