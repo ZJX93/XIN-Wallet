@@ -258,6 +258,7 @@ data class InvestmentTransaction(
     val amount: Double = 0.0,
     val price: Double = 0.0,
     val quantity: Double = 0.0,
+    @SerializedName("fee") val fee: Double = 0.0,
     val date: String = "",
     val note: String? = null
 )

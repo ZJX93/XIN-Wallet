@@ -136,17 +136,20 @@ private fun TxRow(tx: InvestmentTransaction) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (!tx.note.isNullOrBlank()) {
+                // 系统自动备注文案不再展示，改为展示用户 note
+                val sysNotes = setOf("初始买入", "加仓", "部分卖出", "清仓卖出", "建仓")
+                val noteText = if (!tx.note.isNullOrBlank() && tx.note !in sysNotes) tx.note else null
+                if (!noteText.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        tx.note!!,
+                        "📝 $noteText",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "单价 ${formatMoney(tx.price)} · 数量 ${tx.quantity}",
+                    "单价 ${formatMoney(tx.price)} · 数量 ${tx.quantity} · 手续费 ${formatMoney(tx.fee)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

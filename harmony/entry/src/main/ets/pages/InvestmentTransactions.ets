@@ -9,7 +9,7 @@ import { LoadingBox, TopBar } from '../common/components/Components';
 
 interface Tx {
   id: number; type: string; type_label?: string; amount?: number; price?: number;
-  quantity?: number; date?: string; note?: string;
+  quantity?: number; fee?: number; date?: string; note?: string;
 }
 
 @Entry
@@ -55,9 +55,12 @@ struct InvestmentTransactions {
             .backgroundColor(color + '22').borderRadius(4).padding({ left: 8, right: 8, top: 2, bottom: 2 })
           Text((tx.date || '').slice(0, 10)).fontSize(11).fontColor(COLORS.textSecondary)
         }
-        Text(`单价 ${fmtMoney(tx.price || 0)} · 数量 ${tx.quantity ?? 0}`)
+        Text(`单价 ${fmtMoney(tx.price || 0)} · 数量 ${tx.quantity ?? 0} · 手续费 ${fmtMoney(tx.fee || 0)}`)
           .fontSize(11).fontColor(COLORS.textSecondary)
-        if (tx.note) Text('📝 ' + tx.note).fontSize(11).fontColor(COLORS.textSecondary)
+        // 系统自动备注文案不再展示
+        const SYS_NOTES: string[] = ['初始买入', '加仓', '部分卖出', '清仓卖出', '建仓'];
+        const noteText: string = (tx.note && !SYS_NOTES.includes(tx.note)) ? ('📝 ' + tx.note) : '';
+        if (noteText.length > 0) Text(noteText).fontSize(11).fontColor(COLORS.textSecondary)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
       Text(`${income ? '+' : '-'}${fmtMoney(Math.abs(tx.amount || 0))}`)
         .fontSize(15).fontWeight(FontWeight.SemiBold).fontColor(color)

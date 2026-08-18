@@ -678,9 +678,13 @@ const InvestmentManager = {
             const cls = TYPE_CLS[t.type] || 'expense';
             const sign = t.type === 'sell' || t.type === 'dividend' || t.type === 'interest' ? '+' : '-';
             const amt = Number(t.amount || 0);
+            // 系统自动生成的备注文案（与手续费展示二选一，不再显示这些无意义文字）
+            const SYS_NOTES = new Set(['初始买入', '加仓', '部分卖出', '清仓卖出', '建仓']);
             const parts = [];
             if (t.price != null && t.price !== '') parts.push(`单价 ${fmt(t.price)}`);
             if (t.quantity != null && t.quantity !== '') parts.push(`数量 ${t.quantity}`);
+            parts.push(`手续费 ${fmt(Number(t.fee) || 0)}`);
+            if (t.note && !SYS_NOTES.has(t.note)) parts.push('📝 ' + escapeHtml(t.note));
             return `
             <div class="inv-txn-row">
                 <div class="inv-txn-main">
@@ -688,7 +692,7 @@ const InvestmentManager = {
                     <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
                 </div>
                 <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>
-                <div class="inv-txn-meta">${parts.join(' · ')}${t.note ? ' · 📝 ' + escapeHtml(t.note) : ''}</div>
+                <div class="inv-txn-meta">${parts.join(' · ')}</div>
             </div>`;
         }).join('');
         body.innerHTML = `<div class="inv-txn-list">${rows}</div>`;

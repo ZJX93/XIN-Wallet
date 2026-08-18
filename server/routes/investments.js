@@ -296,9 +296,9 @@ router.post('/investments', async (req, res) => {
 
             // 记录买入操作
             const initBuyTxn = await conn.query(
-                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                 VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, '初始买入')`,
-                [req.userId, req.bookId, invId, costVal, parseFloat(buy_price) || 0, parseFloat(quantity) || 0, buyDate]
+                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+                 VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, ?, '初始买入')`,
+                [req.userId, req.bookId, invId, costVal, parseFloat(buy_price) || 0, parseFloat(quantity) || 0, buyDate, feeVal]
             );
 
             // 关联账户：买入扣款，保持账本一致；并把台账交易关联回理财买入流水(investment_txn_id)
@@ -380,7 +380,7 @@ router.put('/investments/:id', async (req, res) => {
 // 理财交易记录（卖出/分红/红利再投等）
 router.post('/investments/:id/transactions', async (req, res) => {
     try {
-        const { type, amount, price, quantity, date, note } = req.body;
+        const { type, amount, price, quantity, date, note, fee } = req.body;
         const investmentId = parseInt(req.params.id);
         if (!Number.isInteger(investmentId)) return res.status(400).json(fail('无效的持仓 ID'));
 
@@ -408,9 +408,9 @@ router.post('/investments/:id/transactions', async (req, res) => {
 
         let msg = '操作已记录';
         const invTxn = await db.query(
-            `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, note || '']
+            `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, req.bookId, investmentId, type, parseFloat(amount), parseFloat(price) || 0, addedQty, date, parseFloat(fee) || 0, note || '']
         );
 
         // 如果是卖出，更新持仓
@@ -492,6 +492,7 @@ router.get('/investments/:id/transactions', async (req, res) => {
                 amount: parseFloat(t.amount),
                 price: parseFloat(t.price),
                 quantity: parseFloat(t.quantity),
+                fee: parseFloat(t.fee) || 0,
                 date: fmtDateTime(t.date),
                 note: t.note || ''
             };
@@ -505,7 +506,7 @@ router.get('/investments/:id/transactions', async (req, res) => {
 // 卖出/清仓
 router.put('/investments/:id/sell', async (req, res) => {
     try {
-        const { sell_price, date, note } = req.body;
+        const { sell_price, date, note, fee } = req.body;
         const id = parseInt(req.params.id);
         const investment = await db.queryOne('SELECT * FROM investments WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
         if (!investment) return res.status(404).json(fail('持仓不存在'));
@@ -515,9 +516,9 @@ router.put('/investments/:id/sell', async (req, res) => {
         await db.transaction(async (conn) => {
             // 记录卖出
             const sellTxn = await conn.query(
-                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-         VALUES (?, ?, 'sell', ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, id, sellAmount, parseFloat(sell_price), parseFloat(investment.quantity), date || new Date().toISOString().split('T')[0], note || '清仓卖出']
+                `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+         VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?)`,
+                [req.userId, req.bookId, id, sellAmount, parseFloat(sell_price), parseFloat(investment.quantity), date || new Date().toISOString().split('T')[0], parseFloat(fee) || 0, note || '清仓卖出']
             );
 
             // 更新持仓状态（写入 sold_date = 清仓当天，供列表「清仓当天保留、隔天归档」）
@@ -575,9 +576,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 const newCurrentValue = newQty * parseFloat(investment.current_price || p);
 
                 const buyInvTxn = await conn.query(
-                    `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                     VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, ?)`,
-                    [req.userId, req.bookId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], note || '加仓']
+                    `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+                     VALUES (?, ?, ?, 'buy', ?, ?, ?, ?, ?, ?)`,
+                    [req.userId, req.bookId, id, buyAmount, p, q, date || new Date().toISOString().split('T')[0], fee, note || '加仓']
                 );
                 await conn.query(
                     `UPDATE investments SET quantity=?, total_cost=?, current_value=?, buy_price=?, status=? WHERE id=? AND user_id=? AND book_id=?`,
@@ -606,9 +607,9 @@ router.post('/investments/:id/reduce', async (req, res) => {
                 const newCurrentValue = remainingQty * parseFloat(investment.current_price || p);
 
                 const sellInvTxn = await conn.query(
-                    `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, note)
-                     VALUES (?, ?, ?, 'sell', ?, ?, ?, ?, ?)`,
-                    [req.userId, req.bookId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], note || '部分卖出']
+                    `INSERT INTO investment_transactions (user_id, book_id, investment_id, type, amount, price, quantity, date, fee, note)
+                     VALUES (?, ?, ?, 'sell', ?, ?, ?, ?, ?, ?)`,
+                    [req.userId, req.bookId, id, sellAmount, p, q, date || new Date().toISOString().split('T')[0], fee, note || '部分卖出']
                 );
                 await conn.query(
                     `UPDATE investments SET quantity=?, total_cost=?, current_value=?, status=? WHERE id=? AND user_id=? AND book_id=?`,
