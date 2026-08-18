@@ -206,7 +206,7 @@ const ChartManager = {
                         labels: { color: c.text, font: { family: ChartManager.fontFamily(), size: 10 }, padding: 10, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyleWidth: 10, generateLabels: function(chart) { const d = chart.data; return d.labels.map((l, i) => ({ text: l + '  ' + (d.datasets[0].data[i] / total * 100).toFixed(1) + '%', fillStyle: d.datasets[0].backgroundColor[i], strokeStyle: d.datasets[0].backgroundColor[i], pointStyle: 'circle', index: i })); } }
                     },
                     tooltip: {
-                        backgroundColor: dk => dk ? '#1e1e3a' : '#fff',
+                        backgroundColor: c.bg,
                         titleColor: c.text, bodyColor: c.text,
                         borderColor: c.grid, borderWidth: 1,
                         cornerRadius: 8, padding: 12,
