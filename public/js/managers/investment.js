@@ -100,9 +100,14 @@ const InvestmentManager = {
                     else if (act === 'reduce') this.openReduceModal(id);
                     else if (act === 'interest') this.openInterestModal(id);
                     else if (act === 'delete') this.delete(id);
+                    else if (act === 'txns') this.openInvTxns(id);
                 }
             });
         });
+        const txnsModal = document.getElementById('invTxnsModal');
+        if (txnsModal) txnsModal.addEventListener('click', (e) => { if (e.target === txnsModal) this.closeInvTxns(); });
+        const txnsClose = document.getElementById('invTxnsClose');
+        if (txnsClose) txnsClose.addEventListener('click', () => this.closeInvTxns());
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') { this.closeInvGrid(); this.closeDetailModal(); }
         });
@@ -463,6 +468,7 @@ const InvestmentManager = {
                 <div class="goal-head">
                     <div class="goal-icon">${escapeHtml(i.type_icon || "📈")}</div>
                     <div class="goal-title">${escapeHtml(i.name)}${i.code ? ' <span class="goal-sub">(' + escapeHtml(i.code) + ')</span>' : ''}</div>
+                    ${i.status === 'sold' ? '<span class="inv-sold-badge">已清仓</span>' : ''}
                     <span class="inv-risk-badge" style="--dot:${INV_RISK_DOT[rl]}; background:${INV_RISK_DOT[rl]}22; color:${INV_RISK_DOT[rl]}">${INV_RISK_LABELS[rl] || rl}</span>
                 </div>
                 <div class="goal-amounts"><span>投入 <strong>${fmt(i.total_cost)}</strong></span><span>市值 <strong>${fmt(i.current_value)}</strong></span></div>
@@ -646,6 +652,45 @@ const InvestmentManager = {
     },
     closeInvGrid() {
         const ov = document.getElementById('invGridOverlay');
+        if (ov) ov.classList.remove('show');
+    },
+
+    /* ---- 理财：交易记录弹窗 ---- */
+    async openInvTxns(id) {
+        const inv = (cache.investments || []).find(i => i.id === id);
+        const title = inv ? `${escapeHtml(inv.name)} · 交易记录` : '交易记录';
+        document.getElementById('invTxnsTitle').textContent = title;
+        document.getElementById('invTxnsBody').innerHTML = `<div class="sh-body"><div class="skeleton-wrap" data-skeleton="list"><div class="skeleton-line shimmer"></div><div class="skeleton-line shimmer"></div><div class="skeleton-line shimmer"></div></div></div>`;
+        document.getElementById('invTxnsModal').classList.add('show');
+        const data = await api(`/investments/investments/${id}/transactions`);
+        const list = (data && Array.isArray(data)) ? data : (data && data.data ? data.data : []);
+        const body = document.getElementById('invTxnsBody');
+        if (!list.length) {
+            body.innerHTML = `<div class="bs-empty">暂无交易记录</div>`;
+            return;
+        }
+        const TYPE_CLS = { buy: 'expense', sell: 'income', dividend: 'income', interest: 'income', reinvest: 'expense' };
+        const rows = list.map(t => {
+            const cls = TYPE_CLS[t.type] || 'expense';
+            const sign = t.type === 'sell' || t.type === 'dividend' || t.type === 'interest' ? '+' : '-';
+            const amt = Number(t.amount || 0);
+            const parts = [];
+            if (t.price != null && t.price !== '') parts.push(`单价 ${fmt(t.price)}`);
+            if (t.quantity != null && t.quantity !== '') parts.push(`数量 ${t.quantity}`);
+            return `
+            <div class="inv-txn-row">
+                <div class="inv-txn-main">
+                    <span class="inv-txn-type inv-txn-${cls}">${escapeHtml(t.type_label || t.type)}</span>
+                    <span class="inv-txn-date">${escapeHtml((t.date || '').slice(0, 10))}</span>
+                </div>
+                <div class="inv-txn-amount ${cls}">${sign}${fmt(Math.abs(amt))}</div>
+                <div class="inv-txn-meta">${parts.join(' · ')}${t.note ? ' · 📝 ' + escapeHtml(t.note) : ''}</div>
+            </div>`;
+        }).join('');
+        body.innerHTML = `<div class="inv-txn-list">${rows}</div>`;
+    },
+    closeInvTxns() {
+        const ov = document.getElementById('invTxnsModal');
         if (ov) ov.classList.remove('show');
     }
 };

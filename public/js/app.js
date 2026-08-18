@@ -173,8 +173,7 @@ function getIncCats() { return cache.categories.filter(c => c.type === 'income')
 const PAGE_META = {
     dashboard: { title: '仪表盘', subtitle: '财务总览与快速洞察' },
     accounts: { title: '账户管理', subtitle: '管理您的资金账户' },
-    transfers: { title: '内部转账', subtitle: '账户间资金转移' },
-    transactions: { title: '交易管理', subtitle: '记录每一笔收支' },
+    transactions: { title: '交易管理', subtitle: '记录每一笔收支与内部转账' },
     budget: { title: '预算管理', subtitle: '设定目标，合理规划' },
     investments: { title: '理财管理', subtitle: '资产配置与收益追踪' },
     debts: { title: '债务管理', subtitle: '贷款·信用卡·借贷跟踪' },
@@ -331,7 +330,6 @@ async function refreshPage(page) {
     const M = window;
     if (page === 'dashboard' && M.DashboardManager) await M.DashboardManager.refresh();
     if (page === 'accounts' && M.AccountManager) await M.AccountManager.refresh();
-    if (page === 'transfers' && M.TransferManager) await M.TransferManager.refresh();
     if (page === 'transactions' && M.TransactionManager) await M.TransactionManager.refresh();
     if (page === 'budget' && M.BudgetManager) await M.BudgetManager.refresh();
     if (page === 'investments') {
@@ -454,7 +452,8 @@ async function boot() {
     safeInit('TransMonthFilter', () => initTransMonthFilter());
     safeInit('ThemeManager', () => ThemeManager.init());
     safeInit('AccountManager', () => AccountManager.init());
-    safeInit('TransferManager', () => TransferManager.init());
+    // TransferManager 的独立转账表单已并入 TransactionManager，不再单独初始化
+    // safeInit('TransferManager', () => TransferManager.init());
     safeInit('TransactionManager', () => TransactionManager.init());
     safeInit('BudgetManager', () => BudgetManager.init());
     safeInit('InvestmentManager', () => InvestmentManager.init());

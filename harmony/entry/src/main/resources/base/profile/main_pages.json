@@ -15,6 +15,7 @@
     "pages/Debts",
     "pages/Investments",
     "pages/InvestmentDetail",
+    "pages/InvestmentTransactions",
     "pages/Planning",
     "pages/Search",
     "pages/AiScan",

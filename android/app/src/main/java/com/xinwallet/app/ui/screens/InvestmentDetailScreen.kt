@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -43,6 +46,7 @@ import com.xinwallet.app.ui.theme.ExpenseColorDark
 import com.xinwallet.app.ui.theme.IncomeColor
 import com.xinwallet.app.ui.theme.IncomeColorDark
 import com.xinwallet.app.ui.theme.LocalIsDark
+import com.xinwallet.app.ui.navigation.Screen
 import com.xinwallet.app.ui.viewmodel.InvestmentsViewModel
 import com.xinwallet.app.ui.viewmodel.viewModelFactory
 import com.xinwallet.app.util.formatMoney
@@ -102,6 +106,27 @@ private fun InvestmentDetailContent(inv: Investment, modifier: Modifier = Modifi
             InfoRow("持有数量", if (inv.quantity > 0) inv.quantity.toString() else "—")
             InfoRow("买入日期", if (inv.buyDate.isBlank()) "—" else inv.buyDate.take(10))
             if (!inv.note.isNullOrBlank()) InfoRow("备注", inv.note!!)
+            Spacer(Modifier.height(16.dp))
+        }
+        item {
+            // 交易记录入口：跳转独立页展示买入/卖出/分红等流水
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth().clickable { navController.navigate(Screen.InvestmentTransactions.create(inv.id)) }
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("📋 交易记录", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "查看交易记录",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
         }
     }

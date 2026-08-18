@@ -692,6 +692,43 @@
   background: var(--dot, #888);
 }
 
+/* 已清仓徽标（减仓全部数量后仍保留卡片） */
+.inv-sold-badge {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: var(--fw-semibold);
+  padding: 2px 9px; border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--text-tertiary) 16%, transparent);
+  white-space: nowrap;
+}
+
+/* ============ 理财：交易记录弹窗 ============ */
+.modal-overlay#invTxnsModal { z-index: 1200; }
+.inv-txn-list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 70dvh; overflow-y: auto; }
+.inv-txn-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "main amount" "meta meta";
+  gap: 4px 12px;
+  padding: var(--space-3);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.inv-txn-main { grid-area: main; display: flex; align-items: center; gap: 10px; }
+.inv-txn-type {
+  font-size: 12px; font-weight: var(--fw-semibold);
+  padding: 2px 9px; border-radius: var(--radius-full);
+}
+.inv-txn-type.inv-txn-expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 14%, transparent); }
+.inv-txn-type.inv-txn-income { color: var(--income); background: color-mix(in srgb, var(--income) 14%, transparent); }
+.inv-txn-date { font-size: var(--text-caption); color: var(--text-tertiary); }
+.inv-txn-amount { grid-area: amount; font-size: var(--text-body-lg); font-weight: var(--fw-semibold); text-align: right; }
+.inv-txn-amount.expense { color: var(--expense); }
+.inv-txn-amount.income { color: var(--income); }
+.inv-txn-meta { grid-area: meta; font-size: var(--text-caption); color: var(--text-muted); }
+.bs-empty { padding: var(--space-6) var(--space-3); text-align: center; color: var(--text-muted); font-size: var(--text-body-sm); }
+
 /* ============ 理财：单卡详情弹窗 ============ */
 .inv-detail-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .inv-detail-icon { font-size: 26px; line-height: 1; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: var(--surface-hover); border-radius: var(--radius-lg); flex: 0 0 auto; }
@@ -1086,6 +1123,17 @@
    9. TRANSFER HISTORY
    -------------------------------------------------------------------------- */
 #transferHistory { min-height: 100px; }
+
+/* 内部转账并入「交易管理」：转账表单 + 转账记录 两列布局 */
+.transfer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+@media (max-width: 860px) {
+  .transfer-grid { grid-template-columns: 1fr; }
+}
 
 .transfer-item {
   display: flex; align-items: center; gap: var(--space-3);

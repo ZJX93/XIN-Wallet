@@ -114,6 +114,9 @@ interface ApiService {
     @DELETE("investments/investments/{id}")
     suspend fun deleteInvestment(@Path("id") id: Int): Response<ApiResponse<Unit>>
 
+    @GET("investments/investments/{id}/transactions")
+    suspend fun getInvestmentTransactions(@Path("id") id: Int): Response<ApiResponse<List<InvestmentTransaction>>>
+
     /* 仪表盘 */
     @GET("stats/dashboard")
     suspend fun getDashboard(): Response<ApiResponse<Dashboard>>

@@ -72,6 +72,7 @@ import com.xinwallet.app.ui.screens.CategoryScreen
 import com.xinwallet.app.ui.screens.ChatScreen
 import com.xinwallet.app.ui.screens.HomeScreen
 import com.xinwallet.app.ui.screens.InvestmentDetailScreen
+import com.xinwallet.app.ui.screens.InvestmentTransactionsScreen
 import com.xinwallet.app.ui.screens.InvestmentsScreen
 import com.xinwallet.app.ui.screens.LoginScreen
 import com.xinwallet.app.ui.screens.PlanningScreen
@@ -115,6 +116,9 @@ sealed class Screen(val route: String) {
     object Investments : Screen("investments")
     object InvestmentDetail : Screen("investment/{id}") {
         fun create(id: Int) = "investment/$id"
+    }
+    object InvestmentTransactions : Screen("investment/{id}/transactions") {
+        fun create(id: Int) = "investment/$id/transactions"
     }
     object Profile : Screen("profile")
     object Planning : Screen("planning")
@@ -402,6 +406,12 @@ fun AppNavHost(navController: NavHostController, padding: PaddingValues, onLogou
             arguments = listOf(navArgument("id") { type = androidx.navigation.NavType.IntType })
         ) {
             InvestmentDetailScreen(navController, it.arguments?.getInt("id") ?: 0)
+        }
+        composable(
+            Screen.InvestmentTransactions.route,
+            arguments = listOf(navArgument("id") { type = androidx.navigation.NavType.IntType })
+        ) {
+            InvestmentTransactionsScreen(navController, it.arguments?.getInt("id") ?: 0)
         }
         composable(Screen.Profile.route) { ProfileScreen(navController, onLogout) }
         composable(Screen.Planning.route) { PlanningScreen(navController) }

@@ -527,8 +527,8 @@ router.get('/calendar', async (req, res) => {
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense
              FROM transactions
-             WHERE user_id = ? AND book_id = ? AND date >= ? AND date <= ?
-             GROUP BY date`,
+             WHERE user_id = ? AND book_id = ? AND CAST(date AS CHAR(10)) >= ? AND CAST(date AS CHAR(10)) <= ?
+             GROUP BY CAST(date AS CHAR(10))`,
             [req.userId, req.bookId, monthStart, monthEnd]
         );
 

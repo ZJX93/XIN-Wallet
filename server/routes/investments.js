@@ -200,20 +200,23 @@ router.get('/investments', async (req, res) => {
        FROM investments i
        JOIN investment_types it ON i.investment_type_id = it.id
        LEFT JOIN accounts a ON i.account_id = a.id
-       WHERE i.user_id = ? AND i.book_id = ? AND i.status = 'holding'
-       ORDER BY i.current_value DESC`,
-            [req.userId, req.bookId]
+       WHERE i.user_id = ? AND i.book_id = ?
+         AND (i.status = 'holding' OR (i.status = 'sold' AND i.sold_date = ?))
+       ORDER BY CASE WHEN i.status = 'holding' THEN 0 ELSE 1 END, i.current_value DESC`,
+            [req.userId, req.bookId, fmtDateOnly(new Date())]
         );
 
-        // 计算汇总
-        const totalCost = investments.reduce((s, i) => s + parseFloat(i.total_cost), 0);
-        const totalValue = investments.reduce((s, i) => s + parseFloat(i.current_value), 0);
+        // 计算汇总：仅统计当前持有中的持仓，已清仓的不计入总市值
+        const holding = investments.filter(i => i.status === 'holding');
+        const totalCost = holding.reduce((s, i) => s + parseFloat(i.total_cost), 0);
+        const totalValue = holding.reduce((s, i) => s + parseFloat(i.current_value), 0);
         const totalProfit = totalValue - totalCost;
         const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost * 100) : 0;
 
         // 按类型分组
         const byType = {};
         investments.forEach(i => {
+            if (i.status === 'sold') return; // 已清仓（仅清仓当天显示卡片）不计入类型汇总
             const key = i.type_name;
             if (!byType[key]) byType[key] = { type_name: key, icon: i.type_icon, risk_level: i.risk_level, total_cost: 0, total_value: 0, items: [] };
             byType[key].total_cost += parseFloat(i.total_cost);
@@ -500,10 +503,10 @@ router.put('/investments/:id/sell', async (req, res) => {
                 [req.userId, req.bookId, id, sellAmount, parseFloat(sell_price), parseFloat(investment.quantity), date || new Date().toISOString().split('T')[0], note || '清仓卖出']
             );
 
-            // 更新持仓状态
+            // 更新持仓状态（写入 sold_date = 清仓当天，供列表「清仓当天保留、隔天归档」）
             await conn.query(
-                `UPDATE investments SET current_price=?, current_value=?, quantity=0, status='sold' WHERE id=? AND user_id=? AND book_id=?`,
-                [parseFloat(sell_price), sellAmount, id, req.userId, req.bookId]
+                `UPDATE investments SET current_price=?, current_value=?, quantity=0, status='sold', sold_date=? WHERE id=? AND user_id=? AND book_id=?`,
+                [parseFloat(sell_price), sellAmount, fmtDateOnly(new Date()), id, req.userId, req.bookId]
             );
 
             // 记录到主交易（如果关联了账户）

@@ -7,7 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { toNumber, toAmount, TRANSACTION_TYPES } = require('../validate');
 const {
-    success, fail, handleServerError, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
+    success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
 const { ensureCategory, syncCreditCardDebt } = require('./utils');
@@ -36,24 +36,26 @@ async function recomputeInvestmentPosition(conn, investmentId, userId) {
             qty += q;
             cost += amt; // 买入金额(含费)/红利再投金额计入成本基数
         } else if (t.type === 'sell') {
-            const qtyBefore = qty; // 卖出按当时持仓占比扣减成本基数
-            if (qtyBefore > 0) {
-                const reducedCost = (cost / qtyBefore) * q;
-                cost -= reducedCost;
-            }
+            // 券商净投入本金口径：卖出按实际回款(amount)全额从成本基数扣减，
+            // 而非按当时均价比例扣减。这样持仓盈亏与同花顺/东方财富等券商一致。
+            cost -= amt;
             qty -= q;
         }
         // dividend / interest 仅产生现金入账，不影响持仓数量与成本
     }
-    if (qty < 0) qty = 0;
+    if (qty <= 0) { qty = 0; cost = 0; } // 清仓后无持仓，成本基数归零
     if (cost < 0) cost = 0;
     const currentPrice = parseFloat(row.current_price) || 0;
     const currentValue = qty * currentPrice;
     const buyPrice = qty > 0 ? cost / qty : 0;
     const status = qty > 0 ? 'holding' : 'sold';
+    // 清仓当天：写入 sold_date（本地日期），用于列表「清仓当天保留卡片、隔天归档」逻辑
+    const todayStr = fmtDateOnly(new Date());
     await conn.query(
-        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status=$5 WHERE id=$6 AND user_id=$7`,
-        [qty, cost, currentValue, buyPrice, status, investmentId, userId]
+        `UPDATE investments SET quantity=$1, total_cost=$2, current_value=$3, buy_price=$4, status=$5,
+            sold_date = CASE WHEN $5 = 'sold' THEN $8 ELSE NULL END
+         WHERE id=$6 AND user_id=$7`,
+        [qty, cost, currentValue, buyPrice, status, investmentId, userId, todayStr]
     );
 }
 
@@ -601,4 +603,5 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+router.recomputeInvestmentPosition = recomputeInvestmentPosition;
 module.exports = router;

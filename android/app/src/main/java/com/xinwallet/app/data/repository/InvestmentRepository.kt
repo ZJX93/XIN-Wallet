@@ -12,4 +12,5 @@ class InvestmentRepository(private val apiProvider: () -> ApiService) {
     suspend fun createInvestment(req: CreateInvestmentRequest) = safeApiCall { apiProvider().createInvestment(req) }
     suspend fun updateInvestment(id: Int, req: UpdateInvestmentRequest) = safeUnitCall { apiProvider().updateInvestment(id, req) }
     suspend fun deleteInvestment(id: Int) = safeUnitCall { apiProvider().deleteInvestment(id) }
+    suspend fun getTransactions(id: Int) = safeApiCall { apiProvider().getInvestmentTransactions(id) }
 }

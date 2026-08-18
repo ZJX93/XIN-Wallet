@@ -109,6 +109,8 @@
   --income-soft: oklch(52% 0.20 20 / 0.08);
   --expense: var(--success-500);
   --expense-soft: oklch(58% 0.16 160 / 0.1);
+  --transfer: var(--accent-500);
+  --transfer-soft: oklch(54% 0.10 60 / 0.08);
 
   --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
   --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.06);
@@ -203,6 +205,8 @@
   --income-soft: oklch(56% 0.16 20 / 0.14);
   --expense: oklch(68% 0.16 160);
   --expense-soft: oklch(58% 0.14 160 / 0.16);
+  --transfer: var(--accent-400);
+  --transfer-soft: oklch(62% 0.11 60 / 0.14);
 
   /* 阴影：暗色下用暖黑 + 低透明度，配合卡片分层 */
   --shadow-sm: 0 1px 3px oklch(14% 0.02 60 / 0.25);

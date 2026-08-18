@@ -62,6 +62,14 @@ export struct InvestmentDetailPage {
               }.layoutWeight(1).padding(14).backgroundColor(COLORS.card).borderRadius(12)
             }
             Column({ space: 0 }) {
+              // 交易记录入口：跳转独立页展示买入/卖出/分红等流水
+              Row() {
+                Text('📋 交易记录').fontSize(15).fontColor(COLORS.textPrimary).layoutWeight(1)
+                Text('›').fontSize(18).fontColor(COLORS.textSecondary)
+              }.width('100%').padding({ top: 14, bottom: 14 })
+                .backgroundColor(COLORS.card).borderRadius(12)
+                .onClick(() => router.pushUrl({ url: 'pages/InvestmentTransactions', params: { id: this.inv!.id } }))
+
               SectionTitleLocal({ text: '持仓信息' })
               this.InfoRow('名称', this.inv!.name)
               if (this.inv!.code) this.InfoRow('代码', this.inv!.code!)

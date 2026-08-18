@@ -62,9 +62,6 @@
                 <li class="nav-item" data-page="transactions">
                     <span class="nav-icon">💰</span><span class="nav-text">交易管理</span>
                 </li>
-                <li class="nav-item" data-page="transfers">
-                    <span class="nav-icon">🔄</span><span class="nav-text">内部转账</span>
-                </li>
                 <li class="nav-item" data-page="budget">
                     <span class="nav-icon">🎯</span><span class="nav-text">预算管理</span>
                 </li>
@@ -123,31 +120,6 @@
                 </div>
             </section>
 
-            <!-- ========== 内部转账 ========== -->
-            <section class="page" id="page-transfers">
-                <div class="glass-card">
-                    <h3 class="card-title">🔄 内部账户转账</h3>
-                    <p class="card-desc">在不同账户之间转移资金，余额自动更新</p>
-                    <form class="trans-form" id="transferForm">
-                        <input type="hidden" id="transferEditId" value="">
-                        <div class="form-row">
-                            <div class="form-group"><label>转出账户</label><select id="transferFrom" required></select></div>
-                            <div class="form-group"><label>转入账户</label><select id="transferTo" required></select></div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group"><label>转账金额 (¥)</label><input type="number" id="transferAmount" step="0.01" min="0.01" required placeholder="0.00" autocomplete="off"></div>
-                            <div class="form-group"><label>转账时间</label><input type="datetime-local" id="transferDate" step="1" required></div>
-                        </div>
-                        <div class="form-group full-width"><label>备注</label><input type="text" id="transferNote" placeholder="转账备注..."></div>
-                        <div class="form-actions">
-                            <button type="submit" class="btn btn-primary" id="transferSubmitBtn">确认转账</button>
-                            <button type="button" class="btn btn-ghost" id="transferCancelEditBtn" style="display:none">取消编辑</button>
-                        </div>
-                    </form>
-                </div>
-                <div class="glass-card"><h3 class="card-title">转账记录</h3><div id="transferHistory"><div class="empty-hint">暂无转账记录</div></div></div>
-            </section>
-
             <!-- ========== 交易管理 ========== -->
             <section class="page" id="page-transactions">
                 <div class="filter-bar">
@@ -176,21 +148,25 @@
                     <form class="trans-form" id="transForm">
                         <input type="hidden" id="transEditId">
                         <div class="form-row">
-                            <div class="form-group"><label>类型</label><div class="type-switch" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button></div></div>
+                            <div class="form-group"><label>类型</label><div class="type-switch three" role="group" aria-label="交易类型"><button type="button" class="type-btn active" data-type="expense" aria-pressed="true">支出</button><button type="button" class="type-btn" data-type="income" aria-pressed="false">收入</button><button type="button" class="type-btn" data-type="transfer" aria-pressed="false">转账</button></div></div>
                             <div class="form-group"><label>金额 (¥)</label><input type="number" id="transAmount" step="0.01" min="0" required autocomplete="off"></div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group"><label>账户</label><select id="transAccount" required></select></div>
-                            <div class="form-group"><label>类别</label><select id="transCategory" required></select></div>
+                        <div class="form-row" id="transAccountRow">
+                            <div class="form-group"><label id="transAccountLabel">账户</label><select id="transAccount" required></select></div>
+                            <div class="form-group transfer-only" style="display:none"><label>转入账户</label><select id="transToAccount"></select></div>
                         </div>
-                        <div class="form-row">
-                            <div class="form-group"><label>日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
+                        <div class="form-row transfer-only" id="transSingleAccountHint" style="display:none">
+                            <div class="form-group full-width transfer-hint">⚠️ 当前只有一个账户，无法转账。请先添加至少一个账户。</div>
+                        </div>
+                        <div class="form-row non-transfer">
+                            <div class="form-group"><label>类别</label><select id="transCategory" required></select></div>
                             <div class="form-group"><label>关联预算 <small style="color:var(--text-secondary)">（可选）</small></label><select id="transBudget"><option value="">不关联</option></select></div>
                         </div>
                         <div class="form-row">
-                            <div class="form-group"><label>备注</label><input type="text" id="transNote" placeholder="备注..."></div>
+                            <div class="form-group"><label>日期时间</label><input type="datetime-local" id="transDate" step="1" required></div>
+                            <div class="form-group full-width"><label>备注</label><input type="text" id="transNote" placeholder="备注..."></div>
                         </div>
-                        <div class="form-group full-width">
+                        <div class="form-group full-width non-transfer">
                             <label>标签</label>
                             <div class="tag-picker" id="transTagPicker"></div>
                         </div>

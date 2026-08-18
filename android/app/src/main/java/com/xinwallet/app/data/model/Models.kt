@@ -251,6 +251,21 @@ data class InvestmentsResponse(
     val byType: Map<String, TypeGroup>? = null
 )
 
+data class InvestmentTransaction(
+    val id: Int = 0,
+    val type: String = "buy",
+    @SerializedName("type_label") val typeLabel: String = "买入",
+    val amount: Double = 0.0,
+    val price: Double = 0.0,
+    val quantity: Double = 0.0,
+    val date: String = "",
+    val note: String? = null
+)
+
+data class InvestmentTransactionsResponse(
+    val transactions: List<InvestmentTransaction> = emptyList()
+)
+
 data class PortfolioSummary(
     val totalCost: Double = 0.0,
     val totalValue: Double = 0.0,

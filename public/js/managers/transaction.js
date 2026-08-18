@@ -141,7 +141,7 @@ const TransactionManager = {
             document.querySelectorAll('#transForm .type-btn').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
             b.classList.add('active');
             b.setAttribute('aria-pressed', 'true');
-            this.updateCatSelect(b.dataset.type);
+            this.setFormMode(b.dataset.type);
         }));
         document.getElementById('transForm').addEventListener('submit', (e) => { e.preventDefault(); this.save(); });
     },
@@ -215,7 +215,46 @@ const TransactionManager = {
         this.updateCatSelect('expense');
         this.updateAccSelect();
     },
+    setFormMode(type) {
+        const isTransfer = type === 'transfer';
+        // 类型按钮样式已在 click 处理中切换
+        document.querySelectorAll('#transForm .non-transfer').forEach(el => el.style.display = isTransfer ? 'none' : '');
+        document.querySelectorAll('#transForm .transfer-only').forEach(el => el.style.display = isTransfer ? '' : 'none');
+        document.getElementById('transAccountLabel').textContent = isTransfer ? '转出账户' : '账户';
+        document.getElementById('transToAccount').required = isTransfer;
+        document.getElementById('transCategory').required = !isTransfer;
+        const submitBtn = document.querySelector('#transForm button[type="submit"]');
+        const hint = document.getElementById('transSingleAccountHint');
+        const toRow = document.getElementById('transToAccount')?.closest('.form-row');
+        if (isTransfer) {
+            this.updateTransferAccSelect();
+            const accounts = cache.accounts || [];
+            if (accounts.length < 2) {
+                if (hint) hint.style.display = '';
+                if (toRow) toRow.style.display = 'none';
+                if (submitBtn) submitBtn.disabled = true;
+            } else {
+                if (hint) hint.style.display = 'none';
+                if (toRow) toRow.style.display = '';
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        } else {
+            this.updateCatSelect(type);
+            this.updateAccSelect();
+            if (hint) hint.style.display = 'none';
+            if (toRow) toRow.style.display = '';
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    },
+    updateTransferAccSelect() {
+        const populate = (sel) => {
+            sel.innerHTML = cache.accounts.map(a => `<option value="${a.id}">${escapeHtml(a.icon)} ${escapeHtml(a.name)} (${fmt(a.balance)})</option>`).join('');
+        };
+        populate(document.getElementById('transAccount'));
+        populate(document.getElementById('transToAccount'));
+    },
     updateCatSelect(type) {
+        if (type === 'transfer') return;
         const sel = document.getElementById('transCategory');
         const cats = type === 'expense' ? getExpCats() : getIncCats();
         // 构建树形选项：一级分类作为 optgroup，二级分类作为 option
@@ -254,16 +293,31 @@ const TransactionManager = {
                 t = await api(`/transactions/${editId}`, 'GET', null, { silent: true });
             } catch (e) { t = null; }
             if (t) {
+                const isTransfer = t.type === 'transfer_out' || t.type === 'transfer_in';
                 document.getElementById('transEditId').value = t.id;
                 document.getElementById('transAmount').value = t.amount;
                 document.getElementById('transDate').value = fmtDate(t.date);
-                document.getElementById('transNote').value = t.note;
-                document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
-                document.getElementById('transCategory').value = t.category?.id;
-                document.getElementById('transBudget').value = t.budget_id || '';
-                document.querySelectorAll('#transForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === t.type) { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
-                this.updateCatSelect(t.type);
-                this.renderTagPicker(t.tags ? t.tags.map(x => x.id) : []);
+                document.getElementById('transNote').value = t.note || '';
+                document.querySelectorAll('#transForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === (isTransfer ? 'transfer' : t.type)) { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
+                this.setFormMode(isTransfer ? 'transfer' : t.type);
+                if (isTransfer) {
+                    document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
+                    // 转入账户：优先从配对数据中取，否则通过 transfer_id 查询完整转账记录
+                    const pairIn = t._transferIn || (window._lastMergedTransfers && window._lastMergedTransfers.find(x => x._transferOut?.id === t.id)?._transferIn);
+                    if (pairIn) {
+                        document.getElementById('transToAccount').value = pairIn.account?.id;
+                    } else if (t.transfer_id) {
+                        try {
+                            const full = await api(`/transfers/${t.transfer_id}`, 'GET', null, { silent: true });
+                            if (full) document.getElementById('transToAccount').value = full.to_account_id;
+                        } catch (e) { /* ignore */ }
+                    }
+                } else {
+                    document.getElementById('transAccount').value = t.account?.id || cache.accounts[0]?.id;
+                    document.getElementById('transCategory').value = t.category?.id;
+                    document.getElementById('transBudget').value = t.budget_id || '';
+                    this.renderTagPicker(t.tags ? t.tags.map(x => x.id) : []);
+                }
             }
         } else {
             document.getElementById('transModalTitle').textContent = '新增交易';
@@ -273,8 +327,7 @@ const TransactionManager = {
             document.getElementById('transNote').value = '';
             document.getElementById('transBudget').value = '';
             document.querySelectorAll('#transForm .type-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); if (b.dataset.type === 'expense') { b.classList.add('active'); b.setAttribute('aria-pressed','true'); } });
-            this.updateCatSelect('expense');
-            this.updateAccSelect();
+            this.setFormMode('expense');
             this.renderTagPicker([]);
         }
     },
@@ -298,23 +351,45 @@ const TransactionManager = {
         try {
         const editId = document.getElementById('transEditId').value;
         const type = document.querySelector('#transForm .type-btn.active').dataset.type;
-        const budgetVal = document.getElementById('transBudget').value;
-        const body = {
-            account_id: parseInt(document.getElementById('transAccount').value),
-            category_id: parseInt(document.getElementById('transCategory').value),
-            budget_id: budgetVal ? parseInt(budgetVal) : null,
-            type, amount: parseFloat(document.getElementById('transAmount').value),
-            date: document.getElementById('transDate').value,
-            note: document.getElementById('transNote').value,
-            tags: Array.from(document.querySelectorAll('#transTagPicker .tag-chip.selected')).map(c => parseInt(c.dataset.id))
-        };
-        if (!body.amount || body.amount <= 0) { showToast('请输入有效金额', 'error'); return; }
-        if (editId) {
-            await api(`/transactions/${editId}`, 'PUT', body);
-            showToast('交易已更新', 'success');
+        const amount = parseFloat(document.getElementById('transAmount').value);
+        const date = document.getElementById('transDate').value;
+        const note = document.getElementById('transNote').value;
+        if (!amount || amount <= 0) { showToast('请输入有效金额', 'error'); return; }
+
+        if (type === 'transfer') {
+            const fromId = parseInt(document.getElementById('transAccount').value);
+            const toId = parseInt(document.getElementById('transToAccount').value);
+            if (!fromId || !toId) { showToast('请选择转出和转入账户', 'error'); return; }
+            if (fromId === toId) { showToast('转出和转入账户不能相同', 'error'); return; }
+            const tBody = { from_account_id: fromId, to_account_id: toId, amount, date, note };
+            if (editId) {
+                // 编辑转账：通过原交易关联的 transfer_id 调用 /transfers/:id
+                const old = await api(`/transactions/${editId}`, 'GET', null, { silent: true });
+                if (!old || !old.transfer_id) { showToast('无法定位转账记录', 'error'); return; }
+                await api(`/transfers/${old.transfer_id}`, 'PUT', tBody);
+                showToast('转账已更新', 'success');
+            } else {
+                await api('/transfers', 'POST', tBody);
+                showToast('转账成功', 'success');
+            }
         } else {
-            await api('/transactions', 'POST', body);
-            showToast('交易已添加', 'success');
+            const budgetVal = document.getElementById('transBudget').value;
+            const body = {
+                account_id: parseInt(document.getElementById('transAccount').value),
+                category_id: parseInt(document.getElementById('transCategory').value),
+                budget_id: budgetVal ? parseInt(budgetVal) : null,
+                type, amount,
+                date,
+                note,
+                tags: Array.from(document.querySelectorAll('#transTagPicker .tag-chip.selected')).map(c => parseInt(c.dataset.id))
+            };
+            if (editId) {
+                await api(`/transactions/${editId}`, 'PUT', body);
+                showToast('交易已更新', 'success');
+            } else {
+                await api('/transactions', 'POST', body);
+                showToast('交易已添加', 'success');
+            }
         }
         this.closeModal();
         await initCache();
@@ -363,6 +438,7 @@ const TransactionManager = {
 
         // 合并配对转账
         const merged = mergeTransferPairs(list);
+        window._lastMergedTransfers = merged;
 
         // 按日期降序 + id降序排序
         merged.sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
@@ -422,6 +498,7 @@ const TransactionManager = {
                         <div class="trans-td trans-tags">${tagsHtml}</div>
                         <div class="trans-td trans-desc">${escapeHtml(noteText)}</div>
                         <div class="trans-td trans-actions">
+                            <button data-action="edit-trans" data-id="${id}" title="编辑">✏️</button>
                             <button data-action="delete-trans" data-id="${id}" title="删除">🗑️</button>
                         </div>
                     </div>`;

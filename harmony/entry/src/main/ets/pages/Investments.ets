@@ -13,7 +13,7 @@ interface Iface1 {
 }
 
 interface Inv {
-  id: number; name: string; code?: string; type?: string; accountId?: number;
+  id: number; name: string; code?: string; type?: string; accountId?: number; status?: string;
   buyPrice?: number; currentPrice?: number; quantity?: number;
   cost?: number; currentValue?: number; profit?: number; profitRate?: number; icon?: string;
 }
@@ -78,7 +78,13 @@ export struct InvestmentsPage {
                       CategoryIcon({ icon: x.icon || '📈', iconSize: 40 })
                       Column() {
                         Text(x.name).fontSize(15).fontColor(COLORS.textPrimary)
-                        if (x.code) Text(x.code).fontSize(11).fontColor(COLORS.textSecondary)
+                        Row({ space: 6 }) {
+                          if (x.code) Text(x.code).fontSize(11).fontColor(COLORS.textSecondary)
+                          if (x.status === 'sold') {
+                            Text('已清仓').fontSize(11).fontColor(COLORS.textSecondary)
+                              .backgroundColor(COLORS.brandBgLight).borderRadius(4).padding({ left: 6, right: 6, top: 1, bottom: 1 })
+                          }
+                        }
                       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                       Column() {
                         Text(fmtMoney(x.currentValue || 0)).fontSize(15).fontWeight(FontWeight.Medium)
