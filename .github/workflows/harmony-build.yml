@@ -3,6 +3,11 @@ name: 'Build HarmonyOS HAP'
 # 推送 harmony/** 或本文件会自动触发；也可在 Actions 页手动 workflow_dispatch。
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签（形如 vX.Y.Z），由 auto-tag 派生；留空则自动推导'
+        required: false
+        default: ''
   push:
     paths:
       - 'harmony/**'
@@ -12,6 +17,8 @@ jobs:
   build-harmony:
     name: 'Build entry HAP (API12 / HarmonyOS NEXT)'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         shell: bash
@@ -113,6 +120,55 @@ jobs:
           ohpm install
 
       # ----------------------------------------------------------------------------
+      # 版本计算：与安卓同源
+      # - 优先使用 auto-tag 派发的 tag（vX.Y.Z），保证鸿蒙 HAP 版本号与安卓 APK 完全一致；
+      # - 手动派发未带 tag 时，自 latest v* 推导 patch+1（与 android-build 兜底逻辑一致）。
+      # 同时把版本号注入 AppScope/app.json5（versionName/versionCode），使 HAP 内部版本与安卓对齐。
+      # ----------------------------------------------------------------------------
+      - name: 'Compute version & inject into Harmony app.json5'
+        id: hm_version
+        run: |
+          set -e
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -n "$TAG" ]; then
+            VER=${TAG#v}
+          else
+            LATEST=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+            if [ -z "$LATEST" ]; then
+              VER="0.0.0"
+            else
+              VER=${LATEST#v}
+              MAJOR=$(echo "$VER" | cut -d. -f1)
+              MINOR=$(echo "$VER" | cut -d. -f2)
+              PATCH=$(echo "$VER" | cut -d. -f3)
+              PATCH=$((PATCH + 1))
+              VER="${MAJOR}.${MINOR}.${PATCH}"
+            fi
+          fi
+          MAJOR=$(echo "$VER" | cut -d. -f1)
+          MINOR=$(echo "$VER" | cut -d. -f2)
+          PATCH=$(echo "$VER" | cut -d. -f3)
+          # 与安卓一致的 versionCode 映射：v0.0.1→1, v0.0.5→5, v0.0.35→35, v1.2.3→10203
+          CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          [ "$CODE" -eq 0 ] && CODE=1
+          NEW_TAG="v${VER}"
+          echo "VERSION_TAG=$NEW_TAG" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VER" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "Harmony version: $NEW_TAG (versionName=$VER, versionCode=$CODE)"
+          export VERSION_NAME="$VER"
+          export VERSION_CODE="$CODE"
+          node -e '
+            const fs=require("fs");
+            const p="AppScope/app.json5";
+            const j=JSON.parse(fs.readFileSync(p,"utf8"));
+            j.app.versionName=process.env.VERSION_NAME;
+            j.app.versionCode=Number(process.env.VERSION_CODE);
+            fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");
+            console.log("已注入 app.json5 version:", j.app.versionName, j.app.versionCode);
+          '
+
+      # ----------------------------------------------------------------------------
       # 签名方案（方案 B）：CI 直接出「真签名」HAP
       # 本地 DevEco 自动签名在 C:\Users\XIN\.ohos\config\ 下生成了
       #   default_harmony_*.{cer,p7b,p12}  +  material/{ac,ce,fd}/ 加密目录
@@ -194,3 +250,45 @@ jobs:
           name: 'xinwallet-entry-hap'
           path: 'harmony/entry/build/default/outputs/default/*.hap'
           if-no-files-found: ignore
+
+      # ----------------------------------------------------------------------------
+      # 发布到 GitHub Release（仅限工作流派发，即 auto-tag 同源触发的正式发布）
+      # - 签名 HAP 重命名为 XinWallet.harmony.v{tag}.hap；
+      # - 同源派发的 android-build 会用同一 tag 创建 Release「XinWallet APP v{tag}」，
+      #   此处等待其就绪后把 HAP 作为资产追加进去（版本号与安卓完全一致）；
+      #   若等待超时（安卓尚未建 Release），则自行创建同名 Release 并附带 HAP，避免阻塞。
+      # ----------------------------------------------------------------------------
+      - name: 'Publish HAP to GitHub Release'
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ env.VERSION_TAG }}"
+          SRC=$(find entry/build -name '*-signed.hap' 2>/dev/null | head -1)
+          [ -z "$SRC" ] && SRC=$(find entry/build -name '*.hap' 2>/dev/null | head -1)
+          if [ -z "$SRC" ]; then
+            echo "::error::未找到 HAP，无法发布到 Release"; exit 1
+          fi
+          DEST="entry/build/default/outputs/default/XinWallet.harmony.${TAG}.hap"
+          mkdir -p "$(dirname "$DEST")"
+          cp "$SRC" "$DEST"
+          echo "::notice::HAP 资产: $DEST ($(du -h "$DEST" | cut -f1))"
+          # 等待同源派发的安卓工作流创建同名 Release（版本一致）
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG 已存在，追加 HAP 资产"; break
+            fi
+            echo "[$i] 等待 Release $TAG 创建中..."
+            sleep 20
+          done
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$DEST" --clobber
+          else
+            echo "::warning::等待超时，改为创建 Release 并附带 HAP"
+            gh release create "$TAG" \
+              --title "XinWallet APP $TAG" \
+              --notes "自动构建安装包（版本 $TAG）。\n- 鸿蒙 HAP：XinWallet.harmony.$TAG.hap\n- 安卓 APK：由 android-build 工作流产出" \
+              "$DEST"
+          fi
+          echo "::notice::已发布 HAP -> Release $TAG : XinWallet.harmony.$TAG.hap"

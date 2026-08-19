@@ -115,3 +115,14 @@ jobs:
             -f tag="${{ steps.version.outputs.new_tag }}" \
             -r main
           echo "Triggered android-build.yml for ${{ steps.version.outputs.new_tag }}"
+
+      # 同源 tag 同时派发鸿蒙构建，保证 HAP 与安卓 APK 版本号完全一致
+      - name: Trigger Harmony build
+        if: steps.version.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run harmony-build.yml \
+            -f tag="${{ steps.version.outputs.new_tag }}" \
+            -r main
+          echo "Triggered harmony-build.yml for ${{ steps.version.outputs.new_tag }}"
