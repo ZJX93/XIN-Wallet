@@ -92,10 +92,11 @@ object AppContainer {
 
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
+    private lateinit var gson: com.google.gson.Gson
 
     fun init(context: Context, session: SessionManager) {        sessionManager = session
 
-        val gson = GsonBuilder()
+        gson = GsonBuilder()
             .setLenient()
             .registerTypeAdapter(Double::class.java, DoubleTypeAdapter)
             .registerTypeAdapter(Double::class.javaPrimitiveType!!, DoubleTypeAdapter)
