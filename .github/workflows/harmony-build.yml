@@ -70,9 +70,9 @@ jobs:
           # 支持三种 CLI 包格式：zip / 单文件 tar.gz / ErBWs/ohos-sdk 分卷 (.aa + .ab)
           case "$URL" in
             *.tar.gz.aa|*.tar.gz.ab)
-              BASE="${URL%.aa}"; BASE="${BASE%.ab}"
-              # sha256 文件内嵌的目标文件名（与 ErBWs 一致）
-              TARBALL="$(basename "${BASE}").tar.gz"
+              BASE="${URL%.aa}"; BASE="${URL%.ab}"
+              # sha256 文件内嵌的目标文件名（BASE 已经以 .tar.gz 结尾）
+              TARBALL="$(basename "${BASE}")"
               echo "分卷格式 ErBWs/ohos-sdk，tarball=${TARBALL}"
               curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.aa" -o clt.tar.gz.aa
               curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.ab" -o clt.tar.gz.ab
