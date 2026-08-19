@@ -13,10 +13,11 @@ dist.prebuild-*/
 .npm-cache*/
 inspect-output/
 inspect-build-preview.mjs
-# 排除临时图片，但保留 logo、images 目录及安卓资源目录下的图片
+# 排除临时图片，但保留 logo、images 目录、安卓资源目录及鸿蒙资源目录下的图片
 *.png
 !images/*.png
 !android/app/src/main/res/**/*.png
+!harmony/**/resources/base/media/*.png
 .workbuddy/
 server/routes.js.original
 # 一次性审计报告（应在 docs/ 或被 .gitignore）
@@ -31,4 +32,7 @@ harmony/.idea/
 harmony/*_layout.json
 # 本地交接/工作笔记（不入库）
 .handover/
+
+# 鸿蒙签名材料（CI 注入的临时目录 / 本地 base64 中间文件，严禁入库）
+harmony/.sign/
 
