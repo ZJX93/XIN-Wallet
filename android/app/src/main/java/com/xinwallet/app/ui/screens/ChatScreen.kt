@@ -1,6 +1,7 @@
 package com.xinwallet.app.ui.screens
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -60,6 +62,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -150,6 +154,28 @@ fun ChatScreen(navController: NavHostController) {
     var showBookSheet by remember { mutableStateOf(false) }
     var showLocationDialog by remember { mutableStateOf(false) }
     var locationDraft by remember { mutableStateOf("") }
+
+    // 地点定位：权限 + 定位中状态
+    var isLocating by remember { mutableStateOf(false) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            isLocating = true
+            scope.launch {
+                val addr = getCurrentLocation(context)
+                if (addr != null) locationDraft = addr
+                isLocating = false
+                if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
+            }
+        } else {
+            isLocating = false
+            scope.launch { snackbar.showSnackbar("未授予定位权限") }
+        }
+    }
+
     var accounts by remember { mutableStateOf<List<com.xinwallet.app.data.model.Account>>(emptyList()) }
     var selectedAccountId by remember { mutableStateOf<Int?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
@@ -206,7 +232,7 @@ fun ChatScreen(navController: NavHostController) {
         },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            Column(Modifier.background(MaterialTheme.colorScheme.background)) {
+            Column(Modifier.background(MaterialTheme.colorScheme.background).imePadding()) {
                 // 输入区上方的快捷 chips 行（账本/账户/不关联/地点）
                 ChatContextChipsRow(
                     bookName = books.find { it.id == currentBookId }?.name ?: "默认账本",
@@ -317,13 +343,42 @@ fun ChatScreen(navController: NavHostController) {
                     onDismissRequest = { showLocationDialog = false },
                     title = { Text("地点") },
                     text = {
-                        androidx.compose.material3.OutlinedTextField(
-                            value = locationDraft,
-                            onValueChange = { locationDraft = it },
-                            singleLine = true,
-                            placeholder = { Text("输入地点（如：合肥、公司）") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Column {
+                            OutlinedTextField(
+                                value = locationDraft,
+                                onValueChange = { locationDraft = it },
+                                singleLine = true,
+                                placeholder = { Text("输入地点（如：合肥、公司）") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        isLocating = true
+                                        scope.launch {
+                                            val addr = getCurrentLocation(context)
+                                            if (addr != null) locationDraft = addr
+                                            isLocating = false
+                                            if (addr == null) snackbar.showSnackbar("无法获取定位，请检查GPS是否开启")
+                                        }
+                                    } else {
+                                        locationPermissionLauncher.launch(arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION
+                                        ))
+                                    }
+                                },
+                                enabled = !isLocating,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = Brown500)
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (isLocating) "定位中…" else "获取设备定位")
+                            }
+                        }
                     },
                     confirmButton = { TextButton(onClick = { chatLocation = locationDraft.trim(); showLocationDialog = false }) { Text("保存") } },
                     dismissButton = {

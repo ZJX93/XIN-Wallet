@@ -186,7 +186,7 @@ fun ProfileScreen(navController: NavHostController, onLogout: () -> Unit) {
                         QuickAction("资产账户", Icons.Filled.Wallet, QuickActionKind.Nav) { navController.navigate(Screen.Accounts.route) }
                     )
                     val row2 = listOf(
-                        QuickAction("投资理财", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) },
+                        QuickAction("理财管理", Icons.Filled.ShowChart, QuickActionKind.Nav) { navController.navigate(Screen.Investments.route) },
                         QuickAction("储蓄目标", Icons.Filled.Savings, QuickActionKind.Nav) { navController.navigate(Screen.SavingsGoals.route) },
                         QuickAction("预算管理", Icons.Filled.Receipt, QuickActionKind.Nav) { navController.navigate(Screen.Budgets.route) },
                         QuickAction("债务管理", Icons.Filled.SwapHoriz, QuickActionKind.Nav) { navController.navigate(Screen.Debts.route) }

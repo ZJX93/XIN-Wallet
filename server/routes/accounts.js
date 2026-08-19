@@ -7,15 +7,15 @@ const router = express.Router();
 const db = require('../db');
 const { success, fail, handleServerError, sumLedgerEffects, computeAccountBalance, fmtDateTime, sumAmounts, addAmounts, subtractAmounts, ErrorCodes, failValidation, failNotFound } = require('./_helpers');
 
-// 获取所有账户
+// 获取所有账户。默认只返回正常账户；?all=1 时连已销户账户一起返回（总资产仍只累计正常账户）
 router.get('/', async (req, res) => {
     try {
-        const accounts = await db.query(
-            'SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? AND status = \'active\' ORDER BY sort_order',
-            [req.userId, req.bookId]
-        );
+        const all = req.query.all === '1' || req.query.all === 'true';
+        const accounts = all
+            ? await db.query('SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? ORDER BY sort_order', [req.userId, req.bookId])
+            : await db.query('SELECT * FROM accounts WHERE user_id = $1 AND book_id = ? AND status = \'active\' ORDER BY sort_order', [req.userId, req.bookId]);
         // 金额精度（M3）：整数分累加，避免多账户浮点求和产生分位漂移
-        const total = sumAmounts(accounts, a => a.balance || 0);
+        const total = sumAmounts(accounts.filter(a => a.status !== 'closed'), a => a.balance || 0);
         res.json(success({ accounts, totalAssets: total }));
     } catch (err) {
         handleServerError(res, err);

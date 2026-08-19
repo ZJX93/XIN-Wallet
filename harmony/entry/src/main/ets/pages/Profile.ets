@@ -19,7 +19,7 @@ const GRID: Iface1[] = [
   { iconRes: 'ic_tag', label: '分类管理', url: 'pages/Category' },
   { iconRes: 'ic_tags', label: '标签管理', url: 'pages/Tags' },
   { iconRes: 'ic_wallet', label: '资产账户', url: 'pages/Accounts' },
-  { iconRes: 'ic_trending', label: '投资理财', url: 'pages/Investments' },
+  { iconRes: 'ic_trending', label: '理财管理', url: 'pages/Investments' },
   { iconRes: 'ic_target', label: '储蓄目标', url: 'pages/SavingsGoals' },
   { iconRes: 'ic_budget', label: '预算管理', url: 'pages/Budgets' },
   { iconRes: 'ic_handshake', label: '债务管理', url: 'pages/Debts' },

@@ -29,7 +29,7 @@ interface ApiService {
 
     /* 账户 */
     @GET("accounts")
-    suspend fun getAccounts(): Response<ApiResponse<AccountsResponse>>
+    suspend fun getAccounts(@Query("all") all: Boolean? = null): Response<ApiResponse<AccountsResponse>>
 
     @POST("accounts")
     suspend fun createAccount(@Body req: CreateAccountRequest): Response<ApiResponse<IdResponse>>

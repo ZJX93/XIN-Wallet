@@ -93,3 +93,75 @@ harmony/
   完整深色色板切换为后续增强项。
 - 部分后端返回字段（report/debt/savings/investment）按安卓模型推断，做了防御性渲染；
   联调时若字段名不一致，以 `Api.ts` 返回的 `data` 实际结构为准微调。
+
+## 七、GitHub Actions 自动构建 HAP 签名配置
+
+> CI（`.github/workflows/harmony-build.yml`）里 runner 是全新环境，**没有**你本机的 DevEco 签名文件。
+> 只有配置好下列 6 个 Secrets，`Build HarmonyOS HAP` 才会产出**可安装的 `.hap`**；
+> 否则只做「源码编译验证」，不产出安装包。
+
+### 7.1 需要的 6 个 Secrets
+
+| Secret 名 | 值来源 | 示例 |
+|---|---|---|
+| `HARMONY_SIGN_STORE_FILE_B64` | DevEco 自动签名的 `.p12` 文件 → base64 | `MIIK...`（长字符串） |
+| `HARMONY_SIGN_STORE_PASSWORD` | DevEco 签名面板「密钥库密码」 | `0000001B5B...` |
+| `HARMONY_SIGN_KEY_ALIAS` | DevEco 签名面板「密钥别名」 | `debugKey` |
+| `HARMONY_SIGN_KEY_PASSWORD` | DevEco 签名面板「密钥密码」 | `0000001B21...` |
+| `HARMONY_SIGN_PROFILE_B64` | 自动签名的 `.p7b`（Profile）→ base64 | `MIIK...` |
+| `HARMONY_SIGN_CERT_B64` | 自动签名的 `.cer`（证书）→ base64 | `MIIB...` |
+
+三个文件的位置见 `harmony/build-profile.json5` 的 `signingConfigs[0].material`，
+即本机 `C:\Users\<用户名>\.ohos\config\default_harmony_*.{p12,p7b,cer}`。
+
+### 7.2 一键生成 6 项 Secret 值（PowerShell，Windows 本机）
+
+```powershell
+# ① 先填成你的实际文件名（可直接复制 build-profile.json5 里的路径）
+$store = "C:\Users\XIN\.ohos\config\default_harmony_xxx.p12"
+$profile = "C:\Users\XIN\.ohos\config\default_harmony_xxx.p7b"
+$cert = "C:\Users\XIN\.ohos\config\default_harmony_xxx.cer"
+
+# ② base64 三个文件（结果逐个复制，粘贴到对应 Secret）
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($store)) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($profile)) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes($cert)) | Set-Clipboard
+
+# ③ storePassword / keyPassword / keyAlias 从 DevEco 签名面板或 build-profile.json5 直接复制
+```
+
+Linux/macOS 上对应命令（base64 结果可写进文件再粘贴，注意 Windows 换行不要带进去）：
+
+```bash
+base64 -w0 /path/to/default_harmony_xxx.p12   # 输出后复制
+base64 -w0 /path/to/default_harmony_xxx.p7b
+base64 -w0 /path/to/default_harmony_xxx.cer
+```
+
+### 7.3 用 gh CLI 批量设置 Secrets（推荐）
+
+```bash
+# 先生成 base64 文件（一次生成，后面重复用）
+gh secret set HARMONY_SIGN_STORE_FILE_B64 < .sign/store.b64
+gh secret set HARMONY_SIGN_PROFILE_B64    < .sign/profile.b64
+gh secret set HARMONY_SIGN_CERT_B64       < .sign/cert.b64
+
+# 密码类直接以值传入（引号里换成你的真实值）
+gh secret set HARMONY_SIGN_STORE_PASSWORD "你的密钥库密码"
+gh secret set HARMONY_SIGN_KEY_PASSWORD   "你的密钥密码"
+gh secret set HARMONY_SIGN_KEY_ALIAS      "debugKey"
+```
+
+或在仓库网页 **Settings → Secrets and variables → Actions → New repository secret** 逐个添加。
+
+### 7.4 配置后验证
+
+1. 仓库 **Actions** 页手动运行 `Build HarmonyOS HAP`（`workflow_dispatch`）。
+2. 日志中「Prepare signing config」步骤应显示 `signing=real`（不再是 compile-only）。
+3. 成功后在 **Summary 页底部 Artifacts** 下载 `xinwallet-entry-hap`，解压即 `.hap` 安装包。
+
+### 7.5 注意事项
+
+- **签名材料绝不提交到 git 仓库**：`.p12/.p7b/.cer` 及 base64 文件都只放 Secrets / 本地 `.sign/`（已加入 `.gitignore`）。
+- 自动签名证书有**有效期**（通常与 DevEco 登录态相关），过期后需重新在 DevEco 打开工程重新自动签名并更新 Secrets。
+- 若要**上架/正式分发**，请改用 AppGallery Connect 申请的正式发布证书与 Profile，替换上述 3 个文件后同样走 Secrets 注入。

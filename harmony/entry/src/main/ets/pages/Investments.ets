@@ -59,7 +59,7 @@ export struct InvestmentsPage {
 
   build() {
     Column() {
-      TopBar({ title: '理财' })
+      TopBar({ title: '理财管理', onBack: () => router.back() })
       if (this.loading) { LoadingBox() }
       else {
         Scroll() {

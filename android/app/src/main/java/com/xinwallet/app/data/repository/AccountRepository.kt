@@ -8,6 +8,8 @@ import com.xinwallet.app.data.remote.safeUnitCall
 
 class AccountRepository(private val apiProvider: () -> ApiService) {
     suspend fun getAccounts() = safeApiCall { apiProvider().getAccounts() }
+    /** 拉取全部账户（含已销户），账户列表/详情页使用；记账等选账户场景仍用 getAccounts() */
+    suspend fun getAllAccounts() = safeApiCall { apiProvider().getAccounts(all = true) }
     suspend fun createAccount(req: CreateAccountRequest) = safeApiCall { apiProvider().createAccount(req) }
     suspend fun updateAccount(id: Int, req: UpdateAccountRequest) = safeUnitCall { apiProvider().updateAccount(id, req) }
     suspend fun closeAccount(id: Int) = safeUnitCall { apiProvider().closeAccount(id) }

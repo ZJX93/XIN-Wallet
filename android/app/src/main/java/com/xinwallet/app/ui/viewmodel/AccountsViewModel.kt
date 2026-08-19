@@ -30,7 +30,7 @@ class AccountsViewModel(private val repo: AccountRepository) : ViewModel() {
     fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
-            when (val r = repo.getAccounts()) {
+            when (val r = repo.getAllAccounts()) {
                 is ApiResult.Success -> _state.value = _state.value.copy(
                     loading = false,
                     error = null,

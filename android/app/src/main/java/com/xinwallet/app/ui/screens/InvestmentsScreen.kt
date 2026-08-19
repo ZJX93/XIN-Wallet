@@ -107,7 +107,7 @@ fun InvestmentsContent(navController: NavHostController, contentPadding: Padding
 
 @Composable
 fun InvestmentsScreen(navController: NavHostController) {
-    Scaffold(topBar = { TopBar("理财") }) { padding ->
+    Scaffold(topBar = { TopBar("理财管理", onBack = { navController.popBackStack() }) }) { padding ->
         InvestmentsContent(navController, padding)
     }
 }

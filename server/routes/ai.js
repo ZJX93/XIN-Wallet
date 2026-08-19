@@ -872,6 +872,7 @@ router.post('/chat', async (req, res) => {
 6. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
 7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
 8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
+9. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，你必须如实告诉用户失败原因并请其补充或更正，绝不能说"已记/已保存/已完成/已删除"。
 
 可用类目：
 ${catRef}
@@ -1164,6 +1165,8 @@ ${accRef}`;
         const conv = [{ role: 'system', content: system }, ...norm];
         let reply = '';
         const mutations = [];
+        const toolErrors = [];
+        let unfinished = false;
         const MAX_LOOPS = 5;
         for (let i = 0; i < MAX_LOOPS; i++) {
             const msg = await chatWithTools(provider, conv, tools);
@@ -1172,6 +1175,7 @@ ${accRef}`;
             for (const tc of msg.toolCalls) {
                 const result = await executeTool(tc.name, tc.arguments || {});
                 conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
+                if (!result.ok) toolErrors.push(result.error || '操作失败');
                 if (result.ok && result.transaction_id) {
                     const action = result.action || 'created';
                     if (action === 'deleted') {
@@ -1192,8 +1196,18 @@ ${accRef}`;
                     }
                 }
             }
+            // 最后一轮仍要求调工具：说明步骤太多/循环用尽，本次未完整执行
+            if (i === MAX_LOOPS - 1) unfinished = true;
         }
-        if (!reply) reply = '已完成处理。';
+        // reply 兜底前先按真实执行状态修正，避免"没记却回复已记"
+        if (!reply || reply === '已完成处理。') {
+            if (unfinished) reply = '本次处理步骤较多未能全部完成，请再说一次或补充信息后重试。';
+            else if (toolErrors.length > 0) reply = '记录失败：' + toolErrors[0] + '，请补充或更正后重试。';
+            else reply = '已完成处理。';
+        } else if (toolErrors.length > 0 && mutations.length === 0) {
+            // AI 文案可能声称成功，但实际没有任何落库操作：在文案前显式补充失败原因
+            reply = '很抱歉，这笔没有记录成功：' + toolErrors[0] + '。' + reply;
+        }
         res.json(success({ reply, transactions: mutations }));
     } catch (err) {
         if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));

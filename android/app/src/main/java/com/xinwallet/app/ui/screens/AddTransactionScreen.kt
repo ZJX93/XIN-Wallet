@@ -99,11 +99,18 @@ import kotlinx.coroutines.withContext
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 /* ============================================================
  * 屏幕
@@ -117,17 +124,21 @@ import androidx.core.content.ContextCompat
  *   6) 4×5 自定义键盘（+-×/ 数字 ( ) ⌫ 清空 . 确定）
  * ============================================================ */
 
-/** GPS 定位：通过 LocationManager 拿经纬度，反向地理编码为城市/区/街道。 */
-private suspend fun getCurrentLocation(context: android.content.Context): String? {
+/** GPS 定位：先取缓存位置（5 分钟内新鲜），取不到则发一次实时定位请求，最后反向地理编码为城市/区/街道。 */
+internal suspend fun getCurrentLocation(context: android.content.Context): String? {
     return withContext(Dispatchers.IO) {
         try {
             val lm = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? LocationManager ?: return@withContext null
-            // 优先使用 GPS，否则 NETWORK
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
-            val loc = providers.asSequence()
-                .filter { lm.isProviderEnabled(it) }
-                .mapNotNull { runCatching { @Suppress("MissingPermission") lm.getLastKnownLocation(it) }.getOrNull() }
-                .firstOrNull() ?: return@withContext null
+            // 1) 优先使用 5 分钟内的缓存位置，避免每次都等卫星
+            val cached = lm.allProviders
+                .asSequence()
+                .mapNotNull { provider ->
+                    runCatching { @Suppress("MissingPermission") lm.getLastKnownLocation(provider) }.getOrNull()
+                }
+                .filter { System.currentTimeMillis() - it.time < 5 * 60 * 1000L }
+                .maxByOrNull { it.time }
+            // 2) 缓存不可用则单次实时定位（GPS > NETWORK），5 秒超时
+            val loc = cached ?: requestSingleLocation(lm) ?: return@withContext null
 
             if (!Geocoder.isPresent()) return@withContext null
             val geocoder = Geocoder(context)
@@ -142,6 +153,31 @@ private suspend fun getCurrentLocation(context: android.content.Context): String
             if (parts.isEmpty()) null else parts.joinToString("·")
         } catch (e: Exception) {
             null
+        }
+    }
+}
+
+/** 单次实时定位：发起一次定位请求，成功或 5 秒超时后结束。 */
+private suspend fun requestSingleLocation(lm: LocationManager): Location? {
+    val provider = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        .firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+        ?: return null
+    return withTimeoutOrNull(5000) {
+        suspendCancellableCoroutine { cont ->
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    if (cont.isActive) cont.resume(location) {}
+                }
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+            }
+            runCatching {
+                @Suppress("MissingPermission")
+                lm.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+            }.onFailure { if (cont.isActive) cont.resumeWith(Result.failure(it)) }
+            cont.invokeOnCancellation { runCatching { lm.removeUpdates(listener) } }
         }
     }
 }

@@ -57,8 +57,11 @@ async function httpsPostJson(url, headers, body) {
                 reject(new AiProviderError(res.statusCode, describeProviderError(parsed, res.statusCode)));
             });
         });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（60s）')); });
+        // 网络层失败（DNS 解析失败 / 连接被拒 / TLS 握手失败 / 连接重置）与超时
+        // 不是 HTTP 响应，须包装成 AiProviderError（带 502/504 + 可读原因），
+        // 否则路由层会误判为「服务器内部错误」500，用户无法定位问题。
+        req.on('error', (e) => reject(new AiProviderError(502, `无法连接到 AI 服务商：${(e && e.message) || e}`)));
+        req.on('timeout', () => { req.destroy(); reject(new AiProviderError(504, 'AI 请求超时（60s），请检查服务商地址或网络')); });
         req.write(data);
         req.end();
     });
@@ -293,8 +296,9 @@ async function httpsPostRaw(url, headers, bufferBody) {
                 reject(new AiProviderError(res.statusCode, describeProviderError(parsed, res.statusCode)));
             });
         });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('AI 请求超时（60s）')); });
+        // 网络层失败 / 超时：包装成 AiProviderError，避免被误报为 500「服务器内部错误」
+        req.on('error', (e) => reject(new AiProviderError(502, `无法连接到 AI 服务商：${(e && e.message) || e}`)));
+        req.on('timeout', () => { req.destroy(); reject(new AiProviderError(504, 'AI 请求超时（60s），请检查服务商地址或网络')); });
         req.write(bufferBody);
         req.end();
     });

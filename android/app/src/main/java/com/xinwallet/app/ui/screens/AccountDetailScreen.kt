@@ -57,7 +57,7 @@ fun AccountDetailScreen(navController: NavHostController, accountId: Int) {
 
     LaunchedEffect(Unit) {
         vm.load(accountId = accountId)
-        val r = AppContainer.accountRepository.getAccounts()
+        val r = AppContainer.accountRepository.getAllAccounts()
         if (r is ApiResult.Success) account = r.data?.accounts?.find { it.id == accountId }
     }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it) } }
