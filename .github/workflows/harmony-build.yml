@@ -71,18 +71,19 @@ jobs:
           case "$URL" in
             *.tar.gz.aa|*.tar.gz.ab)
               BASE="${URL%.aa}"; BASE="${BASE%.ab}"
-              echo "分卷格式 ErBWs/ohos-sdk，base=${BASE}"
+              # sha256 文件内嵌的目标文件名（与 ErBWs 一致）
+              TARBALL="$(basename "${BASE}").tar.gz"
+              echo "分卷格式 ErBWs/ohos-sdk，tarball=${TARBALL}"
               curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.aa" -o clt.tar.gz.aa
               curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.ab" -o clt.tar.gz.ab
+              cat clt.tar.gz.aa clt.tar.gz.ab > "${TARBALL}"
               if curl -fsL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.sha256" -o clt.tar.gz.sha256 2>/dev/null; then
                 echo "已下载校验和，验证..."
-                cat clt.tar.gz.aa clt.tar.gz.ab > clt.tar.gz
                 sha256sum -c clt.tar.gz.sha256
               else
-                echo "无校验和，跳过校验"
-                cat clt.tar.gz.aa clt.tar.gz.ab > clt.tar.gz
+                echo "无校验和，跳过"
               fi
-              tar -xzf clt.tar.gz -C "$HOME/commandline-tools"
+              tar -xzf "${TARBALL}" -C "$HOME/commandline-tools"
               ;;
             *.tar.gz)
               curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.tar.gz
