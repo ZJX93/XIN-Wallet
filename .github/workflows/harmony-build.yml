@@ -61,14 +61,44 @@ jobs:
             echo "::endgroup::"
           fi
           if [ -z "$URL" ]; then
-            echo '::error::未配置 Command Line Tools 下载源，无法安装 SDK。二选一：① 在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网"Command Line Tools for HarmonyOS"的 Linux 压缩包直链）；② 把该 zip 上传到本仓库 Release（tag 名填 harmony-cli，文件名 commandline-tools-linux-x64.zip）。详见 docs/harmony-build.md'
+            echo '::error::未配置 Command Line Tools 下载源，无法安装 SDK。二选一：① 在仓库 Settings > Secrets 添加 HARMONY_COMMANDLINE_TOOLS_URL（华为官网"Command Line Tools for HarmonyOS"的 Linux 压缩包直链，或 ErBWs/ohos-sdk 镜像 .tar.gz.aa）；② 把该 zip 上传到本仓库 Release（tag 名填 harmony-cli，文件名 commandline-tools-linux-x64.zip）。详见 docs/harmony-build.md'
             exit 1
           fi
           echo "下载 CLI: $URL"
-          # 私有仓库 Release 资产经 302 跳转到 objects.githubusercontent.com，需 --location-trusted 转发 token
-          curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.zip
           mkdir -p "$HOME/commandline-tools"
-          unzip -q clt.zip -d "$HOME/commandline-tools"
+
+          # 支持三种 CLI 包格式：zip / 单文件 tar.gz / ErBWs/ohos-sdk 分卷 (.aa + .ab)
+          case "$URL" in
+            *.tar.gz.aa|*.tar.gz.ab)
+              BASE="${URL%.aa}"; BASE="${BASE%.ab}"
+              echo "分卷格式 ErBWs/ohos-sdk，base=${BASE}"
+              curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.aa" -o clt.tar.gz.aa
+              curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.ab" -o clt.tar.gz.ab
+              if curl -fsL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "${BASE}.sha256" -o clt.tar.gz.sha256 2>/dev/null; then
+                echo "已下载校验和，验证..."
+                cat clt.tar.gz.aa clt.tar.gz.ab > clt.tar.gz
+                sha256sum -c clt.tar.gz.sha256
+              else
+                echo "无校验和，跳过校验"
+                cat clt.tar.gz.aa clt.tar.gz.ab > clt.tar.gz
+              fi
+              tar -xzf clt.tar.gz -C "$HOME/commandline-tools"
+              ;;
+            *.tar.gz)
+              curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.tar.gz
+              tar -xzf clt.tar.gz -C "$HOME/commandline-tools"
+              ;;
+            *.zip)
+              # 私有仓库 Release 资产经 302 跳转到 objects.githubusercontent.com，需 --location-trusted 转发 token
+              curl -fL --location-trusted -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" -o clt.zip
+              unzip -q clt.zip -d "$HOME/commandline-tools"
+              ;;
+            *)
+              echo "::error::不支持的 CLI URL 格式（需 .zip / .tar.gz / .tar.gz.aa）：$URL"
+              exit 1
+              ;;
+          esac
+
           # 把 CLI 内所有关键可执行文件所在目录加入 PATH（解决 sdkmgr/ohpm/hvigorw command not found）
           for exe in sdkmgr ohsdkmgr sdkmanager ohpm hvigorw; do
             p=$(find "$HOME/commandline-tools" -type f -name "$exe" 2>/dev/null | head -1)
@@ -79,7 +109,7 @@ jobs:
             fi
           done
           echo "::group::CLI 工具位置"
-          find "$HOME/commandline-tools" -maxdepth 4 -type f \( -name 'sdkmgr*' -o -name 'ohpm*' -o -name 'hvigorw*' -o -name 'sdkmanager*' \) 2>/dev/null | head -20
+          find "$HOME/commandline-tools" -maxdepth 5 -type f \( -name 'sdkmgr*' -o -name 'ohpm*' -o -name 'hvigorw*' -o -name 'sdkmanager*' \) 2>/dev/null | head -20
           echo "::endgroup::"
 
       - name: 'Install SDK components via sdkmgr'
