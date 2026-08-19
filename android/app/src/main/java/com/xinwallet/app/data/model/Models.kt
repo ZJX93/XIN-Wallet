@@ -57,7 +57,13 @@ data class Account(
     @SerializedName("credit_limit") val creditLimit: Double = 0.0,
     @SerializedName("is_default") val isDefault: Boolean = false,
     val status: String = "active",
-    @SerializedName("sort_order") val sortOrder: Int = 0
+    @SerializedName("sort_order") val sortOrder: Int = 0,
+    /** 年利率（%），如 3.5 表示 3.5% */
+    @SerializedName("annual_rate") val annualRate: Double? = 0.0,
+    /** 计息周期：monthly / yearly / daily */
+    @SerializedName("interest_cycle") val interestCycle: String? = "monthly",
+    /** 最近一次计息日期 YYYY-MM-DD */
+    @SerializedName("last_interest_date") val lastInterestDate: String? = null
 )
 
 data class AccountsResponse(
@@ -70,7 +76,9 @@ data class CreateAccountRequest(
     val type: String,
     val icon: String? = "💰",
     @SerializedName("opening_balance") val openingBalance: Double = 0.0,
-    @SerializedName("credit_limit") val creditLimit: Double = 0.0
+    @SerializedName("credit_limit") val creditLimit: Double = 0.0,
+    @SerializedName("annual_rate") val annualRate: Double = 0.0,
+    @SerializedName("interest_cycle") val interestCycle: String = "monthly"
 )
 
 data class UpdateAccountRequest(
@@ -78,7 +86,22 @@ data class UpdateAccountRequest(
     val type: String,
     val icon: String? = "💰",
     @SerializedName("opening_balance") val openingBalance: Double = 0.0,
-    @SerializedName("credit_limit") val creditLimit: Double = 0.0
+    @SerializedName("credit_limit") val creditLimit: Double = 0.0,
+    @SerializedName("annual_rate") val annualRate: Double = 0.0,
+    @SerializedName("interest_cycle") val interestCycle: String = "monthly"
+)
+
+/** POST /accounts/accounts/{id}/interest 请求体：记一笔利息入账 */
+data class AddAccountInterestRequest(
+    val amount: Double,
+    val date: String? = null,
+    val note: String? = null
+)
+
+/** 记利息返回：最新余额 + 本次计息日期 */
+data class AddAccountInterestResult(
+    val balance: Double = 0.0,
+    @SerializedName("last_interest_date") val lastInterestDate: String = ""
 )
 
 /* ----------------------------- 分类 ----------------------------- */
@@ -146,7 +169,9 @@ data class CreateTransactionRequest(
     val date: String,
     val location: String? = null,
     @SerializedName("link_type") val linkType: String? = null,
-    @SerializedName("link_id") val linkId: Int? = null
+    @SerializedName("link_id") val linkId: Int? = null,
+    /** AI/OCR 场景传入的商家或个人对象；服务端会自动按「类目名-merchant」格式拼接备注 */
+    val merchant: String? = null
 )
 
 /** 编辑交易：字段与新增一致，后端会按账本重算受影响账户余额 */
@@ -338,7 +363,9 @@ data class OcrItem(
     val type: String = "expense",
     val date: String? = null,
     val note: String? = null,
-    val category: String? = null
+    val category: String? = null,
+    /** 服务端 LLM 识别出的对象（商家/个人姓名），用于服务端拼接「类目名-merchant」备注 */
+    val merchant: String? = null
 )
 
 /** GET /ai/ocr-config：判断是否已配置腾讯云 OCR 密钥 */

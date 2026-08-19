@@ -68,6 +68,13 @@ val ACCOUNT_TYPE_ORDER = listOf("cash", "bank_card", "credit_card", "electronic_
 
 private val ACCOUNT_ICONS = listOf("💰", "💵", "🏦", "💳", "📱", "📈", "🪙", "🧧", "🏧", "💼")
 
+/** 计息周期取值（与后端一致），与下拉显示文本一一对应 */
+private val INTEREST_CYCLES = listOf("monthly", "yearly", "daily")
+private val INTEREST_CYCLE_LABELS = listOf("按月", "按年", "按日")
+
+private fun interestCycleLabel(cycle: String): String =
+    INTEREST_CYCLE_LABELS[INTEREST_CYCLES.indexOf(cycle).takeIf { it >= 0 } ?: 0]
+
 @Composable
 fun AccountsScreen(navController: NavHostController) {
     val vm: AccountsViewModel = viewModel(factory = viewModelFactory { AccountsViewModel(AppContainer.accountRepository) })
@@ -96,10 +103,10 @@ fun AccountsScreen(navController: NavHostController) {
             account = editing,
             submitting = state.submitting,
             onDismiss = { showForm = false; editing = null },
-            onSubmit = { name, type, icon, opening, credit ->
+            onSubmit = { name, type, icon, opening, credit, annualRate, interestCycle ->
                 val target = editing
-                if (target == null) vm.create(CreateAccountRequest(name, type, icon, opening, credit))
-                else vm.update(target.id, UpdateAccountRequest(name, type, icon, opening, credit))
+                if (target == null) vm.create(CreateAccountRequest(name, type, icon, opening, credit, annualRate, interestCycle))
+                else vm.update(target.id, UpdateAccountRequest(name, type, icon, opening, credit, annualRate, interestCycle))
             }
         )
     }
@@ -242,13 +249,15 @@ private fun AccountFormDialog(
     account: Account?,
     submitting: Boolean,
     onDismiss: () -> Unit,
-    onSubmit: (name: String, type: String, icon: String, opening: Double, credit: Double) -> Unit
+    onSubmit: (name: String, type: String, icon: String, opening: Double, credit: Double, annualRate: Double, interestCycle: String) -> Unit
 ) {
     var name by remember { mutableStateOf(account?.name.orEmpty()) }
     var type by remember { mutableStateOf(account?.type ?: "cash") }
     var icon by remember { mutableStateOf(account?.icon ?: "💰") }
     var opening by remember { mutableStateOf(if (account != null) trimAmount(account.openingBalance) else "") }
     var credit by remember { mutableStateOf(if (account != null && account.creditLimit > 0) trimAmount(account.creditLimit) else "") }
+    var annualRate by remember { mutableStateOf(if ((account?.annualRate ?: 0.0) > 0.0) trimAmount(account?.annualRate ?: 0.0) else "") }
+    var interestCycle by remember { mutableStateOf(account?.interestCycle?.takeIf { INTEREST_CYCLES.contains(it) } ?: "monthly") }
     var localError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -301,6 +310,25 @@ private fun AccountFormDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                if (type != "credit_card") {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = annualRate,
+                        onValueChange = { annualRate = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("年利率（%）") },
+                        supportingText = { Text("如 3.5 表示年利率 3.5%，用于计息参考，可不填") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    DropdownField(
+                        label = "计息周期",
+                        value = interestCycleLabel(interestCycle),
+                        options = INTEREST_CYCLE_LABELS.mapIndexed { idx, label -> label to idx },
+                        onSelected = { idx -> interestCycle = INTEREST_CYCLES[idx] }
+                    )
+                }
                 localError?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
@@ -318,7 +346,9 @@ private fun AccountFormDialog(
                         type,
                         icon,
                         opening.toDoubleOrNull() ?: 0.0,
-                        if (type == "credit_card") credit.toDoubleOrNull() ?: 0.0 else 0.0
+                        if (type == "credit_card") credit.toDoubleOrNull() ?: 0.0 else 0.0,
+                        if (type != "credit_card") annualRate.toDoubleOrNull() ?: 0.0 else 0.0,
+                        if (type != "credit_card") interestCycle else "monthly"
                     )
                 }
             ) { Text(if (submitting) "保存中…" else "保存") }

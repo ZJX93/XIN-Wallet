@@ -1,5 +1,6 @@
 package com.xinwallet.app.data.repository
 
+import com.xinwallet.app.data.model.AddAccountInterestRequest
 import com.xinwallet.app.data.model.CreateAccountRequest
 import com.xinwallet.app.data.model.UpdateAccountRequest
 import com.xinwallet.app.data.remote.ApiService
@@ -14,4 +15,8 @@ class AccountRepository(private val apiProvider: () -> ApiService) {
     suspend fun updateAccount(id: Int, req: UpdateAccountRequest) = safeUnitCall { apiProvider().updateAccount(id, req) }
     suspend fun closeAccount(id: Int) = safeUnitCall { apiProvider().closeAccount(id) }
     suspend fun deleteAccount(id: Int) = safeUnitCall { apiProvider().deleteAccount(id) }
+
+    /** 记利息：入账一笔利息，返回最新余额与计息日期 */
+    suspend fun addInterest(accountId: Int, amount: Double, date: String?, note: String?) =
+        safeApiCall { apiProvider().addAccountInterest(accountId, AddAccountInterestRequest(amount, date, note)) }
 }

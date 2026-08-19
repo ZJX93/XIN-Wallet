@@ -6,6 +6,7 @@ import { get, post, put, del, ApiError } from '../http/Http';
 import {
   ApiResponse, AuthConfig, LoginRequest, RefreshRequest, AuthResponse, UserWrapper, UpdateProfileRequest,
   Account, AccountsResponse, CreateAccountRequest, UpdateAccountRequest,
+  AddAccountInterestRequest, AddAccountInterestResult,
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
   Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse,
   Dashboard, CalendarSummary, ChatRequest, ChatResponse, OcrResponse, OcrConfig,
@@ -47,6 +48,10 @@ export async function closeAccount(id: number): Promise<ApiResponse<object>> {
 }
 export async function deleteAccount(id: number): Promise<ApiResponse<object>> {
   return del<object>(`accounts/${id}`);
+}
+export async function addAccountInterest(id: number, req: AddAccountInterestRequest): Promise<ApiResponse<AddAccountInterestResult>> {
+  // 账户基础路径沿用既有账户接口写法：'accounts/{id}/interest'
+  return post<AddAccountInterestResult>('accounts/' + id + '/interest', req);
 }
 
 /* 交易 */

@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   is_default BOOLEAN DEFAULT FALSE,                   -- 是否默认账户
   sort_order INT DEFAULT 0,
   status VARCHAR(10) DEFAULT 'active' CHECK (status IN ('active','closed')),
+  annual_rate DECIMAL(8,4) NOT NULL DEFAULT 0,                 -- 年利率（百分比，如 1.5 表示 1.5%）；仅展示与「预计利息」估算
+  interest_cycle VARCHAR(10) DEFAULT 'monthly' CHECK (interest_cycle IN ('daily','monthly','quarterly','yearly')),
+  last_interest_date DATE,                                     -- 上次计息日期（记利息时回写）
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

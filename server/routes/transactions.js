@@ -10,7 +10,7 @@ const {
     success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
-const { ensureCategory, syncCreditCardDebt } = require('./utils');
+const { ensureCategory, syncCreditCardDebt, buildSceneObjectNote } = require('./utils');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
@@ -323,7 +323,7 @@ router.get('/ledger', async (req, res) => {
 // 新增交易
 router.post('/', async (req, res) => {
     try {
-        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id } = req.body;
+        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id, merchant } = req.body;
 
         const amountNum = toAmount(amount);
         if (amountNum === null || amountNum <= 0) return res.status(ErrorCodes.VALIDATION_FAILED).json(failValidation('请输入有效金额'));
@@ -341,10 +341,12 @@ router.post('/', async (req, res) => {
 
         // 使用事务确保余额一致
         const result = await db.transaction(async (conn) => {
+            // 「场景-对象」备注：merchant 由 AI/OCR/客户端传入，服务端统一拼接
+            const finalNote = await buildSceneObjectNote(conn, req.userId, parseInt(category_id), note, merchant);
             const insertResult = await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id, location, link_type, link_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [req.userId, req.bookId, parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', transDate, src, dst, loc, lt, li]
+                [req.userId, req.bookId, parseInt(account_id), parseInt(category_id), bId, type, amountNum, finalNote, transDate, src, dst, loc, lt, li]
             );
 
             // 余额由账本推导（复式记账 single source of truth），取代易漂移的增量更新
@@ -373,7 +375,7 @@ router.post('/', async (req, res) => {
 // 更新交易
 router.put('/:id', async (req, res) => {
     try {
-        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id } = req.body;
+        const { account_id, category_id, budget_id, type, amount, date, note, location, link_type, link_id, merchant } = req.body;
         const id = parseInt(req.params.id);
 
         const amountNum = toAmount(amount);
@@ -392,10 +394,12 @@ router.put('/:id', async (req, res) => {
         const li = link_id ? parseInt(link_id) : null;
 
         await db.transaction(async (conn) => {
+            // 「场景-对象」备注：merchant 由 AI/OCR/客户端传入，服务端统一拼接
+            const finalNote = await buildSceneObjectNote(conn, req.userId, parseInt(category_id), note, merchant);
             // 更新交易记录（含复式记账借贷双方字段 + location/link）
             await conn.query(
                 `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,
-                [parseInt(account_id), parseInt(category_id), bId, type, amountNum, note || '', date, src, dst, loc, lt, li, id, req.userId, req.bookId]
+                [parseInt(account_id), parseInt(category_id), bId, type, amountNum, finalNote, date, src, dst, loc, lt, li, id, req.userId, req.bookId]
             );
 
             // 重置交易标签

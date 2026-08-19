@@ -38,7 +38,7 @@ function resolveCreditLimit(type, credit_limit, existingLimit = 0) {
 // 新增账户
 router.post('/', async (req, res) => {
     try {
-        const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
+        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle } = req.body;
         if (!name || !type) return res.status(400).json(fail('名称和类型必填'));
 
         const limitRes = resolveCreditLimit(type, credit_limit);
@@ -51,8 +51,9 @@ router.post('/', async (req, res) => {
         }
 
         const result = await db.query(
-            `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.userId, req.bookId, name, type, icon || '💰', initialOpening, initialOpening, limitRes.limit]
+            `INSERT INTO accounts (user_id, book_id, name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.userId, req.bookId, name, type, icon || '💰', initialOpening, initialOpening, limitRes.limit,
+             parseFloat(annual_rate) || 0, interest_cycle || 'monthly']
         );
         res.json(success({ id: result.insertId, balance: initialOpening, opening_balance: initialOpening, credit_limit: limitRes.limit }, '账户已创建'));
     } catch (err) {
@@ -63,7 +64,7 @@ router.post('/', async (req, res) => {
 // 更新账户
 router.put('/:id', async (req, res) => {
     try {
-        const { name, type, icon, balance, opening_balance, credit_limit } = req.body;
+        const { name, type, icon, balance, opening_balance, credit_limit, annual_rate, interest_cycle } = req.body;
         const id = parseInt(req.params.id);
 
         const existing = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [id, req.userId, req.bookId]);
@@ -82,8 +83,9 @@ router.put('/:id', async (req, res) => {
         }
 
         await db.query(
-            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=? WHERE id=? AND user_id=? AND book_id=?`,
-            [name, type, icon, newBalance, newOpening, limitRes.limit, id, req.userId, req.bookId]
+            `UPDATE accounts SET name=?, type=?, icon=?, balance=?, opening_balance=?, credit_limit=?, annual_rate=?, interest_cycle=? WHERE id=? AND user_id=? AND book_id=?`,
+            [name, type, icon, newBalance, newOpening, limitRes.limit,
+             parseFloat(annual_rate) || 0, interest_cycle || 'monthly', id, req.userId, req.bookId]
         );
         res.json(success({ balance: newBalance, opening_balance: newOpening, credit_limit: limitRes.limit }, '账户已更新'));
     } catch (err) {
@@ -128,6 +130,42 @@ router.post('/:id/close', async (req, res) => {
         handleServerError(res, err);
     }
 });
+
+// 记一笔账户利息（与理财产品计息同构：记一笔 income 交易 + 重算余额）
+// 利息金额由用户手填（与理财产品一致）；账户年利率/周期字段仅作展示与「预计利息」估算。
+router.post('/:id/interest', async (req, res) => {
+    try {
+        const accId = parseInt(req.params.id);
+        if (!accId) return res.status(400).json(fail('账户ID无效'));
+        const { amount, date, note } = req.body || {};
+        const amt = parseFloat(amount);
+        if (isNaN(amt) || amt <= 0) return res.status(400).json(fail('利息金额必须大于 0'));
+        const acc = await db.queryOne('SELECT * FROM accounts WHERE id = ? AND user_id = ? AND book_id = ?', [accId, req.userId, req.bookId]);
+        if (!acc) return res.status(404).json(failNotFound('账户不存在'));
+        const interestDate = date || new Date().toISOString().slice(0, 10);
+        let newBalance;
+        await db.transaction(async (conn) => {
+            const catId = await getInterestCategoryId(conn);
+            await conn.query(
+                `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date)
+                 VALUES (?, ?, ?, ?, 'income', ?, ?, ?)`,
+                [req.userId, req.bookId, accId, catId, amt,
+                 note ? `利息-${acc.name}-${note}` : `利息-${acc.name}`, interestDate]
+            );
+            newBalance = await computeAccountBalance(conn, req.userId, accId);
+            await conn.query('UPDATE accounts SET balance = ?, last_interest_date = ? WHERE id = ? AND user_id = ? AND book_id = ?', [newBalance, interestDate, accId, req.userId, req.bookId]);
+        });
+        res.json(success({ balance: newBalance, last_interest_date: interestDate }, '利息已记录'));
+    } catch (err) { handleServerError(res, err); }
+});
+
+// 利息入账分类：优先「理财收益」，缺失时回退第一个收入分类（沿用理财产品口径）
+async function getInterestCategoryId(conn) {
+    const rows = await conn.query('SELECT id FROM categories WHERE name = ? AND type = ?', ['理财收益', 'income']);
+    if (rows[0]) return rows[0].id;
+    const any = await conn.query('SELECT id FROM categories WHERE type = ? ORDER BY id LIMIT 1', ['income']);
+    return any[0] ? any[0].id : null;
+}
 
 // 彻底删除账户（仅在无关联数据时可执行）
 router.delete('/:id', async (req, res) => {

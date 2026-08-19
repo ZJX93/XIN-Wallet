@@ -27,6 +27,24 @@ async function ensureCategory(conn, userId, name, type, icon) {
 }
 
 // ==========================================
+// 「场景-对象」备注格式：统一权威实现
+// 业务规则：AI/OCR 识别或手动记账时，若传入 merchant（商家/个人对象）但未给完整 note，
+// 自动拼接为「类目名-merchant」格式；若 note 已存在则尊重调用方，不强制覆盖。
+// 用于 /ai/chat 工具调用、/transactions 创建与更新、客户端 AI 记账等所有入口。
+// ==========================================
+async function buildSceneObjectNote(conn, userId, categoryId, note, merchant) {
+    if (merchant && !note) {
+        const catRow = await conn.queryOne(
+            'SELECT name FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
+            [categoryId, userId]
+        );
+        const scene = catRow ? catRow.name : '';
+        return (scene ? scene + '-' : '') + merchant;
+    }
+    return note || '';
+}
+
+// ==========================================
 // 信用卡债务自动同步（交易后自动更新 debts 表）
 // ==========================================
 async function syncCreditCardDebt(conn, userId, accountId) {
@@ -74,5 +92,6 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 
 module.exports = {
     ensureCategory,
-    syncCreditCardDebt
+    syncCreditCardDebt,
+    buildSceneObjectNote
 };

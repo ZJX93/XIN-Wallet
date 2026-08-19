@@ -27,7 +27,11 @@ data class ScanRow(
     val categoryId: Int? = null,
     val categoryName: String? = null,
     /** 后端建议但本地没匹配上的分类名，用于提示用户手动选 */
-    val suggestedCategory: String? = null
+    val suggestedCategory: String? = null,
+    /** AI 识别返回的原始 note（「类目名-对象」格式），提交时优先使用 */
+    val note: String? = null,
+    /** 服务端 LLM 识别出的对象（商家/个人姓名），提交时透传给服务端用于格式拼接 */
+    val merchant: String? = null
 )
 
 data class AiScanUiState(
@@ -118,7 +122,9 @@ class AiScanViewModel(
             time = t,
             categoryId = matched?.id,
             categoryName = matched?.name,
-            suggestedCategory = if (matched == null && wanted.isNotBlank()) wanted else null
+            suggestedCategory = if (matched == null && wanted.isNotBlank()) wanted else null,
+            note = note?.trim()?.takeIf { it.isNotBlank() },
+            merchant = merchant?.trim()?.takeIf { it.isNotBlank() }
         )
     }
 
@@ -130,7 +136,8 @@ class AiScanViewModel(
         val t = datetime.substringAfter(' ', "").takeIf { it.length == 8 } ?: it.time
         it.copy(date = d, time = t)
     }
-    fun setNote(key: Int, note: String) = updateRow(key) { it.copy(name = note) }
+    /** 用户手动改备注时同步覆盖 AI 原始 note，保证提交的是用户改后的内容 */
+    fun setNote(key: Int, note: String) = updateRow(key) { it.copy(name = note, note = note.trim().ifBlank { null }) }
     fun setType(key: Int, type: String) = updateRow(key) {
         // 换类型后原分类可能不再适用，清空强制重选
         it.copy(type = type, categoryId = null, categoryName = null)
@@ -170,13 +177,19 @@ class AiScanViewModel(
             _state.value = _state.value.copy(submitting = true, error = null, doneCount = 0)
             var ok = 0
             for (row in picked) {
+                // 客户端不做格式拼接：note 直接透传（AI 已拼好的「类目名-对象」）；
+                // 同时把 row.merchant（LLM 识别出的对象）传给服务端，
+                // 让服务端统一按 buildSceneObjectNote 规则拼接。
+                val note = row.note?.takeIf { it.isNotBlank() }?.take(100)
+                val merchant = row.merchant?.takeIf { it.isNotBlank() }?.take(50)
                 val req = CreateTransactionRequest(
                     accountId = accountId,
                     categoryId = row.categoryId!!,
                     type = row.type,
                     amount = row.amount,
-                    note = row.name.take(100),
-                    date = "${row.date} ${row.time}"
+                    note = note,
+                    date = "${row.date} ${row.time}",
+                    merchant = merchant
                 )
                 when (val r = txRepo.createTransaction(req)) {
                     is ApiResult.Success -> {

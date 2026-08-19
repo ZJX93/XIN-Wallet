@@ -312,6 +312,14 @@ async function start() {
         process.exit(1);
     }
 
+    // AI/OCR 凭证自检：重部署后若加密密钥变更，已存凭证将无法解密，提前告警引导重新保存
+    try {
+        const { auditProviderKeys } = require('./services/ai');
+        await auditProviderKeys();
+    } catch (err) {
+        console.warn('⚠️ AI 凭证自检未执行（不影响启动）:', err.message);
+    }
+
     // 确保演示账号存在（使用 bcrypt 真实哈希，避免明文占位符）
     try {
         const demo = await db.queryOne("SELECT id FROM users WHERE username = 'demo'");

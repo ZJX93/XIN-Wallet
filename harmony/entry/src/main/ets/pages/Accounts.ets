@@ -28,6 +28,8 @@ export struct AccountsPage {
   @State fBalance: string = '';
   @State fLimit: string = '';
   @State fIcon: string = '💵';
+  @State fAnnualRate: string = '';
+  @State fInterestCycle: string = 'monthly';
 
   aboutToAppear(): void { this.load(); }
 
@@ -59,15 +61,19 @@ export struct AccountsPage {
   async save(): Promise<void> {
     if (!this.fName) return;
     try {
+      const rate = this.fAnnualRate.trim() === '' ? undefined : Number(this.fAnnualRate);
       await Api.createAccount({
         name: this.fName,
         type: this.fType,
         icon: this.fIcon,
         opening_balance: Number(this.fBalance) || 0,
-        credit_limit: Number(this.fLimit) || 0
+        credit_limit: Number(this.fLimit) || 0,
+        annual_rate: rate,
+        interest_cycle: this.fInterestCycle
       });
       this.showAdd = false;
-      this.fName = ''; this.fBalance = ''; this.fLimit = '';
+      this.fName = ''; this.fBalance = ''; this.fLimit = ''; this.fAnnualRate = '';
+      this.fInterestCycle = 'monthly';
       this.load();
     } catch (e) { /* ignore */ }
   }
@@ -99,6 +105,21 @@ export struct AccountsPage {
       }
       TextInput({ placeholder: '开户余额', text: this.fBalance }).onChange((v: string) => this.fBalance = v)
       TextInput({ placeholder: '信用额度(信用卡)', text: this.fLimit }).onChange((v: string) => this.fLimit = v)
+      TextInput({ placeholder: '年利率(%) 选填', text: this.fAnnualRate })
+        .type(InputType.Number).onChange((v: string) => this.fAnnualRate = v)
+      Row({ space: 8 }) {
+        Text('计息周期').fontSize(14).fontColor(COLORS.textSecondary)
+        Scroll() {
+          Row({ space: 8 }) {
+            ForEach(['daily', 'monthly', 'quarterly', 'yearly'], (cyc: string) => {
+              Text(cyc).fontSize(13).padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                .backgroundColor(this.fInterestCycle === cyc ? COLORS.brand : COLORS.brandBgLight)
+                .fontColor(this.fInterestCycle === cyc ? '#FFFFFF' : COLORS.textPrimary)
+                .borderRadius(14).onClick(() => this.fInterestCycle = cyc)
+            })
+          }
+        }.scrollable(ScrollDirection.Horizontal).layoutWeight(1)
+      }
       Button('保存').width('100%').onClick(() => this.save())
       Button('取消').width('100%').backgroundColor(COLORS.divider).onClick(() => this.showAdd = false)
     }

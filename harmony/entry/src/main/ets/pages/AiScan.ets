@@ -78,18 +78,34 @@ struct AiScan {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  /** 按 categoryId 取类目名（用于拼接「场景-对象」备注） */
+  categoryNameOf(id: number): string {
+    return this.categories.find(c => c.id === id)?.name ?? '';
+  }
+
+  /** 组装 AI 记账备注：类目名-对象（如「晚餐-大味王」）；对象为空时仅用类目名 */
+  buildNote(categoryId: number, object: string): string {
+    const cat = this.categoryNameOf(categoryId);
+    const obj = (object || '').trim();
+    if (cat && obj) return `${cat}-${obj}`;
+    return cat || obj;
+  }
+
   async confirm(): Promise<void> {
     const picked = this.rows.filter(r => r.picked);
     this.done = 0;
     for (const r of picked) {
       try {
+        // 客户端不做格式拼接：note 直接透传（AI 已拼好的「类目名-对象」）；
+        // merchant 由服务端 buildSceneObjectNote 统一拼接为「类目名-merchant」格式
         await Api.createTransaction({
           account_id: this.accounts[0]?.id || 0,
           category_id: r.categoryId,
           type: r.type,
           amount: r.amount,
-          note: r.merchant,
-          date: r.date
+          note: r.note || undefined,
+          date: r.date,
+          merchant: r.merchant || undefined
         });
         this.done++;
       } catch (e) { /* ignore */ }

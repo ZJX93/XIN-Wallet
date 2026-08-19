@@ -75,11 +75,44 @@ async function getActiveProvider(userId) {
     if (provider.api_key) {
         provider.api_key = decrypt(provider.api_key);
         if (!provider.api_key) {
+            // 配置存在但密钥不匹配（极可能是重部署后 ENCRYPTION_KEY 变更），
+            // 标记后由路由层提示用户前往「AI 配置」页重新保存，而非静默当作「未配置」。
             console.error(`[AI] 用户 ${userId} 的活跃服务商 API Key 解密失败（密钥不匹配或数据损坏）`);
-            return null;
+            provider._decryptFailed = true;
         }
     }
     return provider;
+}
+
+// 启动自检：扫描所有用户的 AI/OCR 凭证。若记录存在但用当前 ENCRYPTION_KEY 解密失败，
+// 说明重部署后加密密钥变更，旧凭证已不可恢复，打印告警引导重新保存。
+// 根因：AI 配置本身持久化在 ai_providers 表，真正「重部署丢失」的是加密密钥
+// （未固定 ENCRYPTION_KEY 或未保留 /app/data 卷），导致旧密文无法解密、表现为配置丢失。
+async function auditProviderKeys() {
+    try {
+        const providers = await db.query('SELECT id, user_id, api_key, is_active FROM ai_providers');
+        const ocr = await db.query('SELECT user_id, secret_id, secret_key FROM ai_ocr_config');
+        let warnCount = 0;
+        for (const p of providers) {
+            if (p.api_key && !decrypt(p.api_key)) {
+                warnCount++;
+                console.warn(`⚠️ [AI 凭证自检] ai_providers id=${p.id} user=${p.user_id} 解密失败（密钥可能已变更），该服务商配置已不可用，请前往「AI 配置」页重新保存 API Key。`);
+            }
+        }
+        for (const c of ocr) {
+            if ((c.secret_id || c.secret_key) && (!decrypt(c.secret_id) || !decrypt(c.secret_key))) {
+                warnCount++;
+                console.warn(`⚠️ [AI 凭证自检] ai_ocr_config user=${c.user_id} 解密失败（密钥可能已变更），请前往「AI 配置」页重新保存腾讯云 OCR 密钥。`);
+            }
+        }
+        if (warnCount > 0) {
+            console.warn(`⚠️ 共 ${warnCount} 条 AI/OCR 凭证因加密密钥变更无法解密。根因：重部署后 ENCRYPTION_KEY 与历史不一致，或未保留 /app/data 卷。请固定 ENCRYPTION_KEY（见 .env.example）或保留 /app/data 卷后重启，否则需在「AI 配置」页重新保存凭证。`);
+        } else {
+            console.log('✅ AI/OCR 凭证自检通过（所有已存凭证均可正常解密）');
+        }
+    } catch (err) {
+        console.warn('⚠️ AI 凭证自检异常（不影响启动）:', err.message);
+    }
 }
 
 // 查找支持语音转写的服务商：优先激活的 OpenAI 兼容服务商，其次查所有服务商
@@ -304,4 +337,4 @@ async function httpsPostRaw(url, headers, bufferBody) {
     });
 }
 
-module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools };
+module.exports = { httpsPostJson, httpsPostRaw, getActiveProvider, getTranscriptionProvider, callOpenAICompatible, callAnthropic, callProvider, chatWithTools, auditProviderKeys };

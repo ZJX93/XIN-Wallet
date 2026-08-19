@@ -7,7 +7,22 @@ const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime } = require('./_helpers');
+const { buildSceneObjectNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
+
+// 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
+// 让前端能给出明确引导（前往「AI 配置」页重新保存），避免用户误以为配置丢失。
+function checkProvider(res, provider) {
+    if (!provider) {
+        res.status(400).json(fail('请先在 Web 端「AI 配置」页面配置 AI 服务商'));
+        return false;
+    }
+    if (provider._decryptFailed) {
+        res.status(400).json(fail('检测到 AI 服务商配置，但密钥解密失败（很可能是重部署后加密密钥 ENCRYPTION_KEY 变更）。请前往「AI 配置」页重新保存该服务商的 API Key。'));
+        return false;
+    }
+    return true;
+}
 const { syncCreditCardDebt } = require('./utils');
 const { toAmount, toNumber } = require('../validate');
 const multer = require('multer');
@@ -154,7 +169,7 @@ router.post('/providers/:id/test', async (req, res) => {
 router.post('/advice', async (req, res) => {
     try {
         const provider = await getActiveProvider(req.userId);
-        if (!provider) return res.status(400).json(fail('未配置 AI 服务商'));
+        if (!checkProvider(res, provider)) return;
 
         // 收集用户财务数据：本月交易汇总、预算、储蓄目标、账户、债务
         const currentMonth = new Date().toISOString().slice(0, 7);
@@ -263,7 +278,7 @@ router.post('/advice', async (req, res) => {
 router.post('/insight', async (req, res) => {
     try {
         const provider = await getActiveProvider(req.userId);
-        if (!provider) return res.status(400).json(fail('未配置 AI 服务商'));
+        if (!checkProvider(res, provider)) return;
 
         const month = (req.body && req.body.month) || new Date().toISOString().slice(0, 7);
         const [summary, prevSummary, budgets, goals, accounts, debts] = await Promise.all([
@@ -765,6 +780,9 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
         }
 
         const provider = await getActiveProvider(req.userId);
+        if (provider && provider._decryptFailed) {
+            return res.status(400).json(fail('检测到 AI 服务商配置，但密钥解密失败（很可能是重部署后加密密钥 ENCRYPTION_KEY 变更）。请前往「AI 配置」页重新保存该服务商的 API Key。'));
+        }
         const today = new Date().toISOString().slice(0, 10);
 
         // 策略：若配置了 AI 服务商，优先用大模型分析 OCR 文字，识别质量更高；
@@ -775,13 +793,14 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
 
 要求：
 1. 只返回纯 JSON，不要任何解释。
-2. 格式：{"items":[{"name":"完整商户名或商品名","amount":100.00,"type":"expense","date":"2026-08-10 13:51:00","note":"补充描述（可选）","category":"分类名"}]}
+2. 格式：{"items":[{"name":"完整商户名或商品名","amount":100.00,"type":"expense","date":"2026-08-10 13:51:00","note":"补充描述（可选）","category":"分类名","merchant":"对象（商家或个人姓名，可选，如「大味王」「张三」）"}]}
 3. name 字段：取最完整的商户/商品名称，不要截断；如果 OCR 中有“商品”行，优先用商品行内容，否则用商户名。
 4. amount 必须为正数。
 5. date 格式为 YYYY-MM-DD HH:mm:ss；如果账单中只有日期没有时间，时间填 00:00:00。
 6. 跳过合计、优惠、退款、找零、应付、实付等汇总行；只保留实际消费/收入的条目。
 7. category 必须从下面列表中选择最合适的，尽量细分；如果确实无法判断，返回“其他”。
 8. 餐别按时间推断：05-10早餐，10-14午餐，14-21晚餐。
+9. 每条的 note 必须遵循「场景-对象」格式：即「类目场景-商家/个人」，例如「晚餐-大味王」「买菜-张三」；无法确定对象时只写场景（如「晚餐」）。也可填充 merchant 字段，由系统自动拼接。
 
 可选分类：早餐|午餐|晚餐|零食|聚餐|外卖|饮料|生鲜|公交地铁|打车|火车飞机|加油|充电|停车费|过路费|日用百货|服装鞋包|数码产品|家居家具|房租|水电燃气|物业费|维修|电影演出|游戏|运动健身|旅游度假|KTV酒吧|门诊|药品|体检|培训课程|书籍|考试报名|话费|宽带|快递|孝敬父母|送礼红包|护肤|美发|主粮零食|社保|商业保险|维保费|车险|其他
 
@@ -830,7 +849,7 @@ router.post('/chat', async (req, res) => {
         const { messages, image, mime } = req.body;
         if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json(fail('消息不能为空'));
         const provider = await getActiveProvider(req.userId);
-        if (!provider) return res.status(400).json(fail('请先在 Web 端「AI 配置」页面配置 AI 服务商'));
+        if (!checkProvider(res, provider)) return;
 
         // 取用户类目与账户作为工具参考
         const cats = await db.query(
@@ -873,6 +892,7 @@ router.post('/chat', async (req, res) => {
 7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
 8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
 9. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，你必须如实告诉用户失败原因并请其补充或更正，绝不能说"已记/已保存/已完成/已删除"。
+10. 记账时在新增的 \`merchant\` 字段填写「对象」（商家名称或个人姓名，如「大味王」「张三」）；系统会自动将备注拼成「场景-对象」格式（如「晚餐-大味王」「买菜-张三」）。若确实无法确定对象，merchant 留空即可。
 
 可用类目：
 ${catRef}
@@ -892,7 +912,8 @@ ${accRef}`;
                         category_id: { type: 'integer' },
                         account_id: { type: 'integer' },
                         date: { type: 'string', description: 'YYYY-MM-DD HH:mm:ss，可省略' },
-                        note: { type: 'string', description: '备注/商户名' }
+                        note: { type: 'string', description: '备注/商户名' },
+                        merchant: { type: 'string', description: '对象：商家名称或个人姓名（如「大味王」「张三」），留空表示无明确对象' }
                     },
                     required: ['type', 'amount', 'category_id', 'account_id']
                 }
@@ -981,10 +1002,12 @@ ${accRef}`;
                 if (!cat) return { ok: false, error: '分类不存在' };
                 const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
                 const txId = await db.transaction(async (conn) => {
+                    // 「场景-对象」备注：统一走 utils.buildSceneObjectNote 拼接
+                    const note = await buildSceneObjectNote(conn, req.userId, categoryId, args.note, args.merchant);
                     const ins = await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                        [req.userId, req.bookId, accountId, categoryId, type, amount, args.note || '', date,
+                        [req.userId, req.bookId, accountId, categoryId, type, amount, note, date,
                         (type === 'expense' ? accountId : null), (type === 'income' ? accountId : null)]
                     );
                     const newBal = await computeAccountBalance(conn, req.userId, accountId);

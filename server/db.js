@@ -404,6 +404,10 @@ async function healSchemaColumns() {
   await ensureColumn('investments', 'sold_date', 'DATE');
   // 交易流水：每笔买卖的手续费（实在成本），用于记录与展示
   await ensureColumn('investment_transactions', 'fee', 'DECIMAL(15,2) NOT NULL DEFAULT 0');
+  // 资金账户计息：年利率 / 计息周期 / 上次计息日期（升级老库时补齐，新库由 CREATE TABLE 覆盖）
+  await ensureColumn('accounts', 'annual_rate', 'DECIMAL(8,4) NOT NULL DEFAULT 0');
+  await ensureColumn('accounts', 'interest_cycle', "VARCHAR(10) DEFAULT 'monthly'");
+  await ensureColumn('accounts', 'last_interest_date', 'DATE');
 }
 
 async function initDatabase() {

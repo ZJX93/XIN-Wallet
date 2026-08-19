@@ -75,6 +75,9 @@ export interface Account {
   is_default?: boolean;
   status?: string;
   sort_order?: number;
+  annual_rate?: number;
+  interest_cycle?: string;
+  last_interest_date?: string;
 }
 
 export interface AccountsResponse {
@@ -88,6 +91,8 @@ export interface CreateAccountRequest {
   icon?: string;
   opening_balance?: number;
   credit_limit?: number;
+  annual_rate?: number;
+  interest_cycle?: string;
 }
 
 export interface UpdateAccountRequest {
@@ -96,6 +101,21 @@ export interface UpdateAccountRequest {
   icon?: string;
   opening_balance?: number;
   credit_limit?: number;
+  annual_rate?: number;
+  interest_cycle?: string;
+}
+
+/** 账户计息请求体：{ amount 必填正数, date 可选 YYYY-MM-DD, note 可选 } */
+export interface AddAccountInterestRequest {
+  amount: number;
+  date?: string;
+  note?: string;
+}
+
+/** 账户计息返回数据：{ balance 新余额, last_interest_date 上次计息日期 } */
+export interface AddAccountInterestResult {
+  balance: number;
+  last_interest_date?: string;
 }
 
 /* ----------------------------- 分类 ----------------------------- */
@@ -177,6 +197,8 @@ export interface CreateTransactionRequest {
   location?: string;
   link_type?: string;
   link_id?: number;
+  /** AI/OCR 场景传入的商家或个人对象；服务端会自动按「类目名-merchant」格式拼接备注 */
+  merchant?: string;
 }
 
 export interface UpdateTransactionRequest {
@@ -189,6 +211,8 @@ export interface UpdateTransactionRequest {
   location?: string;
   link_type?: string;
   link_id?: number;
+  /** 同 CreateTransactionRequest：可选，AI/OCR 编辑场景透传给服务端拼接 */
+  merchant?: string;
 }
 
 /* ----------------------------- 汇总/报表 ----------------------------- */
