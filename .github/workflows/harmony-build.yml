@@ -112,43 +112,22 @@ jobs:
           command -v ohpm >/dev/null 2>&1 || npm install -g @ohos/ohpm-cli
           ohpm install
 
-      - name: 'Prepare signing config'
+      # ----------------------------------------------------------------------------
+      # 签名方案（方案 B）：CI 直接出「真签名」HAP
+      # 本地 DevEco 自动签名在 C:\Users\XIN\.ohos\config\ 下生成了
+      #   default_harmony_*.{cer,p7b,p12}  +  material/{ac,ce,fd}/ 加密目录
+      # 这些素材已打包 base64 存入 Secret HARMONY_SIGN_BUNDLE_B64。
+      # hvigor 6.24+ 自定义签名必须用 material/ 加密目录（明文密码 JSON 会 ENOENT）。
+      # 这里：base64 解码 -> 解压到 .sign/ -> 注入「相对路径 + material」签名配置。
+      # material 目录与 storeFile 同处 .sign/ 下，hvigor 自动按兄弟目录解析。
+      # ----------------------------------------------------------------------------
+      - name: 'Prepare signing config (decode bundle)'
         id: sign
         env:
-          SIGN_STORE_FILE_B64: '${{ secrets.HARMONY_SIGN_STORE_FILE_B64 }}'
-          SIGN_STORE_PASSWORD: '${{ secrets.HARMONY_SIGN_STORE_PASSWORD }}'
-          SIGN_KEY_ALIAS: '${{ secrets.HARMONY_SIGN_KEY_ALIAS }}'
-          SIGN_KEY_PASSWORD: '${{ secrets.HARMONY_SIGN_KEY_PASSWORD }}'
-          SIGN_PROFILE_B64: '${{ secrets.HARMONY_SIGN_PROFILE_B64 }}'
-          SIGN_CERT_B64: '${{ secrets.HARMONY_SIGN_CERT_B64 }}'
+          SIGN_BUNDLE_B64: '${{ secrets.HARMONY_SIGN_BUNDLE_B64 }}'
         run: |
-          if [ -n "$SIGN_STORE_FILE_B64" ]; then
-            mkdir -p .sign
-            echo "$SIGN_STORE_FILE_B64" | base64 -d > .sign/keystore.p12
-            echo "$SIGN_PROFILE_B64"   | base64 -d > .sign/profile.p7b
-            echo "$SIGN_CERT_B64"      | base64 -d > .sign/cert.cer
-            node -e '
-              const fs=require("fs");
-              const p="build-profile.json5";
-              const j=JSON.parse(fs.readFileSync(p,"utf8"));
-              j.app.signingConfigs=[{
-                name:"default", type:"HarmonyOS",
-                material:{
-                  storeFile:".sign/keystore.p12",
-                  storePassword:process.env.SIGN_STORE_PASSWORD,
-                  keyAlias:process.env.SIGN_KEY_ALIAS,
-                  keyPassword:process.env.SIGN_KEY_PASSWORD,
-                  profile:".sign/profile.p7b",
-                  certpath:".sign/cert.cer",
-                  signAlg:"SHA256withECDSA"
-                }
-              }];
-              fs.writeFileSync(p, JSON.stringify(j,null,2));
-              console.log("已注入真实签名配置");
-            '
-            echo "signing=real" >> "$GITHUB_OUTPUT"
-          else
-            echo '::warning::未配置签名 Secrets，将以“仅编译验证”模式运行（不产出可安装 HAP）。如需出包请在 Settings > Secrets 配置 HARMONY_SIGN_*。'
+          if [ -z "$SIGN_BUNDLE_B64" ]; then
+            echo '::warning::未配置 HARMONY_SIGN_BUNDLE_B64，将以“仅编译验证”模式运行（不产出可安装 HAP）。如需出包请在仓库 Settings > Secrets 添加 HARMONY_SIGN_BUNDLE_B64（由本地 .ohos/config 的证书 + material 打包的 base64 zip）。'
             node -e '
               const fs=require("fs");
               const p="build-profile.json5";
@@ -158,7 +137,34 @@ jobs:
               console.log("已将 product.signingConfig 置空（编译验证模式）");
             '
             echo "signing=compile-only" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          set -e
+          mkdir -p .sign
+          echo "$SIGN_BUNDLE_B64" | base64 -d > .sign/bundle.zip
+          ( cd .sign && unzip -oq bundle.zip )
+          echo "解压出: $(ls .sign)"
+          node -e '
+            const fs=require("fs");
+            const p="build-profile.json5";
+            const j=JSON.parse(fs.readFileSync(p,"utf8"));
+            const base=".sign/default_harmony_skfFPKZFVT0dUaIs8qMogD2btVtk3s9CXYn2H-KglNg=";
+            j.app.signingConfigs=[{
+              name:"default", type:"HarmonyOS",
+              material:{
+                certpath:  base+".cer",
+                keyAlias:  "debugKey",
+                keyPassword:"0000001B2148F9CCC2554BEBCCC4DF5CC76E5559B5E26494E28B65A2B11DE527C16244DEF201C9793729DA",
+                profile:   base+".p7b",
+                signAlg:   "SHA256withECDSA",
+                storeFile: base+".p12",
+                storePassword:"0000001B5B987F7717A0E9D551B4F3D1031F9EBEF044797F58CE4F410547E78F58EB55000832BC3FCC485B"
+              }
+            }];
+            fs.writeFileSync(p, JSON.stringify(j,null,2));
+            console.log("已注入 bundle 签名配置（相对路径 + material 加密目录）");
+          '
+          echo "signing=real" >> "$GITHUB_OUTPUT"
 
       - name: 'Build HAP (compile verification)'
         continue-on-error: true
