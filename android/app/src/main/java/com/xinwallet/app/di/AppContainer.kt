@@ -2,6 +2,9 @@ package com.xinwallet.app.di
 
 import android.content.Context
 import com.google.gson.GsonBuilder
+import com.google.gson.TypeAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
 import com.xinwallet.app.data.local.SessionManager
 import com.xinwallet.app.data.model.Book
 import com.xinwallet.app.data.model.BookIdResponse
@@ -92,7 +95,11 @@ object AppContainer {
 
     fun init(context: Context, session: SessionManager) {        sessionManager = session
 
-        val gson = GsonBuilder().setLenient().create()
+        val gson = GsonBuilder()
+            .setLenient()
+            .registerTypeAdapter(Double::class.java, DoubleTypeAdapter)
+            .registerTypeAdapter(Double::class.javaPrimitiveType!!, DoubleTypeAdapter)
+            .create()
         val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
         val interceptor = AuthInterceptor(session, authExpired) { if (::api.isInitialized) api else null }
         okHttpClient = OkHttpClient.Builder()
@@ -178,7 +185,7 @@ object AppContainer {
 
     /** 用户配置 NAS 地址后重建 Retrofit 实例 */
     fun setBaseUrl(baseUrl: String) {
-        retrofit = buildRetrofit(baseUrl, GsonBuilder().setLenient().create())
+        retrofit = buildRetrofit(baseUrl, gson)
         api = retrofit.create(ApiService::class.java)
     }
 
@@ -193,5 +200,24 @@ object AppContainer {
         val withoutTrailingSlash = trimmed.trimEnd('/')
         val withApi = if (withoutTrailingSlash.endsWith("/api")) withoutTrailingSlash else "$withoutTrailingSlash/api"
         return "$withApi/"
+    }
+}
+
+/**
+ * 数字/字符串兼容的 Double 适配器：服务端 PostgreSQL NUMERIC 列返回字符串（如 "1150.00"），
+ * 本适配器同时接受 JSON 数字与字符串，null/空串回退 0.0，避免反序列化失败。
+ */
+private object DoubleTypeAdapter : TypeAdapter<Double>() {
+    override fun write(out: JsonWriter, value: Double?) {
+        if (value == null) out.nullValue() else out.value(value)
+    }
+    override fun read(`in`: JsonReader): Double? {
+        if (`in`.peek() == com.google.gson.stream.JsonToken.NULL) {
+            `in`.nextNull()
+            return null
+        }
+        val raw = `in`.nextString()
+        if (raw.isNullOrEmpty()) return 0.0
+        return raw.toDoubleOrNull() ?: 0.0
     }
 }
