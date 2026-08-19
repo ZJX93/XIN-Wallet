@@ -4,7 +4,7 @@
  */
 import { get, post, put, del, ApiError } from '../http/Http';
 import {
-  ApiResponse, LoginRequest, RefreshRequest, AuthResponse, UserWrapper, UpdateProfileRequest,
+  ApiResponse, AuthConfig, LoginRequest, RefreshRequest, AuthResponse, UserWrapper, UpdateProfileRequest,
   Account, AccountsResponse, CreateAccountRequest, UpdateAccountRequest,
   Category, TransactionItem, CreateTransactionRequest, UpdateTransactionRequest, TxSummary,
   Book, BooksResponse, BookIdResponse, CreateBookRequest, SwitchBookResponse,

@@ -5,7 +5,7 @@
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 import fileUri from '@ohos.file.fileuri';
-import { picker } from '@ohos.file.picker';
+import picker from '@ohos.file.picker';
 import type Want from '@ohos.app.ability.Want';
 import * as Api from '../common/api/Api';
 import { ApiError } from '../common/http/Http';
@@ -65,9 +65,17 @@ struct DataManagement {
       const r = await Api.importBackup(tmp);
       const imp = (r.data as object) ? (r.data as Record<string, Object>)['imported'] : undefined;
       if (r.success) {
-        const summary = imp ? Object.entries(imp as Record<string, number>)
-          .filter(([, v]) => (v as number) > 0)
-          .map(([k, v]) => `${k}:${v}`).join('  ') : '';
+        let summary = '';
+        if (imp) {
+          const entries = Object.entries(imp as Record<string, number>);
+          for (let i = 0; i < entries.length; i++) {
+            const k = entries[i][0];
+            const v = entries[i][1];
+            if ((v as number) > 0) {
+              summary += (summary ? '  ' : '') + `${k}:${v}`;
+            }
+          }
+        }
         this.msg = '账本已恢复 ✅' + (summary ? '\n' + summary : '');
       } else {
         this.msg = '恢复失败：' + (r.message || '未知错误');

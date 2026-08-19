@@ -7,6 +7,7 @@
  * 依赖：config.normalizeBaseUrl / store.Session
  */
 import http from '@ohos.net.http';
+import ohosRequest from '@ohos.request';
 import common from '@ohos.app.ability.common';
 import { Session } from '../store/Session';
 import { ApiResponse } from '../models';
@@ -162,7 +163,7 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * 下载文件到本地（导出备份）：使用 @ohos.net.http 的 downloadFile，
+ * 下载文件到本地（导出备份）：使用 @ohos.request 的 downloadFile，
  * 自动带鉴权头与 X-Book-Id。返回保存路径。
  */
 export async function downloadFileTo(path: string, savePath: string): Promise<string> {
@@ -173,22 +174,21 @@ export async function downloadFileTo(path: string, savePath: string): Promise<st
   const ctx = rawCtx as common.UIAbilityContext;
   const url = baseUrl + path;
   const headers = await buildHeaders();
-  const task = http.request.downloadFile(ctx, {
+  const downloadTask: ohosRequest.DownloadTask = await ohosRequest.downloadFile(ctx, {
     url,
     header: headers,
     filePath: savePath,
     enableMetered: true,
     enableRoaming: true
   });
-  const resp = await task;
-  if (resp.responseCode !== 200) {
-    throw new ApiError('下载失败（HTTP ' + resp.responseCode + '）', resp.responseCode);
-  }
-  return savePath;
+  return new Promise<string>((resolve, reject) => {
+    downloadTask.on('complete', () => resolve(savePath));
+    downloadTask.on('fail', (err: number) => reject(new ApiError('下载失败（' + err + '）', err)));
+  });
 }
 
 /**
- * 上传文件（导入备份）：使用 @ohos.net.http 的 uploadFile，multipart/form-data，
+ * 上传文件（导入备份）：使用 @ohos.request 的 uploadFile，multipart/form-data，
  * 字段名固定为 file（与服务端 multer.single('file') 对应）。返回解析后的 API 响应。
  */
 export async function uploadFileFrom(path: string, filePath: string, fieldName: string = 'file'): Promise<ApiResponse<object>> {
@@ -200,35 +200,53 @@ export async function uploadFileFrom(path: string, filePath: string, fieldName: 
   const url = baseUrl + path;
   const headers = await buildHeaders();
   const fileName = filePath.split('/').pop() || 'backup.xlsx';
-  const task = http.request.uploadFile(ctx, {
-    url,
-    header: headers,
-    files: [{
-      filename: fileName,
-      name: fieldName,
-      uri: filePath,
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    }],
-    data: []
+
+  return new Promise<ApiResponse<object>>((resolve, reject) => {
+    ohosRequest.uploadFile(ctx, {
+      url,
+      header: headers,
+      method: 'POST',
+      files: [{
+        filename: fileName,
+        name: fieldName,
+        uri: filePath,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }],
+      data: []
+    }).then((uploadTask: ohosRequest.UploadTask) => {
+      uploadTask.on('fail', (states: Array<ohosRequest.TaskState>) => {
+        reject(new ApiError('上传失败', states[0]?.responseCode ?? -1));
+      });
+      uploadTask.on('complete', (states: Array<ohosRequest.TaskState>) => {
+        const state = states[0];
+        const code = state.responseCode;
+        const resultStr = typeof state.message === 'string' ? state.message : '';
+        let parsed: ApiResponse<object>;
+        try {
+          parsed = JSON.parse(resultStr) as ApiResponse<object>;
+        } catch (e) {
+          reject(new ApiError('服务器响应解析失败', code));
+          return;
+        }
+        if (code === 401) {
+          tryRefresh().then((newToken: string | null) => {
+            if (newToken) {
+              uploadFileFrom(path, filePath, fieldName).then(resolve, reject);
+            } else {
+              Session.clear();
+              reject(new ApiError('登录已过期，请重新登录', 401));
+            }
+          });
+          return;
+        }
+        if (!parsed.success) {
+          reject(new ApiError(parsed.message ?? '导入失败', code));
+          return;
+        }
+        resolve(parsed);
+      });
+    }).catch((e: Error) => {
+      reject(new ApiError('上传发起失败：' + (e?.message ?? ''), -1));
+    });
   });
-  const resp = await task;
-  const resultStr = typeof resp.result === 'string' ? resp.result : JSON.stringify(resp.result);
-  let parsed: ApiResponse<object>;
-  try {
-    parsed = JSON.parse(resultStr) as ApiResponse<object>;
-  } catch (e) {
-    throw new ApiError('服务器响应解析失败', resp.responseCode);
-  }
-  if (resp.responseCode === 401) {
-    const newToken = await tryRefresh();
-    if (newToken) {
-      return uploadFileFrom(path, filePath, fieldName);
-    }
-    await Session.clear();
-    throw new ApiError('登录已过期，请重新登录', 401);
-  }
-  if (!parsed.success) {
-    throw new ApiError(parsed.message ?? '导入失败', resp.responseCode);
-  }
-  return parsed;
 }
