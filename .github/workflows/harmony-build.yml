@@ -53,11 +53,18 @@ jobs:
           URL="$CLT_URL"
           if [ -z "$URL" ]; then
             echo "::group::未配置 Secret，尝试从本仓库 GitHub Release(tag=harmony-cli)获取 CLI 资产"
-            ASSET=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            # 先拿 release id（tags 端点），再直接查 assets 端点（不受 starter 状态影响）
+            RID=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/harmony-cli" \
-              | grep -o 'https://[^"]*commandline-tools-linux-x64[^"]*\.zip' | head -1 || true)
-            URL="$ASSET"
-            echo "Release 资产: ${URL:-（无）}"
+              | grep -oE '"id":\s*[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+            if [ -n "$RID" ]; then
+              ASSET=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/releases/$RID/assets" \
+                | grep -oE '"browser_download_url":\s*"https://[^"]*commandline-tools-linux-x64[^"]*\.zip"' \
+                | head -1 | sed -E 's/.*"(https:[^"]+)".*/\1/' || true)
+              URL="$ASSET"
+            fi
+            echo "Release 资产 (release_id=$RID): ${URL:-（无）}"
             echo "::endgroup::"
           fi
           if [ -z "$URL" ]; then
