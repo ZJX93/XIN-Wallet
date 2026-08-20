@@ -891,13 +891,20 @@ router.post('/chat', async (req, res) => {
 2. 信息不全（金额、收支方向或账户不明）时，用一句中文追问，不要臆造。
 3. 可用工具：create_transaction（收入/支出）、create_transfer（转账）、list_transactions（查找交易）、update_transaction（修改交易）、delete_transaction（删除交易）、query_stats（查账问答）。
 4. 用户说"把XX改成YY""这笔记错了""删了这笔"时，先调用 list_transactions 定位目标交易，再调用 update_transaction 或 delete_transaction。
-5. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止编造 id。
+5. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止凭空编造不在列表里的 id。
+5.5 创建交易时若用户提到的账户/类目名在下方列表里找不到完全一致：
+   - 优先：用 list_transactions(以商家或场景为 keyword，比如「大味王」「晚餐」「加油」)查最近 1–3 条同场景的过往交易，**复用其 account_id/category_id**（这是最贴近用户习惯的决策）
+   - 次优：从下方列表选「名字最相近」的项（如「零钱通」→ 「微信 零钱」），并在回复里明确告诉用户「你提到的『零钱通』在列表里没找到，我用了最相近的『微信 零钱』；如不对请纠正，我马上改」
+   - 仅当以上两条都拿不出合理选择时（比如列表完全为空、且 list_transactions 也没结果），才请用户去 App「账户管理 / 分类管理」确认后告诉你
 6. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
 7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
 8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
 9. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，你必须如实告诉用户失败原因并请其补充或更正，绝不能说"已记/已保存/已完成/已删除"。
 10. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
-补充：第 3 条里列出的只是 function-calling 工具；**类目/账户的 ID 列表**已在下方「可用类目」「可用账户」两节下发（不是工具调用结果），请直接从中选 id，不要自己编造。如果这两节为空，说明当前账本没数据，请让用户去 App「账户管理 / 分类管理」检查后再来记账。
+补充：
+- 第 3 条列的只是 function-calling 工具；**类目/账户的 ID 列表**已在下方「可用类目」「可用账户」两节直接在对话中下发给你（不是工具调用结果），请直接从中选 id，不要凭空编造。
+- 真找不到完全匹配的名称时，按 5.5 走：先用 list_transactions 查历史同类交易复用 id，或选最相近并在回复里如实告知用户。
+- 这两节若显式标注「空 — 当前账本没有...」，说明用户该账本下确实没建账户/类目，请建议他去 App「账户管理 / 分类管理」建好后重试。
 
 可用类目：
 ${catRef}
@@ -940,15 +947,15 @@ ${accRef}`;
             },
             {
                 name: 'list_transactions',
-                description: '按关键词、金额、日期范围列出最近交易，用于定位用户想修改或删除的目标。返回交易 id、时间、金额、类型、备注、分类、账户。',
+                description: '按关键词、金额、日期范围列出最近交易。两种用途：(a) 定位用户想修改或删除的目标交易（须返回的 transaction_id 喂给 update/delete）；(b) 创建交易时若账户/类目不能确定，可用商家名/场景名（如「大味王」「晚餐」「加油」）做 keyword，查最近 1–3 条同场景的过往交易，复用其 account_id/category_id。返回交易 id、时间、金额、类型、备注、分类、账户。',
                 parameters: {
                     type: 'object',
                     properties: {
-                        keyword: { type: 'string', description: '备注/分类/账户关键词，可省略' },
+                        keyword: { type: 'string', description: '备注/分类/账户/商家关键词，可省略' },
                         amount: { type: 'number', description: '精确金额，可省略' },
                         date_from: { type: 'string', description: 'YYYY-MM-DD，可省略' },
                         date_to: { type: 'string', description: 'YYYY-MM-DD，可省略' },
-                        limit: { type: 'integer', description: '默认 10，最大 20' }
+                        limit: { type: 'integer', description: '默认 10，最大 20；查历史同类时建议给 3' }
                     }
                 }
             },
