@@ -6,10 +6,10 @@
 # 连锁效果：tag 创建后主动派发 release-image.yml（构建 Docker 镜像）与 android-build.yml（构建 APK），
 #           二者均使用该 vX.Y.Z 标签，从而 Docker 镜像版本与安卓客户端版本始终保持一致。
 # 版本规则（简化）：
-#   版本号固定为 v0.0.Z —— 锁死 MAJOR.MINOR = 0.0，每次发布仅递增 PATCH(Z)。
-#   例：v0.0.0 → v0.0.1 → v0.0.2 …（不再做 major/minor 跳变）。
+#   版本号固定为 v0.1.X —— 锁死 MAJOR.MINOR = 0.1，每次发布仅递增 PATCH(X)。
+#   例：v0.1.1 → v0.1.2 → v0.1.3 …（不再做 major/minor 跳变）。
 #   是否发布仍取决于提交类型：docs/chore/ci 提交跳过打标签；
-#   feat/fix/refactor/perf/build/style 提交才会触发一次 Z+1 发布。
+#   feat/fix/refactor/perf/build/style 提交才会触发一次 X+1 发布。
 # 注意：如需调整锁定的 X.Y，改下方 MAJOR/MINOR 两个常量即可。
 # ============================================
 name: Auto Tag
@@ -48,18 +48,18 @@ jobs:
 
           if [ -z "$LATEST_TAG" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
-            echo "new_tag=v0.0.1" >> $GITHUB_OUTPUT
-            echo "No existing tags, starting at v0.0.1"
+            echo "new_tag=v0.1.1" >> $GITHUB_OUTPUT
+            echo "No existing tags, starting at v0.1.1"
             exit 0
           fi
 
           echo "Latest tag: $LATEST_TAG"
 
-          # 解析当前版本号：仅取 PATCH(Z)；MAJOR.MINOR 锁死为 0.0
+          # 解析当前版本号：仅取 PATCH(X)；MAJOR.MINOR 锁死为 0.1
           VERSION=${LATEST_TAG#v}
           PATCH=$(echo "$VERSION" | cut -d. -f3)
           MAJOR=0
-          MINOR=0
+          MINOR=1
 
           # 获取自上次 tag 以来的所有 commit 主题（首行）
           COMMITS=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%s")
@@ -75,13 +75,13 @@ jobs:
             exit 0
           fi
 
-          # 锁死 X.Y = 0.0，版本号只递增 PATCH(Z)：v0.0.N → v0.0.(N+1)
+          # 锁死 X.Y = 0.1，版本号只递增 PATCH(X)：v0.1.N → v0.1.(N+1)
           PATCH=$((PATCH + 1))
 
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "skip=false" >> $GITHUB_OUTPUT
           echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
-          echo "Bump type: patch (Z only, X.Y locked to 0.0)"
+          echo "Bump type: patch (X only, X.Y locked to 0.1)"
           echo "Next version: ${NEW_TAG}"
 
       - name: 创建并推送 tag
