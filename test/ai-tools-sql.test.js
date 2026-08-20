@@ -84,8 +84,11 @@ test('list_accounts SQL：仅返回当前用户当前账本的 active 账户（�
              ORDER BY sort_order, id`,
             [userA.id, userA.bookId]
         );
-        const names = rows.map(r => r.name).sort();
-        assert.deepStrictEqual(names, ['招行储蓄卡', '微信 零钱通']);
+        const names = rows.map(r => r.name);
+        // 不强求顺序（SQL 已 ORDER BY 但中文字符排序行为依赖 Node locale），用 set 比对
+        assert.strictEqual(names.length, 2);
+        assert.ok(names.includes('微信 零钱通'));
+        assert.ok(names.includes('招行储蓄卡'));
     } finally {
         await cleanupTestUser(userA.id);
         await cleanupTestUser(userB.id);
