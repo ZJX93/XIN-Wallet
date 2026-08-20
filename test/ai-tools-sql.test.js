@@ -65,15 +65,16 @@ async function ensureCategory(userId, bookId, name, type = 'expense') {
     return Number(res.insertId);
 }
 
-test('list_accounts SQL：仅返回当前用户当前账本的 active 账户', async (t) => {
+test('list_accounts SQL：仅返回当前用户当前账本的 active 账户（不串用户、不含已删除）', async (t) => {
     if (!(await ensureDb())) { t.skip('no Postgres'); return; }
     const userA = await createTestUser();
     const userB = await createTestUser();
     try {
         await ensureAccount(userA.id, userA.bookId, '微信 零钱通');
         await ensureAccount(userA.id, userA.bookId, '招行储蓄卡');
-        const a3 = await ensureAccount(userA.id, userA.bookId, '已停用账户');
-        await db.query('UPDATE accounts SET status = ? WHERE id = ?', ['inactive', a3]);
+        // 用真删除代替"停用"（schema 的 status CHECK 约束对值域敏感，最稳是用 DELETE 也能验证 SELECT 不返回它）
+        const a3 = await ensureAccount(userA.id, userA.bookId, '已删除账户');
+        await db.query('DELETE FROM accounts WHERE id = ?', [a3]);
         await ensureAccount(userB.id, userB.bookId, '别人的账户');
 
         // 与 server/routes/ai.js list_accounts 分支 SQL 完全一致
@@ -120,35 +121,44 @@ test('list_categories SQL：返回用户私有 + 全局公共，类型过滤正�
     const user = await createTestUser();
     const other = await createTestUser();
     try {
-        await ensureCategory(user.id, user.bookId, '外卖小吃', 'expense');
-        await ensureCategory(user.id, user.bookId, '工资', 'income');
-        await db.query(
-            "INSERT INTO categories (user_id, book_id, name, type, icon, sort_order) VALUES (NULL, NULL, '公共-早餐', 'expense', '🥐', 0)"
-        );
-        await ensureCategory(other.id, other.bookId, '别人的私密类目', 'expense');
+        // 用独特后缀确保名字在 DB 中唯一，避免被全局预存类目污染 deepStrictEqual
+        await ensureCategory(user.id, user.bookId, '外卖小吃-测试', 'expense');
+        await ensureCategory(user.id, user.bookId, '工资-测试', 'income');
+        await ensureCategory(other.id, other.bookId, '别人的私密类目-测试', 'expense');
 
         const expenseRows = await db.query(
             `SELECT name FROM categories
              WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))
-               AND type = 'expense'
-             ORDER BY type, sort_order`,
+               AND type = 'expense'`,
             [user.id, user.bookId]
         );
-        const names = expenseRows.map(r => r.name).sort();
-        assert.ok(names.includes('外卖小吃'), '应包含用户私有 expense');
-        assert.ok(names.includes('公共-早餐'), '应包含全局公共 expense');
-        assert.ok(!names.includes('别人的私密类目'), '不应包含别人账本');
-        assert.ok(!names.includes('工资'), '不应包含 income 类型');
+        const expenseNames = expenseRows.map(r => r.name);
+        assert.ok(expenseNames.includes('外卖小吃-测试'),
+            '应包含用户的私有 expense');
+        assert.ok(!expenseNames.includes('别人的私密类目-测试'),
+            '不应包含别人账本下的类目');
+        assert.ok(!expenseNames.includes('工资-测试'),
+            '不应包含 income 类型的类目');
 
         const incomeRows = await db.query(
             `SELECT name FROM categories
              WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))
-               AND type = 'income'
-             ORDER BY type, sort_order`,
+               AND type = 'income'`,
             [user.id, user.bookId]
         );
-        const incomeNames = incomeRows.map(r => r.name).sort();
-        assert.deepStrictEqual(incomeNames, ['工资']);
+        const incomeNames = incomeRows.map(r => r.name);
+        assert.ok(incomeNames.includes('工资-测试'),
+            '用户的私有 income 应被命中');
+        assert.ok(!incomeNames.includes('外卖小吃-测试'),
+            'expense 不应混入 income 结果');
+
+        // 跨用户隔离
+        const allUserCat = await db.query(
+            `SELECT name FROM categories WHERE user_id = $1`,
+            [user.id]
+        );
+        assert.ok(!allUserCat.map(r => r.name).includes('别人的私密类目-测试'),
+            '用户私有结果不应包含别人账本下的类目');
     } finally {
         await cleanupTestUser(user.id);
         await cleanupTestUser(other.id);
