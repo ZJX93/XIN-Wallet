@@ -98,3 +98,16 @@ test('OCR prompt：分类名允许自由选（OCR 流程与 chat 不同——OCR
     // OCR 不依赖 list_categories 工具，因为后端按字符串解析分类
     assert.match(src, /category 必须从下面列表中选择最合适的/);
 });
+
+test('AI 记账 prompt 第 12 条：自然对话风格，禁止暴露工具名 / JSON 块', () => {
+    assert.match(src, /12\. 对话风格/);
+    assert.match(src, /禁止\*?\*?在回复中暴露后端工具名/);
+    assert.match(src, /不写"我已经为您调用了 xxx 工具"之类机械化开场白/);
+});
+
+test('安全网：writeSucceeded 标志追踪 + 落兜底"未真的调用记账工具"改写', () => {
+    // writeSucceeded 在 result.ok && result.transaction_id 处被置真
+    assert.match(src, /writeSucceeded\s*=\s*true/);
+    // 安全网改写分支存在
+    assert.match(src, /很抱歉，这笔其实没有记录成功/);
+});

@@ -145,6 +145,76 @@ function stripThinkingTokens(text) {
     return s;
 }
 
+/**
+ * AI 记账对话回复修饰器：
+ *  - 去掉 LLM 常见的「机械化前缀」（"我已为你…", "好的，我来…"等），让对话更像真人
+ *  - 隐藏内部工具名 / 函数名 / 占位调试字样，避免把后端实现细节暴露到用户视角
+ *  - 当真实落账时（hasTransactions=true）追加一句自然口语化的「记账小尾巴」，否则保持纯自然
+ *  - 不会修改 reply 之外的 transactions 卡片数据（前端 ChatBubble 渲染完全不变）
+ *
+ * @param {string} text 模型原始 reply
+ * @param {boolean} hasTransactions 本次对话是否真的写入了记账
+ * @returns {string}
+ */
+function polishChatReply(text, hasTransactions) {
+    if (text == null) return text;
+    let s = String(text).trim();
+    if (!s) return s;
+
+    // 1) 循环剥除「机械化前缀」——按顺序套规则，每条规则只匹配一次，
+    //    直到没有规则能继续剥为止。"好的，我来帮你…"这种长开场白也能被一层层剥掉。
+    const PREFIX_RULES = [
+        // 完整开场（"好的，"/"嗯…"/"哦…"）
+        /^[，,。!！\s]*(好的|嗯|哦|行[吧]?|可以|明白|当然)[，,。!！！\s]*/i,
+        // "下面我将…"/"下面是…"等说明式开场
+        /^[，,。!！\s]*(下面(?:我(?:[来帮]*)?|这?(?:是)?)|下面为?(?:你|您))[，,。!！！\s]*/i,
+        // "我已为你…"/"我来帮你…"/"我会…"/"让我…"
+        /^[，,。!！\s]*我(?:已[为帮]*?|来[帮为]*?|会[帮为]*?)[，,。!！！\s]*/i,
+        // 残留"为您…"/"请看…"/"这个…"
+        /^[，,。!！\s]*(为您|请看|这个)[，,。!！！\s]*/i,
+    ];
+    let prefixIter = 0;
+    let prevS;
+    do {
+        prevS = s;
+        for (const r of PREFIX_RULES) {
+            const next = s.replace(r, '');
+            if (next !== s) { s = next.replace(/^[，,。!！！\s]+/, ''); break; }
+        }
+        prefixIter += 1;
+    } while (s !== prevS && prefixIter < 6);
+
+    // 2) 先隐藏函数调用风格的 JSON 整段（避免后面工具名替换污染 JSON 字符串）
+    s = s.replace(/\{\s*"name"\s*:\s*"(?:create_|update_|delete_|list_|get_|ensure_)[a-z_]+"[\s\S]*?\}/gi, '');
+    s = s.replace(/^\s*[\{\[].*[\}\]]\s*$/gm, '');
+
+    // 3) 隐藏内部工具/函数名（剥完 JSON 后再剥孤立工具名；保留自然"查账户/记一笔"等口语）
+    s = s.replace(/\b(create_transaction|create_transfer|update_transaction|delete_transaction|list_accounts|list_categories|list_budgets|get_account_balance|ensure_category)\b/gi, m => {
+        const friendly = {
+            create_transaction: '记一笔', create_transfer: '转账', update_transaction: '改一笔',
+            delete_transaction: '删一笔', list_accounts: '查账户', list_categories: '查分类',
+            list_budgets: '查预算', get_account_balance: '查余额', ensure_category: '找分类'
+        };
+        return friendly[m.toLowerCase()] || m;
+    });
+
+    // 4) 隐藏明显的调试/占位字样
+    s = s.replace(/(<\/?(tool|function_call|response|reasoning|chain_of_thought|internal)[^>]*>)/gi, '');
+    s = s.replace(/^\s*(DEBUG|LOG|TODO|FIXME|XXX|UNUSED)\b.*$/gmi, '');
+
+    // 5) 折叠 3+ 连续空行 + 修剪多余标点
+    s = s.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+    s = s.replace(/([。！!？\?])\1+/g, '$1');
+
+    // 5) 当本次真的落账 + reply 没有「已记」类提示时，追加一句自然口语
+    //    注意：如果之前的安全网已改写 reply（"很抱歉，这笔其实没有记录成功…"），这里不会再追加"已记好"
+    const alreadyConfirmed = /已记|已写|已存|记下了|记好了|记了一笔|搞定|落账/.test(s);
+    if (hasTransactions && !alreadyConfirmed) {
+        s = s ? s.replace(/[。！!？\?\.！]*$/, '') + '，已记好啦~' : '已记好啦~';
+    }
+    return s;
+}
+
 // 从模型输出中安全提取 JSON（兼容 markdown 代码块包裹）
 function extractJson(text) {
     if (!text) return null;
@@ -280,7 +350,7 @@ async function ensureWeeklySnapshots(userId, investments) {
 
 module.exports = {
     success, fail, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
-    extractJson, stripThinkingTokens, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
+    extractJson, stripThinkingTokens, polishChatReply, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
     tryDecrypt,

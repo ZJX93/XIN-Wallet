@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
-const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens } = require('./_helpers');
+const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens, polishChatReply } = require('./_helpers');
 const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
 
@@ -905,6 +905,7 @@ router.post('/chat', async (req, res) => {
 10. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，**必须**如实告诉用户失败原因并请其补充或更正，**不得**说"已记/已保存/已完成/已删除"。
     **只有**某个写工具（create_transaction / create_transfer / update_transaction / delete_transaction）真实返回了 {"ok": true, "transaction_id": <数字>}，你才可以在回复里说"已记/已更新/已删除/已完成"。若你只调了 list_accounts / list_categories / list_transactions / query_stats 等**只读**工具、或根本没调任何写工具，就**绝不可**在回复里声称"已记一笔 / 已创建交易 / 记好了 / 已入账 / 已记账成功"——那会误导用户以为已经落账，而账本上其实什么都没有。拿不准是否真的写成功时，宁可说"请到「添加」确认是否记成功"也别说"已记"。
 11. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
+12. 对话风格：像真人在微信/小爱里陪用户记账一样自然。**禁止**在回复中暴露后端工具名（create_transaction / list_accounts 等）、函数调用 JSON 块、调试占位符、思考过程。回复尽量 1-2 句、简洁有温度；如有多个工具并行执行**只总结结果**，不写"我已经为您调用了 xxx 工具"之类机械化开场白。
 补充：
 - 下方「可用类目」「可用账户」两节是**预投喂**的快速参考（凭 system prompt 即可见），足以应对多数简单场景。但当用户提的账户名与预投喂列表不完全一致、或预投喂为空、或你对此前的列表没把握时，**必须**调 list_accounts / list_categories 实时确认——凭印象编一个 id 会导致记账失败。
 - 用户那张截图中「我的工具集里没有列出账户和分类的接口」这句话是**错的**，从 v0.0.44 起本系统确实提供了 list_accounts / list_categories 工具，AI 可以调用它们直接拿到 id。
@@ -1323,6 +1324,9 @@ ${accRef}`;
         // 最终再剥离一次思考标记（覆盖任何遗漏路径），并兜底空回复
         reply = stripThinkingTokens(reply || '');
         if (!reply) reply = '已完成处理。';
+        // AI 记账回复修饰：去除「机械化前缀」、隐藏工具名/调试字样，并按真实落账结果追加自然口语。
+        // 注意：此处**不会**修改 mutations（transactions 卡片）——前端 ChatBubble 渲染完全不变。
+        reply = polishChatReply(reply, writeSucceeded);
         res.json(success({ reply, transactions: mutations }));
     } catch (err) {
         if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));

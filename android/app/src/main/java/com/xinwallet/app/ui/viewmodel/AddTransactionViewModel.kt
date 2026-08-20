@@ -3,6 +3,7 @@ package com.xinwallet.app.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xinwallet.app.data.model.Account
+import com.xinwallet.app.data.model.Budget
 import com.xinwallet.app.data.model.Category
 import com.xinwallet.app.data.model.CreateTransactionRequest
 import com.xinwallet.app.data.model.CreateTransferRequest
@@ -10,6 +11,7 @@ import com.xinwallet.app.data.model.TransactionItem
 import com.xinwallet.app.data.model.UpdateTransactionRequest
 import com.xinwallet.app.data.remote.ApiResult
 import com.xinwallet.app.data.repository.AccountRepository
+import com.xinwallet.app.data.repository.BudgetRepository
 import com.xinwallet.app.data.repository.CategoryRepository
 import com.xinwallet.app.data.repository.TransactionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +24,8 @@ data class AddTxUiState(
     val success: Boolean = false,
     val accounts: List<Account> = emptyList(),
     val categories: List<Category> = emptyList(),
+    /** 已加载预算列表（用于「关联预算」chip 与 transactions.budget_id 持久化） */
+    val budgets: List<Budget> = emptyList(),
     /** 编辑模式下加载到的原始交易，UI 用它做表单预填 */
     val editing: TransactionItem? = null
 )
@@ -29,14 +33,15 @@ data class AddTxUiState(
 class AddTransactionViewModel(
     private val txRepo: TransactionRepository,
     private val accRepo: AccountRepository,
-    private val catRepo: CategoryRepository
+    private val catRepo: CategoryRepository,
+    private val budgetRepo: BudgetRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddTxUiState(loading = true))
     val state: StateFlow<AddTxUiState> = _state
 
     /**
-     * 加载账户与分类选项。
+     * 加载账户、分类、预算选项。
      * 编辑模式下额外按 month 拉一次流水，从中定位到 editId 对应的交易做预填
      * （后端没有 GET /transactions/:id，用月份过滤的列表定位是最省事且确定的做法）。
      */
@@ -44,8 +49,10 @@ class AddTransactionViewModel(
         viewModelScope.launch {
             val acc = accRepo.getAccounts()
             val cat = catRepo.getCategories()
+            val bud = budgetRepo.getBudgets()
             val accList = (acc as? ApiResult.Success)?.data?.accounts ?: emptyList()
             val catList = (cat as? ApiResult.Success)?.data ?: emptyList()
+            val budList = (bud as? ApiResult.Success)?.data ?: emptyList()
 
             var editing: TransactionItem? = null
             if (editId != null && editId > 0) {
@@ -56,6 +63,7 @@ class AddTransactionViewModel(
                 loading = false,
                 accounts = accList,
                 categories = catList,
+                budgets = budList,
                 editing = editing,
                 error = if (editId != null && editId > 0 && editing == null) "未找到该交易，可能已被删除" else null
             )
@@ -63,9 +71,12 @@ class AddTransactionViewModel(
     }
 
     fun submitExpense(accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
-                      location: String? = null, linkType: String? = null, linkId: Int? = null) {
+                      location: String? = null, linkType: String? = null, linkId: Int? = null,
+                      budgetId: Int? = null) {
         val dt = normalizeDateTime(date)
-        submit { txRepo.createTransaction(CreateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId)).toUnit() }
+        submit { txRepo.createTransaction(
+            CreateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId, budgetId)
+        ).toUnit() }
     }
 
     fun submitTransfer(fromId: Int, toId: Int, amount: Double, note: String, date: String) {
@@ -75,9 +86,13 @@ class AddTransactionViewModel(
 
     /** 编辑保存：date 已带时间（到秒），直接透传，不再回填原始时间 */
     fun submitEdit(id: Int, accountId: Int, categoryId: Int, amount: Double, note: String, type: String, date: String,
-                   location: String? = null, linkType: String? = null, linkId: Int? = null) {
+                   location: String? = null, linkType: String? = null, linkId: Int? = null,
+                   budgetId: Int? = null) {
         val dt = normalizeDateTime(date)
-        submit { txRepo.updateTransaction(id, UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId)) }
+        submit { txRepo.updateTransaction(
+            id,
+            UpdateTransactionRequest(accountId, categoryId, type, amount, note, dt, location, linkType, linkId, budgetId)
+        ) }
     }
 
     /**

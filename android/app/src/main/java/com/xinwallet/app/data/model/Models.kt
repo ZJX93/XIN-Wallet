@@ -170,6 +170,8 @@ data class CreateTransactionRequest(
     val location: String? = null,
     @SerializedName("link_type") val linkType: String? = null,
     @SerializedName("link_id") val linkId: Int? = null,
+    /** 关联预算（可选）：传入后端会写 transactions.budget_id，参与预算统计 */
+    @SerializedName("budget_id") val budgetId: Int? = null,
     /** AI/OCR 场景传入的商家或个人对象；服务端会自动按「类目名-merchant」格式拼接备注 */
     val merchant: String? = null
 )
@@ -184,7 +186,8 @@ data class UpdateTransactionRequest(
     val date: String,
     val location: String? = null,
     @SerializedName("link_type") val linkType: String? = null,
-    @SerializedName("link_id") val linkId: Int? = null
+    @SerializedName("link_id") val linkId: Int? = null,
+    @SerializedName("budget_id") val budgetId: Int? = null
 )
 
 /** GET /transactions/summary?month=YYYY-MM */
