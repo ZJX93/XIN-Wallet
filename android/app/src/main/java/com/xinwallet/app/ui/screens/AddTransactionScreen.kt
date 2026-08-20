@@ -1253,29 +1253,28 @@ private fun NewKeypad(
     fun clear() = onValueChange("")
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        // 4 列布局：移除 * / ( ) 键，剩余键位更宽更大
         val rows = listOf(
-            listOf("+" to { append("+") }, "1" to { append("1") }, "2" to { append("2") }, "3" to { append("3") }, "⌫" to { backspace() }),
-            listOf("-" to { append("-") }, "4" to { append("4") }, "5" to { append("5") }, "6" to { append("6") }, "清空" to { clear() }),
-            listOf("×" to { append("*") }, "7" to { append("7") }, "8" to { append("8") }, "9" to { append("9") }, "." to { append(".") }),
-            listOf("/" to { append("/") }, "(" to { append("(") }, "0" to { append("0") }, ")" to { append(")") }, "确定" to { onSubmit() })
+            listOf("1" to { append("1") }, "2" to { append("2") }, "3" to { append("3") }, "+" to { append("+") }),
+            listOf("4" to { append("4") }, "5" to { append("5") }, "6" to { append("6") }, "-" to { append("-") }),
+            listOf("7" to { append("7") }, "8" to { append("8") }, "9" to { append("9") }, "⌫" to { backspace() }),
+            listOf("." to { append(".") }, "0" to { append("0") }, "清空" to { clear() }, "确定" to { onSubmit() })
         )
         rows.forEachIndexed { idx, row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { (label, action) ->
                     val isPrimary = label == "确定"
-                    val isAction = label in setOf("⌫", "清空", ".", "+", "-", "×", "/")
-                    val isOperator = label in setOf("+", "-", "×", "/", "(", ")")
+                    val isAction = label in setOf("⌫", "清空", ".", "+", "-")
                     KeypadCell(
                         label = label,
                         onClick = action,
                         modifier = Modifier.weight(1f),
                         isPrimary = isPrimary,
-                        isAction = isAction,
-                        isOperator = isOperator
+                        isAction = isAction
                     )
                 }
             }
-            if (idx != rows.lastIndex) Spacer(Modifier.height(6.dp))
+            if (idx != rows.lastIndex) Spacer(Modifier.height(8.dp))
         }
         Spacer(Modifier.height(2.dp))
     }
@@ -1287,18 +1286,16 @@ private fun KeypadCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isPrimary: Boolean = false,
-    isAction: Boolean = false,
-    isOperator: Boolean = false
+    isAction: Boolean = false
 ) {
     val bg = when {
         isPrimary -> Brown500
         isAction -> MaterialTheme.colorScheme.surfaceVariant
-        isOperator -> Brown100
         else -> MaterialTheme.colorScheme.surface
     }
     val fg = if (isPrimary) Color.White else MaterialTheme.colorScheme.onSurface
-    // 数字键 / 普通：60dp；操作符 & 括号：66dp（按用户要求更大）
-    val boxHeight = if (isOperator) 66.dp else 60.dp
+    // 删除 * / ( ) 后改为 4 列，单元格更宽；高度/字号统一，不再对运算符单独放大
+    val boxHeight = 56.dp
     Box(
         modifier = modifier
             .height(boxHeight)
@@ -1312,19 +1309,13 @@ private fun KeypadCell(
                 Icons.Filled.Backspace,
                 contentDescription = "退格",
                 tint = if (isAction) MaterialTheme.colorScheme.onSurfaceVariant else fg,
-                modifier = Modifier.size(if (isAction) 22.dp else 20.dp)
+                modifier = Modifier.size(22.dp)
             )
             else -> Text(
                 label,
-                // 操作符/括号 28sp 加大；数字 22sp；功能/主按钮 18sp
-                fontSize = when {
-                    isPrimary -> 18.sp
-                    isAction -> 18.sp
-                    isOperator -> 28.sp
-                    else -> 22.sp
-                },
+                fontSize = if (isPrimary) 18.sp else 20.sp,
                 color = fg,
-                fontWeight = if (isPrimary || isOperator) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (isPrimary || isAction) FontWeight.Bold else FontWeight.Medium
             )
         }
     }
