@@ -27,21 +27,22 @@ async function ensureCategory(conn, userId, name, type, icon) {
 }
 
 // ==========================================
-// 「场景-对象」备注格式：统一权威实现
-// 业务规则：AI/OCR 识别或手动记账时，若传入 merchant（商家/个人对象）但未给完整 note，
-// 自动拼接为「类目名-merchant」格式；若 note 已存在则尊重调用方，不强制覆盖。
+// 备注兜底：尊重调用方给定的 note，不做强制拼接。
+// 业务规则（2026-08-20 调整）：
+//   1. AI 流程：AI 在 prompt 中被要求**自己**用「场景-对象」格式生成完整 note（场景 X 由 AI
+//      自由决定：可以是类目/消费品/事件，对象 Y 是商家或个人）。AI 给了 note 就用 note。
+//   2. AI 没给 note 但给了 merchant（如只识别出商家名）：fallback 到 merchant（最简洁自然）。
+//   3. 都没给：用类目名兜底（避免空备注）。常见于手动记账+用户忘填场景。
 // 用于 /ai/chat 工具调用、/transactions 创建与更新、客户端 AI 记账等所有入口。
 // ==========================================
-async function buildSceneObjectNote(conn, userId, categoryId, note, merchant) {
-    if (merchant && !note) {
-        const catRow = await conn.queryOne(
-            'SELECT name FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
-            [categoryId, userId]
-        );
-        const scene = catRow ? catRow.name : '';
-        return (scene ? scene + '-' : '') + merchant;
-    }
-    return note || '';
+async function resolveNote(conn, userId, categoryId, note, merchant) {
+    if (note) return note;
+    if (merchant) return merchant;
+    const catRow = await conn.queryOne(
+        'SELECT name FROM categories WHERE id = ? AND (user_id IS NULL OR user_id = ?)',
+        [categoryId, userId]
+    );
+    return catRow ? catRow.name : '';
 }
 
 // ==========================================
@@ -93,5 +94,5 @@ async function syncCreditCardDebt(conn, userId, accountId) {
 module.exports = {
     ensureCategory,
     syncCreditCardDebt,
-    buildSceneObjectNote
+    resolveNote
 };

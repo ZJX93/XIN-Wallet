@@ -96,8 +96,8 @@ struct AiScan {
     this.done = 0;
     for (const r of picked) {
       try {
-        // 客户端不做格式拼接：note 直接透传（AI 已拼好的「类目名-对象」）；
-        // merchant 由服务端 buildSceneObjectNote 统一拼接为「类目名-merchant」格式
+        // 客户端不做格式拼接：note 直接透传（AI 在 prompt 里被要求按「场景-对象」格式生成完整 note）；
+        // merchant 单独传给服务端作冗余字段（用于后续分析/兜底）
         await Api.createTransaction({
           account_id: this.accounts[0]?.id || 0,
           category_id: r.categoryId,

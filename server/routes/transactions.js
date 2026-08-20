@@ -10,7 +10,7 @@ const {
     success, fail, handleServerError, fmtDateOnly, fmtDateTime, computeAccountBalance, enforceBalanceLimit,
     ErrorCodes, failBadRequest, failValidation, failNotFound
 } = require('./_helpers');
-const { ensureCategory, syncCreditCardDebt, buildSceneObjectNote } = require('./utils');
+const { ensureCategory, syncCreditCardDebt, resolveNote } = require('./utils');
 
 // ==========================================
 // 理财交易回滚：删除台账交易时，若其由理财操作(建仓/加减仓/清仓/分红/利息)生成，
@@ -341,8 +341,8 @@ router.post('/', async (req, res) => {
 
         // 使用事务确保余额一致
         const result = await db.transaction(async (conn) => {
-            // 「场景-对象」备注：merchant 由 AI/OCR/客户端传入，服务端统一拼接
-            const finalNote = await buildSceneObjectNote(conn, req.userId, parseInt(category_id), note, merchant);
+            // 备注：尊重调用方给定的 note（AI 流程由 AI 自填；手动记账由用户填），无则 fallback 到 merchant，再无则用类目名
+            const finalNote = await resolveNote(conn, req.userId, parseInt(category_id), note, merchant);
             const insertResult = await conn.query(
                 `INSERT INTO transactions (user_id, book_id, account_id, category_id, budget_id, type, amount, note, date, source_account_id, destination_account_id, location, link_type, link_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -394,8 +394,8 @@ router.put('/:id', async (req, res) => {
         const li = link_id ? parseInt(link_id) : null;
 
         await db.transaction(async (conn) => {
-            // 「场景-对象」备注：merchant 由 AI/OCR/客户端传入，服务端统一拼接
-            const finalNote = await buildSceneObjectNote(conn, req.userId, parseInt(category_id), note, merchant);
+            // 备注：尊重调用方给定的 note，无则 fallback 到 merchant，再无则用类目名
+            const finalNote = await resolveNote(conn, req.userId, parseInt(category_id), note, merchant);
             // 更新交易记录（含复式记账借贷双方字段 + location/link）
             await conn.query(
                 `UPDATE transactions SET account_id=?, category_id=?, budget_id=?, type=?, amount=?, note=?, date=?, source_account_id=?, destination_account_id=?, location=?, link_type=?, link_id=? WHERE id=? AND user_id=? AND book_id=?`,

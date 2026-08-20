@@ -7,7 +7,7 @@ const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
 const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime } = require('./_helpers');
-const { buildSceneObjectNote } = require('./utils');
+const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
 
 // 统一校验 AI 服务商可用性：区分「未配置」与「配置存在但密钥解密失败（重部署导致）」，
@@ -800,7 +800,7 @@ router.post('/ocr', upload.single('image'), async (req, res) => {
 6. 跳过合计、优惠、退款、找零、应付、实付等汇总行；只保留实际消费/收入的条目。
 7. category 必须从下面列表中选择最合适的，尽量细分；如果确实无法判断，返回“其他”。
 8. 餐别按时间推断：05-10早餐，10-14午餐，14-21晚餐。
-9. 每条的 note 必须遵循「场景-对象」格式：即「类目场景-商家/个人」，例如「晚餐-大味王」「买菜-张三」；无法确定对象时只写场景（如「晚餐」）。也可填充 merchant 字段，由系统自动拼接。
+9. 每条的 note 由你**自己生成完整**「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（可以是类目名/消费品/事件，如"早餐""买菜""雪糕"），对象 Y 是识别出的商家或个人（如"老乡鸡""张三""邻几"）。例：「早餐-老乡鸡」「买菜-张三」「雪糕-邻几」。无法确定对象时只写场景（如「晚餐」）。merchant 字段单独存原始对象，供后续分析。
 
 可选分类：早餐|午餐|晚餐|零食|聚餐|外卖|饮料|生鲜|公交地铁|打车|火车飞机|加油|充电|停车费|过路费|日用百货|服装鞋包|数码产品|家居家具|房租|水电燃气|物业费|维修|电影演出|游戏|运动健身|旅游度假|KTV酒吧|门诊|药品|体检|培训课程|书籍|考试报名|话费|宽带|快递|孝敬父母|送礼红包|护肤|美发|主粮零食|社保|商业保险|维保费|车险|其他
 
@@ -892,7 +892,7 @@ router.post('/chat', async (req, res) => {
 7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
 8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
 9. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，你必须如实告诉用户失败原因并请其补充或更正，绝不能说"已记/已保存/已完成/已删除"。
-10. 记账时在新增的 \`merchant\` 字段填写「对象」（商家名称或个人姓名，如「大味王」「张三」）；系统会自动将备注拼成「场景-对象」格式（如「晚餐-大味王」「买菜-张三」）。若确实无法确定对象，merchant 留空即可。
+10. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象供后续分析，**不再由系统拼接**。无法确定对象时只写场景（如「晚餐」），merchant 留空。
 
 可用类目：
 ${catRef}
@@ -1002,8 +1002,8 @@ ${accRef}`;
                 if (!cat) return { ok: false, error: '分类不存在' };
                 const date = args.date || new Date().toISOString().replace('T', ' ').slice(0, 19);
                 const txId = await db.transaction(async (conn) => {
-                    // 「场景-对象」备注：统一走 utils.buildSceneObjectNote 拼接
-                    const note = await buildSceneObjectNote(conn, req.userId, categoryId, args.note, args.merchant);
+                    // 备注：尊重 AI 给的 note（AI 在 prompt 中被要求按「场景-对象」格式生成）
+                    const note = await resolveNote(conn, req.userId, categoryId, args.note, args.merchant);
                     const ins = await conn.query(
                         `INSERT INTO transactions (user_id, book_id, account_id, category_id, type, amount, note, date, source_account_id, destination_account_id)
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

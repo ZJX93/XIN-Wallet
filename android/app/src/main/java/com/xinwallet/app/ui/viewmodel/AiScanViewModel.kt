@@ -177,9 +177,8 @@ class AiScanViewModel(
             _state.value = _state.value.copy(submitting = true, error = null, doneCount = 0)
             var ok = 0
             for (row in picked) {
-                // 客户端不做格式拼接：note 直接透传（AI 已拼好的「类目名-对象」）；
-                // 同时把 row.merchant（LLM 识别出的对象）传给服务端，
-                // 让服务端统一按 buildSceneObjectNote 规则拼接。
+                // 客户端不做格式拼接：note 直接透传（AI 在 prompt 里被要求按「场景-对象」格式生成完整 note）；
+                // row.merchant 单独传给服务端作冗余字段（用于后续分析/兜底）。
                 val note = row.note?.takeIf { it.isNotBlank() }?.take(100)
                 val merchant = row.merchant?.takeIf { it.isNotBlank() }?.take(50)
                 val req = CreateTransactionRequest(
