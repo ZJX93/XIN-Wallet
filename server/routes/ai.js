@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { encrypt, decrypt } = require('../crypto');
-const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime } = require('./_helpers');
+const { success, fail, handleServerError, maskKey, extractJson, tryDecrypt, computeAccountBalance, enforceBalanceLimit, fmtDateTime, stripThinkingTokens } = require('./_helpers');
 const { resolveNote } = require('./utils');
 const { getActiveProvider, getTranscriptionProvider, callProvider, chatWithTools, httpsPostRaw, httpsPostJson } = require('../services/ai');
 
@@ -903,6 +903,7 @@ router.post('/chat', async (req, res) => {
 8. update_transaction 只能修改普通收入/支出（type=income/expense），不能修改转账；删除无此限制。
 9. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
 10. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，**必须**如实告诉用户失败原因并请其补充或更正，**不得**说"已记/已保存/已完成/已删除"。
+    **只有**某个写工具（create_transaction / create_transfer / update_transaction / delete_transaction）真实返回了 {"ok": true, "transaction_id": <数字>}，你才可以在回复里说"已记/已更新/已删除/已完成"。若你只调了 list_accounts / list_categories / list_transactions / query_stats 等**只读**工具、或根本没调任何写工具，就**绝不可**在回复里声称"已记一笔 / 已创建交易 / 记好了 / 已入账 / 已记账成功"——那会误导用户以为已经落账，而账本上其实什么都没有。拿不准是否真的写成功时，宁可说"请到「添加」确认是否记成功"也别说"已记"。
 11. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
 补充：
 - 下方「可用类目」「可用账户」两节是**预投喂**的快速参考（凭 system prompt 即可见），足以应对多数简单场景。但当用户提的账户名与预投喂列表不完全一致、或预投喂为空、或你对此前的列表没把握时，**必须**调 list_accounts / list_categories 实时确认——凭印象编一个 id 会导致记账失败。
@@ -1264,16 +1265,18 @@ ${accRef}`;
         const mutations = [];
         const toolErrors = [];
         let unfinished = false;
+        let writeSucceeded = false;
         const MAX_LOOPS = 5;
         for (let i = 0; i < MAX_LOOPS; i++) {
             const msg = await chatWithTools(provider, conv, tools);
             conv.push(msg);
-            if (!msg.toolCalls || msg.toolCalls.length === 0) { reply = msg.content; break; }
+            if (!msg.toolCalls || msg.toolCalls.length === 0) { reply = stripThinkingTokens(msg.content || ''); break; }
             for (const tc of msg.toolCalls) {
                 const result = await executeTool(tc.name, tc.arguments || {});
                 conv.push({ role: 'tool', toolCallId: tc.id, content: JSON.stringify(result) });
                 if (!result.ok) toolErrors.push(result.error || '操作失败');
                 if (result.ok && result.transaction_id) {
+                    writeSucceeded = true;
                     const action = result.action || 'created';
                     if (action === 'deleted') {
                         mutations.push({
@@ -1301,10 +1304,25 @@ ${accRef}`;
             if (unfinished) reply = '本次处理步骤较多未能全部完成，请再说一次或补充信息后重试。';
             else if (toolErrors.length > 0) reply = '记录失败：' + toolErrors[0] + '，请补充或更正后重试。';
             else reply = '已完成处理。';
-        } else if (toolErrors.length > 0 && mutations.length === 0) {
-            // AI 文案可能声称成功，但实际没有任何落库操作：在文案前显式补充失败原因
-            reply = '很抱歉，这笔没有记录成功：' + toolErrors[0] + '。' + reply;
+        } else {
+            // 关键安全网：AI 文案声称"已记/已创建交易/记好了/已入账"等成功口吻，
+            // 但本次没有任何写工具真正返回 {"ok": true, "transaction_id"}（writeSucceeded=false）。
+            // 典型场景：思考模型只调了 list_* 只读工具就"脑补"已记账，或写工具报错失败。
+            // 此时账本上其实什么都没有，必须如实纠正，杜绝"假成功"误导用户。
+            const claimsRecorded = /已记(一笔|账|好|录)?|已创建(了)?交易|记好了|已保存(到账本)?|已入账|已成功记账|已为您记[账录]|记录成功|记账成功|成功记[账入]/.test(reply);
+            if (claimsRecorded && !writeSucceeded) {
+                const reason = toolErrors.length > 0
+                    ? ('：' + toolErrors[0])
+                    : '：系统检测到本次并未真正调用记账工具写入账本';
+                reply = '很抱歉，这笔其实没有记录成功' + reason + '。请确认金额与收支方向，或到「添加」手动记一笔。';
+            } else if (toolErrors.length > 0 && mutations.length === 0) {
+                // 兜底：文案未明确声称成功但确有工具报错且无落库
+                reply = '很抱歉，这笔没有记录成功：' + toolErrors[0] + '。' + reply;
+            }
         }
+        // 最终再剥离一次思考标记（覆盖任何遗漏路径），并兜底空回复
+        reply = stripThinkingTokens(reply || '');
+        if (!reply) reply = '已完成处理。';
         res.json(success({ reply, transactions: mutations }));
     } catch (err) {
         if (err && err.isAiProviderError) return res.status(err.statusCode || 502).json(fail(err.message));

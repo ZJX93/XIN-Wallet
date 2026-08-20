@@ -126,6 +126,25 @@ function tryDecrypt(key) {
     }
 }
 
+/**
+ * 剥离思考模型（如 deepseek-r1、qwen 等）在输出里夹带的 <think>...</think> 标记，
+ * 避免「已记一笔」文案里混入推理过程污染前端展示。
+ * 同时处理未闭合的 <think>（某些流式实现会漏掉闭合标签）与残留的 <think> 起始标签。
+ * @param {string|null|undefined} text
+ * @returns {string}
+ */
+function stripThinkingTokens(text) {
+    if (text == null) return '';
+    let s = String(text);
+    // 1) 去掉 <think>...</think> 整段（含换行/嵌套）
+    s = s.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '');
+    // 2) 处理未闭合的 <think ...> 一直到结尾（流式截断常见）
+    s = s.replace(/<think\b[^>]*>[\s\S]*$/gi, '');
+    // 3) 清理多余的空行
+    s = s.replace(/\n{3,}/g, '\n\n').trim();
+    return s;
+}
+
 // 从模型输出中安全提取 JSON（兼容 markdown 代码块包裹）
 function extractJson(text) {
     if (!text) return null;
@@ -261,7 +280,7 @@ async function ensureWeeklySnapshots(userId, investments) {
 
 module.exports = {
     success, fail, fmtDateOnly, fmtDateTime, handleServerError, maskKey,
-    extractJson, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
+    extractJson, stripThinkingTokens, sumLedgerEffects, computeAccountBalance, enforceBalanceLimit, ensureWeeklySnapshots,
     calcDebtDueSummary,
     ErrorCodes, failValidation, failNotFound, failConflict, failForbidden, failBadRequest,
     tryDecrypt,
