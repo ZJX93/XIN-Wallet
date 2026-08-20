@@ -26,6 +26,11 @@ const AccountManager = {
         // 账户资金明细模态框
         document.getElementById('accountDetailModalClose').addEventListener('click', () => this.closeDetail());
         document.getElementById('accountDetailModal').addEventListener('click', (e) => { if (e.target === document.getElementById('accountDetailModal')) this.closeDetail(); });
+        // 记利息模态框
+        document.getElementById('interestModalClose').addEventListener('click', () => this.closeInterestModal());
+        document.getElementById('interestCancelBtn').addEventListener('click', () => this.closeInterestModal());
+        document.getElementById('interestModal').addEventListener('click', (e) => { if (e.target === document.getElementById('interestModal')) this.closeInterestModal(); });
+        document.getElementById('interestForm').addEventListener('submit', (e) => { e.preventDefault(); this.saveInterest(); });
         // 账户删除确认模态框
         document.getElementById('accDelModalClose').addEventListener('click', () => this.closeDeleteModal());
         document.getElementById('accDelCancelBtn').addEventListener('click', () => this.closeDeleteModal());
@@ -37,7 +42,7 @@ const AccountManager = {
         if (accGridClose) accGridClose.addEventListener('click', () => this.closeAccGrid());
         const accGridOverlay = document.getElementById('accGridOverlay');
         if (accGridOverlay) accGridOverlay.addEventListener('click', (e) => { if (e.target === accGridOverlay) this.closeAccGrid(); });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.closeAccGrid(); this.closeDetail(); this.closeDeleteModal(); this.closeModal(); } });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.closeAccGrid(); this.closeDetail(); this.closeDeleteModal(); this.closeModal(); this.closeInterestModal(); } });
     },
     // 复式记账对账：以账本为唯一真相，重算并修正账户余额
     async reconcile() {
@@ -85,6 +90,7 @@ const AccountManager = {
                     <div class="account-row account-actions-row">
                         <div class="account-actions">
                             <button class="btn btn-ghost btn-sm" data-action="acc-detail" data-id="${a.id}" title="资金明细">📊</button>
+                            <button class="btn btn-ghost btn-sm" data-action="interest-acc" data-id="${a.id}" title="记利息">💰</button>
                             <button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="${a.id}" title="编辑">✏️</button>
                             <button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="${a.id}" title="删除">🗑️</button>
                         </div>
@@ -148,6 +154,9 @@ const AccountManager = {
         container.querySelectorAll('[data-action="delete-acc"]').forEach(btn => {
             btn.addEventListener('click', () => this.openDeleteModal(parseInt(btn.dataset.id)));
         });
+        container.querySelectorAll('[data-action="interest-acc"]').forEach(btn => {
+            btn.addEventListener('click', () => this.openInterestModal(parseInt(btn.dataset.id)));
+        });
     },
     toggleCreditLimit() {
         const type = document.getElementById('accType').value;
@@ -182,6 +191,8 @@ const AccountManager = {
             document.getElementById('accBalance').value = a.opening_balance ?? a.balance ?? 0;
             document.getElementById('accRealBalance').value = a.balance ?? 0;
             document.getElementById('accCreditLimit').value = a.credit_limit ?? 0;
+            document.getElementById('accAnnualRate').value = a.annual_rate ?? 0;
+            document.getElementById('accInterestCycle').value = a.interest_cycle || 'monthly';
             document.getElementById('accModalTitle').textContent = '编辑账户';
         } else {
             document.getElementById('accEditId').value = '';
@@ -191,6 +202,8 @@ const AccountManager = {
             document.getElementById('accBalance').value = 0;
             document.getElementById('accRealBalance').value = 0;
             document.getElementById('accCreditLimit').value = 0;
+            document.getElementById('accAnnualRate').value = 0;
+            document.getElementById('accInterestCycle').value = 'monthly';
             document.getElementById('accModalTitle').textContent = '新增账户';
         }
         this.toggleCreditLimit();
@@ -211,7 +224,9 @@ const AccountManager = {
             icon: document.getElementById('accIcon').value,
             // 用户编辑的是「初始余额」，实时余额由服务端按流水重算
             opening_balance: parseFloat(document.getElementById('accBalance').value),
-            credit_limit: limit
+            credit_limit: limit,
+            annual_rate: parseFloat(document.getElementById('accAnnualRate').value) || 0,
+            interest_cycle: document.getElementById('accInterestCycle').value || 'monthly'
         };
         if (id) {
             await api(`/accounts/${id}`, 'PUT', body);
@@ -281,15 +296,21 @@ const AccountManager = {
     async openDetail(id) {
         const modal = document.getElementById('accountDetailModal');
         const body = document.getElementById('accountDetailBody');
+        const acc0 = getAcc(id);
+        const isClosed = !!(acc0 && acc0.closed);
         modal.classList.add('show');
         body.innerHTML = '<div class="empty-state">⏳ 加载中…</div>';
         const res = await api(`/accounts/${id}/transactions`);
         if (!res) { body.innerHTML = '<div class="empty-state">⚠️ 加载失败，请检查网络</div>'; return; }
         const acc = res.account || {};
         const list = res.transactions || [];
+        const subBits = [`共 ${list.length} 笔资金变动`];
+        if (acc.last_interest_date) subBits.push(`上次计息 <strong>${escapeHtml(acc.last_interest_date)}</strong>`);
+        if (Number(acc.annual_rate) > 0) subBits.push(`年利率 <strong>${(Number(acc.annual_rate) || 0).toFixed(4)}%</strong>`);
         const head = `<div class="rh-head">
             <div class="rh-debt">${escapeHtml(acc.icon || '')} ${escapeHtml(acc.name || '账户')} · 资金明细</div>
-            <div class="rh-sub">共 ${list.length} 笔资金变动</div>
+            <div class="rh-sub">${subBits.join(' · ')}</div>
+            ${isClosed ? '' : `<div style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="detailInterestBtn" data-id="${id}">💰 记利息</button></div>`}
         </div>`;
         if (!list.length) {
             body.innerHTML = head + '<div class="empty-state">📭 该账户暂无资金变动记录</div>';
@@ -321,8 +342,60 @@ const AccountManager = {
             </div>`;
         }).join('');
         body.innerHTML = head + `<div class="rh-list">${rows}</div>`;
+        // 详情页「记利息」按钮：点击复用计息弹窗（点叉或按 ESC 仍由账户模态统一关闭）
+        const ib = document.getElementById('detailInterestBtn');
+        if (ib) ib.addEventListener('click', () => { const aid = parseInt(ib.dataset.id); if (!isNaN(aid)) this.openInterestModal(aid); });
     },
     closeDetail() { document.getElementById('accountDetailModal').classList.remove('show'); },
+
+    /* ---- 记一笔利息（与安卓端 AccountDetailScreen.AddInterestDialog 对齐） ---- */
+    openInterestModal(id) {
+        const a = getAcc(id);
+        if (!a) return;
+        this._interestAccId = id;
+        const today = new Date().toISOString().slice(0, 10);
+        document.getElementById('interestModalTitle').textContent = `记利息 · ${a.icon || ''} ${a.name}`;
+        document.getElementById('interestAmount').value = '';
+        document.getElementById('interestDate').value = today;
+        document.getElementById('interestNote').value = '';
+        document.getElementById('interestError').style.display = 'none';
+        document.getElementById('interestSubmitBtn').disabled = false;
+        document.getElementById('interestSubmitBtn').textContent = '确认';
+        document.getElementById('interestModal').classList.add('show');
+        setTimeout(() => document.getElementById('interestAmount').focus(), 50);
+    },
+    closeInterestModal() {
+        document.getElementById('interestModal').classList.remove('show');
+        this._interestAccId = null;
+    },
+    async saveInterest() {
+        const id = this._interestAccId;
+        if (!id) return;
+        const amt = parseFloat(document.getElementById('interestAmount').value);
+        const date = document.getElementById('interestDate').value;
+        const note = (document.getElementById('interestNote').value || '').trim();
+        const errEl = document.getElementById('interestError');
+        const btn = document.getElementById('interestSubmitBtn');
+        if (isNaN(amt) || amt <= 0) { errEl.textContent = '请输入大于 0 的利息金额'; errEl.style.display = ''; return; }
+        if (!date) { errEl.textContent = '请选择计息日期'; errEl.style.display = ''; return; }
+        errEl.style.display = 'none';
+        btn.disabled = true; btn.textContent = '提交中…';
+        try {
+            const res = await api(`/accounts/${id}/interest`, 'POST', { amount: amt, date, note: note || undefined });
+            if (res) {
+                showToast('利息已记录', 'success');
+                this.closeInterestModal();
+                await initCache();
+                await this.refresh();
+            } else {
+                btn.disabled = false; btn.textContent = '确认';
+            }
+        } catch (e) {
+            btn.disabled = false; btn.textContent = '确认';
+            errEl.textContent = (e && e.message) || '提交失败，请重试';
+            errEl.style.display = '';
+        }
+    },
 
     /* ---- 账户：全屏网格铺开 ---- */
     buildAccGridCard(a) {
