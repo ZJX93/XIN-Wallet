@@ -16,9 +16,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.MainScaffold
 import com.xinwallet.app.ui.screens.AppLockScreen
@@ -57,12 +57,17 @@ fun AppRoot() {
     }
 
     // App 退到后台再回来时重新上锁（本次会话内的解锁状态作废）
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    // 用 ProcessLifecycleOwner（应用级 lifecycle）而不是 LocalLifecycleOwner（Activity 级）：
+    //   选择器/分享/系统对话框等跳转会让当前 Activity 走到 ON_STOP，但 APP 实际还在前台，
+    //   此时上锁会让用户每次选照片/分享都得输 PIN，体验割裂。
+    //   ProcessLifecycleOwner 只在所有 Activity 都不可见时才触发 ON_STOP（且内置 700ms 缓冲，
+    //   避免极短的后台跳变误判），从系统选择器返回不会重新上锁。
+    val processLifecycleOwner = remember { ProcessLifecycleOwner.get() }
+    DisposableEffect(processLifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    // 退到后台：若启用了应用锁，回来时重新要求解锁
+                    // 整个 APP 退到后台：若启用了应用锁，回来时重新要求解锁
                     scope.launch {
                         if (lockConfigured()) needUnlock = true
                     }
@@ -81,8 +86,8 @@ fun AppRoot() {
                 else -> {}
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        processLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { processLifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 认证过期全局监听：AuthInterceptor 在 401 且刷新失败时发射，自动回到登录页
