@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import android.os.SystemClock
 import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.navigation.MainScaffold
 import com.xinwallet.app.ui.screens.AppLockScreen
@@ -56,41 +57,59 @@ fun AppRoot() {
         }
     }
 
-    // —— 应用锁：仅「用户主动离开 App」时上锁 ——
-    // 关键：不能用任何 Lifecycle 的 ON_STOP 判断「退后台」。
-    //   · LocalLifecycleOwner（Activity 级）：打开系统相册/分享/系统对话框会让当前
-    //     Activity 走到 ON_STOP，但 App 实际仍在交互 → 误上锁。
-    //   · ProcessLifecycleOwner（应用级）：只在「所有本 App Activity 不可见」时触发
-    //     ON_STOP；而打开系统相册（独立进程）时本 App 的所有 Activity 确实都不可见了
-    //     → 同样会误上锁，它只防得住「自己 Activity 间快速跳转」，防不住跨进程跳转。
-    // 正确信号是 onUserLeaveHint：仅在用户主动按 HOME / 最近任务键离开 App 时触发
-    // （MainActivity 捕获后通过 AppContainer.userLeaveHint 广播），通过 Intent 启动系统
-    // 相册等内容**不会**触发，因此从相册返回不会要求重新输 PIN。
-    LaunchedEffect(Unit) {
-        AppContainer.userLeaveHint.collect {
-            if (lockConfigured()) needUnlock = true
-        }
-    }
+    // —— 应用锁：仅「用户离开 App 达到一定时长」时上锁 ——
+    // 关键设计：
+    //   · 选照片/分享等 Intent 跳转（独立进程）会让 ProcessLifecycleOwner 触发 ON_STOP，
+    //     因为本 App 的所有 Activity 确实都不可见——这是 Android 平台现实，不可避免。
+    //   · 用户按 HOME / 最近任务键 同样会触发 ON_STOP。区别在于：Intent 跳转在几秒～几十秒内
+    //     会自动返回，按 HOME/最近任务键则可能离开分钟级。
+    //   · 因此**正确做法是计时而不是防触发**：记录 ON_STOP 的时刻 `leftAtMs`，
+    //     在 ON_START 时计算 elapsed：< APP_LOCK_GRACE_MS 不上锁；>= 才上锁。配合
+    //     onUserLeaveHint（仅在用户主动离开时触发，不受 Intent 跳转影响）做时间戳冗余。
+    //   · APP_LOCK_GRACE_MS = 1 分钟：覆盖"看条消息就回""查个截图就回"的场景，超过 1 分钟
+    //     视为真正离开，重新上锁。
+    val APP_LOCK_GRACE_MS = 60_000L  // 应用锁宽限时长：选照片/分享后 1 分钟内返回不重锁
+    var leftAtMs by remember { mutableStateOf(0L) }
 
-    // 回到前台：续期 token + 广播 onForeground（让可见页重新拉数据）。
-    // 用 ProcessLifecycleOwner 的 ON_START（应用回到前台才触发），此回调只做续期，与上锁解耦。
     val processLifecycleOwner = remember { ProcessLifecycleOwner.get() }
     DisposableEffect(processLifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
-                // 回到前台：已登录则主动续期 access token（冷启动有 validateSession，
-                // 但单纯后台返回不会续期；token 过期后首屏请求 401 会导致页面空白/掉登录）。
-                // 续期后再广播 onForeground，让可见页重新拉取数据。
-                if (loggedIn == true) {
-                    scope.launch {
-                        AppContainer.authRepository.refresh()
-                        AppContainer.onForeground.emit(Unit)
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    // App 整体退到后台（Intent 跳系统相册、HOME、最近任务…）时记录时间。
+                    // 不在这里直接上锁——Intent 跳转几秒到几十秒就会回，要留给 ON_START 计时决定。
+                    leftAtMs = SystemClock.elapsedRealtime()
+                }
+                Lifecycle.Event.ON_START -> {
+                    // 回到前台：先判断是否超过宽限时长，再决定是否上锁；并续期 token + 广播。
+                    val now = SystemClock.elapsedRealtime()
+                    val elapsed = if (leftAtMs > 0) now - leftAtMs else 0L
+                    // 重置时间戳，避免反复 ON_START/ON_STOP 累计
+                    leftAtMs = 0L
+                    if (loggedIn == true) {
+                        scope.launch {
+                            // 先续期（避免 token 过期后首屏 401 空白）
+                            AppContainer.authRepository.refresh()
+                            AppContainer.onForeground.emit(Unit)
+                        }
+                        if (elapsed >= APP_LOCK_GRACE_MS) {
+                            // 离开 ≥ 1 分钟 → 视为真正离开，触发应用锁
+                            scope.launch { if (lockConfigured()) needUnlock = true }
+                        }
+                        // < 1 分钟 不上锁（例如从系统相册返回、看条消息就回）
                     }
                 }
+                else -> {}
             }
         }
         processLifecycleOwner.lifecycle.addObserver(observer)
         onDispose { processLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 冗余：HOME/最近任务键（onUserLeaveHint 触发）也写一次时间戳，便于未来扩展。
+    // 当前逻辑上 ON_STOP 已经覆盖所有退后台场景（包括 HOME），此处仅作记录。
+    LaunchedEffect(Unit) {
+        AppContainer.userLeaveHint.collect { leftAtMs = SystemClock.elapsedRealtime() }
     }
 
     // 认证过期全局监听：AuthInterceptor 在 401 且刷新失败时发射，自动回到登录页

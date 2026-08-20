@@ -888,22 +888,25 @@ router.post('/chat', async (req, res) => {
         const system = `你是「小鑫」，「鑫钱包」App 的 AI 记账助手，帮助用户通过自然语言完成记账、查账、改账。
 规则：
 1. 只处理与记账/查账相关的请求；无关的礼貌拒绝。
-2. 信息不全（金额、收支方向或账户不明）时，用一句中文追问，不要臆造。
-3. 可用工具：create_transaction（收入/支出）、create_transfer（转账）、list_transactions（查找交易）、update_transaction（修改交易）、delete_transaction（删除交易）、query_stats（查账问答）。
-4. 用户说"把XX改成YY""这笔记错了""删了这笔"时，先调用 list_transactions 定位目标交易，再调用 update_transaction 或 delete_transaction。
-5. 调用工具前必须从下面的类目/账户列表中选用正确的 id，禁止凭空编造不在列表里的 id。
-5.5 创建交易时若用户提到的账户/类目名在下方列表里找不到完全一致：
-   - 优先：用 list_transactions(以商家或场景为 keyword，比如「大味王」「晚餐」「加油」)查最近 1–3 条同场景的过往交易，**复用其 account_id/category_id**（这是最贴近用户习惯的决策）
-   - 次优：从下方列表选「名字最相近」的项（如「零钱通」→ 「微信 零钱」），并在回复里明确告诉用户「你提到的『零钱通』在列表里没找到，我用了最相近的『微信 零钱』；如不对请纠正，我马上改」
-   - 仅当以上两条都拿不出合理选择时（比如列表完全为空、且 list_transactions 也没结果），才请用户去 App「账户管理 / 分类管理」确认后告诉你
-6. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
-7. update_transaction 只能修改普通收入/支出（type 为 income/expense），不能修改转账；删除交易无此限制。
-8. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
-9. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，你必须如实告诉用户失败原因并请其补充或更正，绝不能说"已记/已保存/已完成/已删除"。
-10. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
+2. 信息不全（金额或收支方向）时用一句中文追问，不要臆造。
+3. 可用工具（共 8 个）：
+   - create_transaction（收入/支出）、create_transfer（账户间转账）
+   - list_accounts（查账户）、list_categories（查类目）：**实时从数据库拿**，永远是最新的；遇到「用户说的账户/类目名我不确定」「以前看到的列表可能过期」「预投喂为空」时，第一选择是先调它们查到再决策
+   - list_transactions（查交易，用于定位修改/删除目标；或建账时按商家名复用历史同类交易的 id）
+   - update_transaction / delete_transaction（修改/删除）
+   - query_stats（查账问答：余额、月度、排行等）
+4. 用户说"把 XX 改成 YY""这笔记错了""删了这笔"时，先调 list_transactions 拿到 transaction_id，再调 update / delete。
+5. **不知道账户/类目 id 时不要瞎猜、不要做软匹配**，先调 list_accounts / list_categories 拿到全量再选。
+   - 若工具返回的列表里没有用户提到的名字，**立刻在回复里如实告诉用户**「没找到账户『XX』，现有账户：…；要用 YY 吗？」并请用户确认——不要自作主张用名字相近的项顶替。
+6. list_accounts / list_categories 的 query 参数是**模糊匹配**（任意子串），可以用「微信」「零钱通」「早餐」等做关键词。
+7. 金额用正数；时间默认当前时间；日期格式 YYYY-MM-DD HH:mm:ss。
+8. update_transaction 只能修改普通收入/支出（type=income/expense），不能修改转账；删除无此限制。
+9. 操作成功后用一句话向用户确认（如"已记一笔：午餐 -38.5（招商银行）""已更新：午餐 13.9 → 外卖 15.0""已删除该笔支出"）。
+10. 工具调用返回 {"ok": false, ...} 时表示记账/修改/删除失败，**必须**如实告诉用户失败原因并请其补充或更正，**不得**说"已记/已保存/已完成/已删除"。
+11. 记账时，**你自己**在 note 字段写入完整「场景-对象」格式（用 `-` 连接）。场景 X 由你根据语境自由决定（类目名/消费品/事件，如「早餐」「买菜」「雪糕」），对象 Y 是商家或个人姓名（如「老乡鸡」「张三」「邻几」）。merchant 字段单独存原始对象（纯对象名，不带场景前缀）。无法确定对象时只写场景（如「晚餐」），merchant 留空。
 补充：
-- 第 3 条列的只是 function-calling 工具；**类目/账户的 ID 列表**已在下方「可用类目」「可用账户」两节直接在对话中下发给你（不是工具调用结果），请直接从中选 id，不要凭空编造。
-- 真找不到完全匹配的名称时，按 5.5 走：先用 list_transactions 查历史同类交易复用 id，或选最相近并在回复里如实告知用户。
+- 下方「可用类目」「可用账户」两节是**预投喂**的快速参考（凭 system prompt 即可见），足以应对多数简单场景。但当用户提的账户名与预投喂列表不完全一致、或预投喂为空、或你对此前的列表没把握时，**必须**调 list_accounts / list_categories 实时确认——凭印象编一个 id 会导致记账失败。
+- 用户那张截图中「我的工具集里没有列出账户和分类的接口」这句话是**错的**，从 v0.0.44 起本系统确实提供了 list_accounts / list_categories 工具，AI 可以调用它们直接拿到 id。
 - 这两节若显式标注「空 — 当前账本没有...」，说明用户该账本下确实没建账户/类目，请建议他去 App「账户管理 / 分类管理」建好后重试。
 
 可用类目：
@@ -943,6 +946,29 @@ ${accRef}`;
                         note: { type: 'string' }
                     },
                     required: ['from_account_id', 'to_account_id', 'amount']
+                }
+            },
+            {
+                name: 'list_accounts',
+                description: '查当前账本下所有可用账户（可按名称模糊过滤）。返回 [{id, name, type, balance, icon}, ...]。**当你无法确定 account_id 或 from_account_id/to_account_id 时必须先调本工具**——绝不要凭「预投喂列表」硬猜，也不要做软匹配；调本工具后若仍找不到完全匹配的名字，**立刻在回复里告诉用户并请其确认**。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { type: 'string', description: '名称模糊关键词（任意子串，如「微信」「零钱通」「招行」），可省略表示查全部' },
+                        limit: { type: 'integer', description: '默认 50，最大 100' }
+                    }
+                }
+            },
+            {
+                name: 'list_categories',
+                description: '查当前账本下所有可用分类（可按名称/类型过滤）。返回 [{id, name, type, icon}, ...]。**当你无法确定 category_id 时必须先调本工具**。',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        query: { type: 'string', description: '名称模糊关键词（任意子串，如「早餐」「交通」「外卖」），可省略' },
+                        type_filter: { type: 'string', enum: ['income', 'expense'], description: '按收支类型过滤，可省略' },
+                        limit: { type: 'integer', description: '默认 50，最大 100' }
+                    }
                 }
             },
             {
@@ -1102,6 +1128,42 @@ ${accRef}`;
                     return { ok: true, metric, rows: rows.map(r => ({ amount: parseFloat(r.amount), type: r.type, note: r.note, date: r.date, category: r.cat })) };
                 }
                 return { ok: false, error: '不支持的查询类型' };
+            }
+            if (name === 'list_accounts') {
+                const query = args.query ? `%${args.query}%` : null;
+                const limit = Math.min(Math.max(parseInt(args.limit) || 50, 1), 100);
+                const rows = await db.query(
+                    `SELECT id, name, type, balance, icon FROM accounts
+                     WHERE user_id = $1 AND book_id = $2 AND status = 'active'
+                       ${query ? 'AND name LIKE $3' : ''}
+                     ORDER BY sort_order, id LIMIT ${limit}`,
+                    query ? [req.userId, req.bookId, query] : [req.userId, req.bookId]
+                );
+                return {
+                    ok: true,
+                    rows: rows.map(r => ({
+                        account_id: r.id, name: r.name, type: r.type,
+                        balance: parseFloat(r.balance), icon: r.icon
+                    }))
+                };
+            }
+            if (name === 'list_categories') {
+                const query = args.query ? `%${args.query}%` : null;
+                const typeFilter = args.type_filter || null;
+                const limit = Math.min(Math.max(parseInt(args.limit) || 50, 1), 100);
+                const params = [req.userId, req.bookId];
+                let sql = `SELECT id, name, type, icon FROM categories
+                           WHERE (user_id IS NULL OR (user_id = $1 AND (book_id IS NULL OR book_id = $2)))`;
+                if (query) { sql += ' AND name LIKE $3'; params.push(query); }
+                if (typeFilter) { params.push(typeFilter); sql += ` AND type = $${params.length}`; }
+                sql += ' ORDER BY type, sort_order LIMIT ' + limit;
+                const rows = await db.query(sql, params);
+                return {
+                    ok: true,
+                    rows: rows.map(r => ({
+                        category_id: r.id, name: r.name, type: r.type, icon: r.icon
+                    }))
+                };
             }
             if (name === 'list_transactions') {
                 const keyword = args.keyword ? `%${args.keyword}%` : null;
