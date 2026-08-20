@@ -90,6 +90,14 @@ object AppContainer {
      */
     val onForeground = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
+    /**
+     * 用户主动离开 App 信号：MainActivity.onUserLeaveHint() 在用户按 HOME / 最近任务键时发射。
+     * 关键：通过 Intent 启动系统相册/分享/系统对话框**不会**触发 onUserLeaveHint，
+     * 因此此信号专用于「应用锁」——只有用户真正离开 App 才重新上锁，
+     * 从系统选择器返回不会误触发（生命周期 ON_STOP 会因跨进程跳转误判，故不用它）。
+     */
+    val userLeaveHint = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     private lateinit var retrofit: Retrofit
     private lateinit var okHttpClient: OkHttpClient
     private lateinit var gson: com.google.gson.Gson

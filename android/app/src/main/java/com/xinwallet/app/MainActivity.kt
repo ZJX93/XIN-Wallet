@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.xinwallet.app.di.AppContainer
 import com.xinwallet.app.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
@@ -17,5 +18,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             AppRoot()
         }
+    }
+
+    /**
+     * 用户主动离开 App（按 HOME / 最近任务键）时回调。
+     * 注意：通过 Intent 启动系统相册/分享/系统对话框不会触发本方法（那不是"用户离开 App"），
+     * 所以应用锁用它判断，从系统选择器返回不会误上锁。
+     * 来电等少数场景也会触发，属可接受的边界情况。
+     */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        AppContainer.userLeaveHint.tryEmit(Unit)
     }
 }

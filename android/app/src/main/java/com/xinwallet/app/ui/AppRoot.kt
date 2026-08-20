@@ -56,34 +56,37 @@ fun AppRoot() {
         }
     }
 
-    // App 退到后台再回来时重新上锁（本次会话内的解锁状态作废）
-    // 用 ProcessLifecycleOwner（应用级 lifecycle）而不是 LocalLifecycleOwner（Activity 级）：
-    //   选择器/分享/系统对话框等跳转会让当前 Activity 走到 ON_STOP，但 APP 实际还在前台，
-    //   此时上锁会让用户每次选照片/分享都得输 PIN，体验割裂。
-    //   ProcessLifecycleOwner 只在所有 Activity 都不可见时才触发 ON_STOP（且内置 700ms 缓冲，
-    //   避免极短的后台跳变误判），从系统选择器返回不会重新上锁。
+    // —— 应用锁：仅「用户主动离开 App」时上锁 ——
+    // 关键：不能用任何 Lifecycle 的 ON_STOP 判断「退后台」。
+    //   · LocalLifecycleOwner（Activity 级）：打开系统相册/分享/系统对话框会让当前
+    //     Activity 走到 ON_STOP，但 App 实际仍在交互 → 误上锁。
+    //   · ProcessLifecycleOwner（应用级）：只在「所有本 App Activity 不可见」时触发
+    //     ON_STOP；而打开系统相册（独立进程）时本 App 的所有 Activity 确实都不可见了
+    //     → 同样会误上锁，它只防得住「自己 Activity 间快速跳转」，防不住跨进程跳转。
+    // 正确信号是 onUserLeaveHint：仅在用户主动按 HOME / 最近任务键离开 App 时触发
+    // （MainActivity 捕获后通过 AppContainer.userLeaveHint 广播），通过 Intent 启动系统
+    // 相册等内容**不会**触发，因此从相册返回不会要求重新输 PIN。
+    LaunchedEffect(Unit) {
+        AppContainer.userLeaveHint.collect {
+            if (lockConfigured()) needUnlock = true
+        }
+    }
+
+    // 回到前台：续期 token + 广播 onForeground（让可见页重新拉数据）。
+    // 用 ProcessLifecycleOwner 的 ON_START（应用回到前台才触发），此回调只做续期，与上锁解耦。
     val processLifecycleOwner = remember { ProcessLifecycleOwner.get() }
     DisposableEffect(processLifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    // 整个 APP 退到后台：若启用了应用锁，回来时重新要求解锁
+            if (event == Lifecycle.Event.ON_START) {
+                // 回到前台：已登录则主动续期 access token（冷启动有 validateSession，
+                // 但单纯后台返回不会续期；token 过期后首屏请求 401 会导致页面空白/掉登录）。
+                // 续期后再广播 onForeground，让可见页重新拉取数据。
+                if (loggedIn == true) {
                     scope.launch {
-                        if (lockConfigured()) needUnlock = true
+                        AppContainer.authRepository.refresh()
+                        AppContainer.onForeground.emit(Unit)
                     }
                 }
-                Lifecycle.Event.ON_START -> {
-                    // 回到前台：已登录则主动续期 access token（冷启动有 validateSession，
-                    // 但单纯后台返回不会续期；token 过期后首屏请求 401 会导致页面空白/掉登录）。
-                    // 续期后再广播 onForeground，让可见页重新拉取数据。
-                    if (loggedIn == true) {
-                        scope.launch {
-                            AppContainer.authRepository.refresh()
-                            AppContainer.onForeground.emit(Unit)
-                        }
-                    }
-                }
-                else -> {}
             }
         }
         processLifecycleOwner.lifecycle.addObserver(observer)
